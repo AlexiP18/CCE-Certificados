@@ -1,0 +1,14 @@
+# Permitir acceso a archivos de fuentes
+<IfModule mod_headers.c>
+    Header set Access-Control-Allow-Origin "*"
+</IfModule>
+
+# Tipos MIME para fuentes
+AddType font/ttf .ttf
+AddType font/otf .otf
+AddType font/woff .woff
+AddType font/woff2 .woff2
+AddType application/x-font-ttf .ttf
+AddType application/x-font-otf .otf
+AddType application/font-woff .woff
+AddType application/font-woff2 .woff2

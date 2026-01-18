@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prueba de Vista Previa</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        button {
+            padding: 10px 20px;
+            background: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background: #2980b9;
+        }
+        #result {
+            margin-top: 20px;
+            padding: 20px;
+            border: 2px solid #ddd;
+            border-radius: 4px;
+            min-height: 100px;
+        }
+        .loading {
+            color: #666;
+            font-style: italic;
+        }
+        .error {
+            color: red;
+        }
+        .success {
+            color: green;
+        }
+        img {
+            max-width: 100%;
+            height: auto;
+            border: 1px solid #ddd;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 Prueba de Vista Previa</h1>
+    <p>Esta página prueba el endpoint de preview.php directamente</p>
+    
+    <button onclick="testPreview()">🔍 Generar Vista Previa</button>
+    
+    <div id="result"></div>
+
+    <script>
+        async function testPreview() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = '<p class="loading">⏳ Generando vista previa...</p>';
+            
+            console.log('Iniciando petición a preview.php...');
+
+            try {
+                const response = await fetch('preview.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: 'nombre=PRUEBA DE VISTA PREVIA'
+                });
+
+                console.log('Response status:', response.status);
+                console.log('Response OK:', response.ok);
+                
+                const text = await response.text();
+                console.log('Response text:', text);
+                
+                const result = JSON.parse(text);
+                console.log('Result parsed:', result);
+
+                if (result.success) {
+                    resultDiv.innerHTML = `
+                        <p class="success">✓ Vista previa generada exitosamente</p>
+                        <p><strong>Ruta:</strong> ${result.preview}</p>
+                        <img src="${result.preview}?t=${Date.now()}" alt="Vista Previa" 
+                             onload="console.log('Imagen cargada')" 
+                             onerror="console.error('Error al cargar imagen'); this.style.display='none'; this.insertAdjacentHTML('afterend', '<p class=error>Error al cargar la imagen</p>')">
+                    `;
+                } else {
+                    resultDiv.innerHTML = `
+                        <p class="error">✗ Error: ${result.error}</p>
+                        ${result.file ? `<p>Archivo: ${result.file}</p>` : ''}
+                        ${result.line ? `<p>Línea: ${result.line}</p>` : ''}
+                    `;
+                }
+            } catch (error) {
+                console.error('Error completo:', error);
+                resultDiv.innerHTML = `
+                    <p class="error">✗ Error al generar vista previa</p>
+                    <p>Mensaje: ${error.message}</p>
+                    <p>Ver consola del navegador (F12) para más detalles</p>
+                `;
+            }
+        }
+
+        // Mostrar información del entorno
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('URL actual:', window.location.href);
+            console.log('Origin:', window.location.origin);
+            console.log('Pathname:', window.location.pathname);
+        });
+    </script>
+</body>
+</html>

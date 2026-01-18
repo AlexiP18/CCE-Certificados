@@ -1,0 +1,41 @@
+# Vendor (composer)
+/vendor/
+
+# Uploads and generated media (keep .htaccess if present)
+/uploads/
+!/uploads/.htaccess
+
+# Local config
+/config/database.php
+.env
+
+# Composer lock (optional to track)
+# composer.lock
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDEs / editors
+.vscode/
+.idea/
+*.iml
+
+# Node
+node_modules/
+
+# Temp / cache / logs
+/temp/
+/cache/
+/logs/
+*.log
+
+# Archives / build artifacts
+*.zip
+*.tar.gz
+
+# Misc
+*.bak
+*.tmp
+*.pem
+*.key

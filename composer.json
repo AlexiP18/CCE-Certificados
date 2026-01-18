@@ -1,0 +1,17 @@
+{
+    "name": "cce/certificados",
+    "description": "Sistema de Generación y Verificación de Certificados con QR",
+    "type": "project",
+    "require": {
+        "php": ">=7.4",
+        "tecnickcom/tcpdf": "^6.6",
+        "intervention/image": "^2.7",
+        "chillerlan/php-qrcode": "^4.3",
+        "phpoffice/phpspreadsheet": "^5.2"
+    },
+    "autoload": {
+        "psr-4": {
+            "CCE\\": "includes/"
+        }
+    }
+}

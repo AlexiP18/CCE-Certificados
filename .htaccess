@@ -1,0 +1,17 @@
+# Redirigir a la carpeta public
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /cce-certificados/
+    
+    # Si no es la carpeta public, redirigir
+    RewriteCond %{REQUEST_URI} !^/cce-certificados/public/
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^(.*)$ public/$1 [L]
+</IfModule>
+
+# Proteger archivos sensibles
+<FilesMatch "^(composer\.(json|lock)|\.git)">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
