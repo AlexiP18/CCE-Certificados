@@ -312,8 +312,81 @@ class Certificate {
             // Guardar info de la categoría para variables de razón
             $this->categoriaInfo = $categoria;
         }
-        
+
+        // NUEVO: Verificar primero si hay plantilla activa en categoria_plantillas (Sistema nuevo)
         if ($categoria && $categoria['usar_plantilla_propia'] == 1) {
+            $stmt = $this->pdo->prepare("SELECT * FROM categoria_plantillas WHERE categoria_id = ? AND es_activa = 1 LIMIT 1");
+            $stmt->execute([$categoriaId]);
+            $plantillaActiva = $stmt->fetch();
+
+            if ($plantillaActiva) {
+                 // Usar plantilla del nuevo sistema
+                 $this->config['archivo_plantilla'] = 'categorias/' . $categoriaId . '/' . $plantillaActiva['archivo'];
+                 $this->config['plantilla_desde_uploads'] = true;
+                 
+                 error_log("Usando plantilla activa de categoria_plantillas: " . $plantillaActiva['archivo']);
+
+                 // Cargar configuración específica
+                 if (isset($plantillaActiva['posicion_nombre_x'])) $this->config['posicion_nombre_x'] = (int)$plantillaActiva['posicion_nombre_x'];
+                 if (isset($plantillaActiva['posicion_nombre_y'])) $this->config['posicion_nombre_y'] = (int)$plantillaActiva['posicion_nombre_y'];
+                 if (isset($plantillaActiva['posicion_razon_x'])) $this->config['posicion_razon_x'] = (int)$plantillaActiva['posicion_razon_x'];
+                 if (isset($plantillaActiva['posicion_razon_y'])) $this->config['posicion_razon_y'] = (int)$plantillaActiva['posicion_razon_y'];
+                 if (isset($plantillaActiva['posicion_fecha_x'])) $this->config['posicion_fecha_x'] = (int)$plantillaActiva['posicion_fecha_x'];
+                 if (isset($plantillaActiva['posicion_fecha_y'])) $this->config['posicion_fecha_y'] = (int)$plantillaActiva['posicion_fecha_y'];
+                 if (isset($plantillaActiva['posicion_qr_x'])) $this->config['posicion_qr_x'] = (int)$plantillaActiva['posicion_qr_x'];
+                 if (isset($plantillaActiva['posicion_qr_y'])) $this->config['posicion_qr_y'] = (int)$plantillaActiva['posicion_qr_y'];
+                 if (isset($plantillaActiva['posicion_firma_x'])) $this->config['posicion_firma_x'] = (int)$plantillaActiva['posicion_firma_x'];
+                 if (isset($plantillaActiva['posicion_firma_y'])) $this->config['posicion_firma_y'] = (int)$plantillaActiva['posicion_firma_y'];
+                 
+                 if (!empty($plantillaActiva['fuente_nombre'])) $this->config['fuente_nombre'] = $plantillaActiva['fuente_nombre'];
+                 if (!empty($plantillaActiva['fuente_razon'])) $this->config['fuente_razon'] = $plantillaActiva['fuente_razon'];
+                 if (!empty($plantillaActiva['fuente_fecha'])) $this->config['fuente_fecha'] = $plantillaActiva['fuente_fecha'];
+                 
+                 if (isset($plantillaActiva['tamanio_fuente'])) $this->config['tamanio_fuente'] = (int)$plantillaActiva['tamanio_fuente'];
+                 if (isset($plantillaActiva['tamanio_razon'])) $this->config['tamanio_razon'] = (int)$plantillaActiva['tamanio_razon'];
+                 if (isset($plantillaActiva['tamanio_fecha'])) $this->config['tamanio_fecha'] = (int)$plantillaActiva['tamanio_fecha'];
+                 if (isset($plantillaActiva['tamanio_qr'])) $this->config['tamanio_qr'] = (int)$plantillaActiva['tamanio_qr'];
+                 if (isset($plantillaActiva['tamanio_firma'])) $this->config['tamanio_firma'] = (int)$plantillaActiva['tamanio_firma'];
+                 
+                 if (!empty($plantillaActiva['color_texto'])) $this->config['color_texto'] = $plantillaActiva['color_texto'];
+                 if (!empty($plantillaActiva['color_razon'])) $this->config['color_razon'] = $plantillaActiva['color_razon'];
+                 if (!empty($plantillaActiva['color_fecha'])) $this->config['color_fecha'] = $plantillaActiva['color_fecha'];
+                 
+                 if (!empty($plantillaActiva['razon_defecto'])) $this->config['razon_defecto'] = $plantillaActiva['razon_defecto'];
+                 if (!empty($plantillaActiva['formato_fecha'])) $this->config['formato_fecha'] = $plantillaActiva['formato_fecha'];
+                 if (!empty($plantillaActiva['variables_habilitadas'])) $this->config['variables_habilitadas'] = $plantillaActiva['variables_habilitadas'];
+                 if (!empty($plantillaActiva['ancho_razon'])) $this->config['ancho_razon'] = (int)$plantillaActiva['ancho_razon'];
+                 
+                 // Nuevos campos
+                 if (!empty($plantillaActiva['formato_nombre'])) $this->config['formato_nombre'] = $plantillaActiva['formato_nombre'];
+                 if (!empty($plantillaActiva['alineacion_razon'])) $this->config['alineacion_razon'] = $plantillaActiva['alineacion_razon'];
+                 
+                 // Firma
+                 if (!empty($plantillaActiva['firma_imagen'])) {
+                     $this->config['firma_imagen'] = 'categorias/' . $categoriaId . '/firmas/' . $plantillaActiva['firma_imagen']; 
+                 } elseif (!empty($plantillaActiva['firma_nombre'])) {
+                     $this->config['firma_nombre'] = $plantillaActiva['firma_nombre'];
+                     if (!empty($plantillaActiva['firma_cargo'])) $this->config['firma_cargo'] = $plantillaActiva['firma_cargo'];
+                 } else {
+                     // Fallback a firma del grupo si no hay propia
+                     if (!empty($categoria['grupo_firma_imagen'])) {
+                         $this->config['firma_imagen'] = $categoria['grupo_firma_imagen'];
+                     }
+                 }
+
+                 // Destacado
+                 if (isset($plantillaActiva['destacado_posicion_x'])) $this->config['destacado_posicion_x'] = (int)$plantillaActiva['destacado_posicion_x'];
+                 if (isset($plantillaActiva['destacado_posicion_y'])) $this->config['destacado_posicion_y'] = (int)$plantillaActiva['destacado_posicion_y'];
+                 if (isset($plantillaActiva['destacado_tamanio'])) $this->config['destacado_tamanio'] = (int)$plantillaActiva['destacado_tamanio'];
+                 if (!empty($plantillaActiva['destacado_tipo'])) $this->config['destacado_tipo'] = $plantillaActiva['destacado_tipo'];
+                 if (!empty($plantillaActiva['destacado_icono'])) $this->config['destacado_icono'] = $plantillaActiva['destacado_icono'];
+                 if (!empty($plantillaActiva['destacado_imagen'])) $this->config['destacado_imagen'] = $plantillaActiva['destacado_imagen'];
+                 $this->config['destacado_habilitado'] = 1; // Asumir habilitado si tiene config
+
+                 return;
+            }
+
+
             error_log("=== Configuración de la Categoría $categoriaId (Plantilla Propia) ===");
             error_log("plantilla_archivo: " . ($categoria['plantilla_archivo'] ?? 'NULL'));
             error_log("plantilla_tamanio_fuente: " . ($categoria['plantilla_tamanio_fuente'] ?? 'NULL'));
@@ -441,6 +514,26 @@ class Certificate {
             if (isset($categoria['plantilla_color_fecha']) && $categoria['plantilla_color_fecha'] !== '') {
                 $this->config['color_fecha'] = $categoria['plantilla_color_fecha'];
             }
+            
+            // Configuración de Destacado
+            if (isset($categoria['plantilla_destacado_tipo']) && $categoria['plantilla_destacado_tipo'] !== null) {
+                $this->config['destacado_tipo'] = $categoria['plantilla_destacado_tipo'];
+            }
+            if (isset($categoria['plantilla_destacado_icono']) && $categoria['plantilla_destacado_icono'] !== null) {
+                $this->config['destacado_icono'] = $categoria['plantilla_destacado_icono'];
+            }
+            if (isset($categoria['plantilla_destacado_imagen']) && $categoria['plantilla_destacado_imagen'] !== null) {
+                $this->config['destacado_imagen'] = $categoria['plantilla_destacado_imagen'];
+            }
+            if (isset($categoria['plantilla_pos_destacado_x']) && $categoria['plantilla_pos_destacado_x'] !== null) {
+                $this->config['destacado_posicion_x'] = (int)$categoria['plantilla_pos_destacado_x'];
+            }
+            if (isset($categoria['plantilla_pos_destacado_y']) && $categoria['plantilla_pos_destacado_y'] !== null) {
+                $this->config['destacado_posicion_y'] = (int)$categoria['plantilla_pos_destacado_y'];
+            }
+            if (isset($categoria['plantilla_tamanio_destacado']) && $categoria['plantilla_tamanio_destacado'] !== null) {
+                $this->config['destacado_tamanio'] = (int)$categoria['plantilla_tamanio_destacado'];
+            }
         } else {
             error_log("=== Categoría $categoriaId NO usa plantilla propia, heredando del grupo ===");
         }
@@ -544,8 +637,8 @@ class Certificate {
             // Guardar en base de datos (permitir estado personalizado para flujos de aprobación)
             $estadoCert = $data['estado'] ?? 'activo';
             $stmt = $this->pdo->prepare("
-                INSERT INTO certificados (codigo, nombre, razon, fecha, archivo_imagen, archivo_pdf, grupo_id, categoria_id, fechas_generacion, estado)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO certificados (codigo, nombre, razon, fecha, archivo_imagen, archivo_pdf, grupo_id, categoria_id, estudiante_id, fechas_generacion, estado)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ");
             
             $stmt->execute([
@@ -557,6 +650,7 @@ class Certificate {
                 basename($pdfPath),
                 $data['grupo_id'] ?? null,
                 $data['categoria_id'] ?? null,
+                $data['estudiante_id'] ?? null,
                 $fechasGeneracion,
                 $estadoCert
             ]);
@@ -682,16 +776,23 @@ class Certificate {
             throw new \Exception("Error al cargar la plantilla: " . $e->getMessage());
         }
         
-        // Obtener dimensiones reales de la plantilla
-        $realWidth = $img->width();
-        $realHeight = $img->height();
+        // --- ESTANDARIZACIÓN DE RESOLUCIÓN ---
+        // Forzamos TODAS las plantillas a un tamaño común (1600x1131) antes de imprimir las variables.
+        // Soluciona el problema de que textos de 48px se vean minúsculos en plantillas 4K 
+        // o gigantes en plantillas de baja resolución. Desvincula el lienzo del tamaño original.
+        $TARGET_WIDTH = 1600;
+        $TARGET_HEIGHT = 1131;
+        
+        $img->resize($TARGET_WIDTH, $TARGET_HEIGHT);
+        
+        $realWidth = $TARGET_WIDTH;
+        $realHeight = $TARGET_HEIGHT;
         
         error_log("=== Dimensiones de Plantilla ===");
-        error_log("Dimensiones reales: {$realWidth}x{$realHeight}");
+        error_log("Dimensiones reajustadas a estándar: {$realWidth}x{$realHeight}");
         
-        // Las coordenadas guardadas en la base de datos ya corresponden a las posiciones reales
-        // en la imagen, por lo que NO se aplica escalado. El editor guarda las posiciones
-        // basándose en las dimensiones reales de la imagen cargada.
+        // Las coordenadas guardadas en la base de datos ya corresponden a las posiciones
+        // sobre este lienzo estándar 1600x1131, por lo que NO se aplica escalado.
         $scaleX = 1.0;
         $scaleY = 1.0;
         
@@ -791,8 +892,8 @@ class Certificate {
                     } else {
                         error_log("Usando fuente por defecto de GD (no se encontró fuente personalizada)");
                     }
-                    // Aplicar tamaño y color
-                    $font->size($tamanioFuente);
+                    // Aplicar tamaño y color (convert CSS px to GD pt: ×72/96)
+                    $font->size($tamanioFuente * 72.0 / 96.0);
                     $font->color($colorTexto);
                     $font->align('left');  // Alineación desde el inicio (izquierda)
                     $font->valign('top');   // Alineación desde arriba
@@ -821,11 +922,11 @@ class Certificate {
             $qrImg->resize($tamanioQr, $tamanioQr);
             
             // Insertar QR en certificado usando coordenadas escaladas
-            // Las coordenadas son el centro del QR, ajustamos para que sea la esquina superior izquierda
-            $qrX = (int)(((int)$this->config['posicion_qr_x'] * $scaleX) - ($tamanioQr / 2));
-            $qrY = (int)(((int)$this->config['posicion_qr_y'] * $scaleY) - ($tamanioQr / 2));
+            // Las coordenadas son la esquina superior izquierda del QR (top-left, igual que el lienzo)
+            $qrX = (int)((int)$this->config['posicion_qr_x'] * $scaleX);
+            $qrY = (int)((int)$this->config['posicion_qr_y'] * $scaleY);
             
-            error_log("Insertando QR en posición escalada: X=$qrX, Y=$qrY");
+            error_log("Insertando QR en posición: X=$qrX, Y=$qrY");
             $img->insert($qrImg, 'top-left', $qrX, $qrY);
             
             // Limpiar QR temporal
@@ -855,11 +956,11 @@ class Certificate {
                 });
                 
                 // Insertar firma en certificado usando coordenadas escaladas
-                // Las coordenadas son el centro de la firma, ajustamos para esquina superior izquierda
-                $firmaX = (int)(((int)$this->config['posicion_firma_x'] * $scaleX) - ($firmaImg->width() / 2));
-                $firmaY = (int)(((int)$this->config['posicion_firma_y'] * $scaleY) - ($firmaImg->height() / 2));
+                // Las coordenadas son la esquina superior izquierda (top-left, igual que el lienzo)
+                $firmaX = (int)((int)$this->config['posicion_firma_x'] * $scaleX);
+                $firmaY = (int)((int)$this->config['posicion_firma_y'] * $scaleY);
                 
-                error_log("Insertando firma en posición escalada: X=$firmaX, Y=$firmaY");
+                error_log("Insertando firma en posición: X=$firmaX, Y=$firmaY");
                 $img->insert($firmaImg, 'top-left', $firmaX, $firmaY);
             } else {
                 error_log("Advertencia: Archivo de firma no encontrado en ninguna ruta: $firmaFileName");
@@ -956,7 +1057,8 @@ class Certificate {
                 if ($fontPathFecha && file_exists($fontPathFecha)) {
                     $font->file($fontPathFecha);
                 }
-                $font->size($tamanioFecha);
+                // Convert CSS px to GD pt: ×72/96
+                $font->size($tamanioFecha * 72.0 / 96.0);
                 $font->color($colorFecha);
                 $font->align('left');
                 $font->valign('top');
@@ -1024,14 +1126,8 @@ class Certificate {
                 $constraint->aspectRatio();
             });
             
-            // Calcular posición (centrada en el punto configurado)
-            $stickerWidth = $sticker->width();
-            $stickerHeight = $sticker->height();
-            $insertX = $posX - ($stickerWidth / 2);
-            $insertY = $posY - ($stickerHeight / 2);
-            
-            // Insertar sticker
-            $img->insert($sticker, 'top-left', (int)$insertX, (int)$insertY);
+            // Las coordenadas son la esquina superior izquierda (top-left, igual que el lienzo)
+            $img->insert($sticker, 'top-left', (int)$posX, (int)$posY);
             
             error_log("Sticker de destacado agregado en X=$posX, Y=$posY, tamaño=$tamanio");
         } catch (\Exception $e) {
@@ -1375,12 +1471,14 @@ class Certificate {
         
         // Fallback final: dibujar línea por línea
         $currentY = $y;
+        // Convert CSS px to GD pt for rendering
+        $gdFontSize = $fontSize * 72.0 / 96.0;
         foreach ($lines as $line) {
-            $img->text($line, $x, $currentY, function($font) use ($fontPath, $fontSize, $color) {
+            $img->text($line, $x, $currentY, function($font) use ($fontPath, $gdFontSize, $color) {
                 if ($fontPath && file_exists($fontPath)) {
                     $font->file($fontPath);
                 }
-                $font->size($fontSize);
+                $font->size($gdFontSize);
                 $font->color($color);
                 $font->align('left');
                 $font->valign('top');
@@ -1396,8 +1494,8 @@ class Certificate {
      */
     private function getTextWidth($text, $fontPath, $fontSize) {
         if ($fontPath && file_exists($fontPath)) {
-            // Usar imagettfbbox para calcular dimensiones precisas
-            $bbox = @imagettfbbox($fontSize, 0, $fontPath, $text);
+            // Convert CSS px to GD pt for accurate measurement (×72/96)
+            $bbox = @imagettfbbox($fontSize * 72.0 / 96.0, 0, $fontPath, $text);
             if ($bbox !== false) {
                 return abs($bbox[4] - $bbox[0]);
             }

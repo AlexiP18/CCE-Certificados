@@ -1,0 +1,10 @@
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    
+    # Permitir acceso directo a archivos existentes (css, js, imágenes, php antiguos)
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    
+    # Todo lo demás pasarlo al Front Controller (app.php)
+    RewriteRule ^(.*)$ app.php?url=$1 [QSA,L]
+</IfModule>

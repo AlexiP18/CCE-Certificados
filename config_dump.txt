@@ -1,0 +1,64 @@
+PHP Notice:  session_start(): Ignoring session_start() because a session is already active in C:\xampp\htdocs\cce-certificados\includes\Auth.php on line 9
+API Preview - POST data: {"tipo":"grupo","id":"73","use_form_data":"0","variables_habilitadas":"[\"nombre\",\"razon\",\"fecha\",\"qr\",\"firma\",\"destacado\"]"}
+API Preview - useFormData: false
+API Preview - formato_fecha POST: NOT SET
+API Preview - plantillaPath: 
+API Preview - file_exists: false
+API Preview - No hay estudiantes en el grupo, usando datos por defecto
+API Preview - Razon config: ancho=787, lineas=0, tamanio=24, alineacion=justified
+API Preview - Razon texto: Por su destacada participaci├│n en el taller de ejemplo
+WordWrap: modo est├índar, effectiveMaxWidth=724.04
+API Preview - wordwrapText devolvi├│ 2 l├¡neas
+API Preview - formatoFecha final: d de F de Y
+API Preview - config['formato_fecha']: d de F de Y
+API Preview - fechaFormateada: 15 de Febrero de 2026
+
+Output length: 2751662
+
+--- CONFIG DUMP ---
+Array
+(
+    [fuente_nombre] => Dancing-Script
+    [formato_nombre] => mayusculas
+    [tamanio_fuente] => 50
+    [color_texto] => #000000
+    [posicion_nombre_x] => 393
+    [posicion_nombre_y] => 481
+    [posicion_qr_x] => 440
+    [posicion_qr_y] => 843
+    [posicion_firma_x] => 1220
+    [posicion_firma_y] => 908
+    [posicion_razon_x] => 414
+    [posicion_razon_y] => 552
+    [posicion_fecha_x] => 692
+    [posicion_fecha_y] => 404
+    [tamanio_qr] => 200
+    [tamanio_firma] => 150
+    [variables_habilitadas] => ["nombre","razon","fecha","qr","firma","destacado"]
+    [razon_defecto] => 
+    [fuente_razon] => Montserrat
+    [tamanio_razon] => 24
+    [color_razon] => #333333
+    [ancho_razon] => 787
+    [lineas_razon] => 0
+    [alineacion_razon] => justified
+    [formato_fecha] => d de F de Y
+    [fecha_especifica] => 
+    [fuente_fecha] => BBHHegarty-Regular
+    [tamanio_fecha] => 27
+    [color_fecha] => #333333
+    [destacado_posicion_x] => 50
+    [destacado_posicion_y] => 50
+    [destacado_tamanio] => 100
+    [destacado_tipo] => icono
+    [destacado_icono] => estrella
+    [destacado_imagen] => 
+    [destacado_habilitado] => 1
+)
+SHUTDOWN ERROR: Array
+(
+    [type] => 8
+    [message] => session_start(): Ignoring session_start() because a session is already active
+    [file] => C:\xampp\htdocs\cce-certificados\includes\Auth.php
+    [line] => 9
+)

@@ -6,292 +6,254 @@ Sistema web para generar certificados digitales con códigos QR de verificación
 
 - ✅ Generación automática de certificados en PDF y PNG
 - ✅ Códigos QR de verificación únicos
-- ✅ **Configuración visual de posición de nombre y QR** (¡Nuevo!)
-- ✅ Vista previa en tiempo real
+- ✅ Configuración visual de plantillas por grupo y categoría
+- ✅ Vista previa en tiempo real con drag & drop
 - ✅ Soporte para fuentes personalizadas
-- ✅ Interfaz intuitiva de arrastrar y soltar
 - ✅ Verificación pública de certificados
-- ✅ Registro de verificaciones
+- ✅ Gestión de grupos, categorías, períodos y estudiantes
+- ✅ Exportación a Excel y PDF
+- ✅ Sistema de roles y permisos
 
 ## 📋 Requisitos
 
-### Para desarrollo local:
-- **PHP 7.4 o superior** con extensiones:
-  - GD (para manipulación de imágenes)
-  - PDO MySQL
-  - mbstring
+### Para desarrollo local
+- **PHP 7.4+** con extensiones: GD, PDO MySQL, mbstring
 - **MySQL/MariaDB 5.7+**
 - **Composer** (gestor de dependencias PHP)
-- **XAMPP/WAMP/LARAGON** (recomendado para Windows)
+- **XAMPP** (recomendado para Windows)
 
-### Para producción (cPanel):
-- Hosting con cPanel
-- PHP 7.4+
+### Para producción (cPanel)
+- Hosting con cPanel y PHP 7.4+
 - MySQL
-- Acceso a cron jobs (opcional)
+- Acceso SSH (recomendado, no obligatorio)
 
-## 🚀 Instalación Local
+---
 
-### 1. Instalar XAMPP (si no lo tienes)
+## 🚀 Instalación Local (XAMPP)
 
-Descarga e instala XAMPP desde: https://www.apachefriends.org/
+### 1. Instalar prerrequisitos
+- XAMPP: https://www.apachefriends.org/
+- Composer: https://getcomposer.org/Composer-Setup.exe
 
-### 2. Clonar/Copiar el proyecto
-
-```bash
-# Copiar el proyecto a la carpeta htdocs de XAMPP
-# Normalmente en: C:\xampp\htdocs\cce-certificados
-```
-
-### 3. Instalar dependencias PHP
-
-Abre PowerShell/CMD en la carpeta del proyecto:
+### 2. Configurar el proyecto
 
 ```powershell
-# Navegar a la carpeta del proyecto
-cd "C:\Users\alexi\Desktop\Casa de la Cultura CCE\cce-certificados"
+# Copiar proyecto a htdocs
+Copy-Item "ruta\del\proyecto\cce-certificados" "C:\xampp\htdocs\" -Recurse
 
-# Instalar Composer si no lo tienes
-# Descarga desde: https://getcomposer.org/download/
-
-# Instalar dependencias
+# Navegar al proyecto e instalar dependencias
+cd C:\xampp\htdocs\cce-certificados
 composer install
+
+# Configurar base de datos
+Copy-Item config\database.example.php config\database.php
+# Editar config\database.php con tus credenciales (root sin password por defecto en XAMPP)
 ```
 
-### 4. Configurar base de datos
-
-1. Abre XAMPP Control Panel
-2. Inicia Apache y MySQL
-3. Abre phpMyAdmin: http://localhost/phpmyadmin
-4. Crea una nueva base de datos llamada `cce_certificados`
-5. Importa el archivo `database/schema.sql`
-
-O ejecuta desde línea de comandos:
+### 3. Crear base de datos
 
 ```powershell
-# Desde la carpeta de XAMPP
 cd C:\xampp\mysql\bin
 
 # Crear base de datos e importar schema
-.\mysql -u root -p -e "CREATE DATABASE cce_certificados CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
-.\mysql -u root -p cce_certificados < "C:\Users\alexi\Desktop\Casa de la Cultura CCE\cce-certificados\database\schema.sql"
+.\mysql -u root -e "CREATE DATABASE cce_certificados CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+.\mysql -u root cce_certificados < "C:\xampp\htdocs\cce-certificados\database\schema\schema.sql"
 ```
 
-### 5. Configurar conexión a base de datos
+### 4. Preparar archivos
+
+- Plantilla de certificado: `assets/templates/default_template.png` (A4 horizontal, ~3508x2480 px)
+- Logo institucional (opcional): `assets/logos/logo-cce.png`
+- Fuentes personalizadas (opcional): `assets/fonts/MiFuente.ttf`
 
 ```powershell
-# Copiar el archivo de ejemplo
-cd "C:\Users\alexi\Desktop\Casa de la Cultura CCE\cce-certificados\config"
-Copy-Item database.example.php database.php
-
-# Editar database.php con tus credenciales (usualmente root sin password en local)
+# Dar permisos a carpeta de uploads
+icacls uploads /grant Everyone:F
 ```
 
-### 6. Preparar plantilla de certificado
+### 5. Probar
 
-1. Crea una imagen PNG de tu certificado en tamaño A4 landscape (297x210mm o ~3508x2480 px)
-2. Guárdala en: `assets/templates/default_template.png`
-3. Opcionalmente, agrega fuentes personalizadas en: `assets/fonts/`
-4. Agrega el logo de tu institución en: `assets/logos/logo-cce.png`
-
-### 7. Configurar permisos de escritura
-
-En Windows con XAMPP, asegúrate que la carpeta `uploads/` tenga permisos de escritura:
-
-```powershell
-# Dar permisos completos a la carpeta uploads
-icacls "C:\Users\alexi\Desktop\Casa de la Cultura CCE\cce-certificados\uploads" /grant Everyone:F
-```
-
-### 8. Probar la aplicación
-
-1. Abre tu navegador
-2. Ve a: http://localhost/cce-certificados/public/
+1. Inicia Apache y MySQL en XAMPP Control Panel
+2. Abre: http://localhost/cce-certificados/public/auth/login.php
 3. Genera un certificado de prueba
-4. Verifica que se generen los archivos en `uploads/`
 
-### 9. Configurar posición del nombre y QR
+### ✅ Checklist de verificación local
 
-1. En la página principal, haz clic en **"⚙️ Configurar Plantilla"**
-2. Arrastra los marcadores (azul para NOMBRE, verde para QR) sobre la imagen
-3. Ajusta el tamaño de fuente, color y otras opciones
-4. Haz clic en **"Ver Vista Previa"** para probar la configuración
-5. Guarda los cambios
+- [ ] XAMPP Apache (puerto 80) y MySQL (puerto 3306) corriendo
+- [ ] Base de datos `cce_certificados` creada e importada
+- [ ] `config/database.php` configurado
+- [ ] `uploads/` con permisos de escritura
+- [ ] Plantilla en `assets/templates/`
+- [ ] Dependencias instaladas (`vendor/` existe)
 
-Ver guía completa: [CONFIGURACION-PLANTILLA.md](CONFIGURACION-PLANTILLA.md)
+---
 
-## 📦 Subir a cPanel
+## 📦 Despliegue en cPanel (Producción)
 
-### 1. Preparar archivos para producción
+### 1. Preparar archivos
 
 ```powershell
-# Crear archivo ZIP excluyendo archivos innecesarios
+# Crear ZIP excluyendo archivos innecesarios
 Compress-Archive -Path * -DestinationPath cce-certificados-produccion.zip -Force
 ```
 
-O manualmente, excluye:
-- Carpeta `.git/`
-- Carpeta `vendor/` (se reinstalará en el servidor)
-- `composer.lock`
-- `config/database.php`
+Excluir: `.git/`, `config/database.php`
 
-### 2. Subir archivos a cPanel
+### 2. Crear base de datos en cPanel
 
-1. Accede a tu cPanel
-2. Ve a **File Manager**
-3. Navega a `public_html/` (o la carpeta que quieras usar)
-4. Sube el archivo ZIP
-5. Extrae el archivo ZIP
+1. En cPanel → **MySQL Databases**
+2. Crear base de datos (ej: `tunombre_cce_certificados`)
+3. Crear usuario MySQL y asignar **todos los privilegios**
 
-### 3. Instalar dependencias en el servidor
+### 3. Subir archivos
 
-**Opción A: Desde terminal SSH (si tienes acceso)**
+**Método A: File Manager**
+1. En cPanel → **File Manager** → `public_html/`
+2. Subir ZIP → Extraer
 
+**Método B: FTP**
+```
+Host: tudominio.com
+Puerto: 21
+Usuario: tu_usuario_ftp
+```
+
+### 4. Instalar dependencias
+
+**Con SSH:**
 ```bash
 cd public_html/cce-certificados
 composer install --no-dev --optimize-autoloader
 ```
 
-**Opción B: Si no tienes SSH**
+**Sin SSH:** Sube la carpeta `vendor/` completa vía FTP/File Manager.
 
-1. Instala las dependencias localmente
-2. Sube la carpeta `vendor/` completa via FTP/File Manager
-
-### 4. Crear base de datos en cPanel
-
-1. En cPanel, ve a **MySQL Databases**
-2. Crea una nueva base de datos: `tunombre_cce`
-3. Crea un usuario MySQL y asigna todos los privilegios
-4. Anota: nombre de BD, usuario y contraseña
-
-### 5. Importar schema SQL
-
-1. En cPanel, ve a **phpMyAdmin**
-2. Selecciona tu base de datos
-3. Ve a la pestaña **Import**
-4. Sube el archivo `database/schema.sql`
-
-### 6. Configurar database.php
-
-1. Copia `config/database.example.php` a `config/database.php`
-2. Edita con tus credenciales de producción:
+### 5. Configurar `database.php`
 
 ```php
 $config = [
     'host' => 'localhost',
-    'database' => 'tunombre_cce',
+    'database' => 'tunombre_cce_certificados',
     'username' => 'tunombre_usuario',
     'password' => 'tu_password_seguro',
     'charset' => 'utf8mb4'
 ];
 
-define('BASE_URL', 'https://tudominio.com');
+define('BASE_URL', 'https://tudominio.com/cce-certificados/public');
 ```
 
-### 7. Configurar permisos
+### 6. Importar schema
 
-En File Manager, haz clic derecho en la carpeta `uploads/` y establece permisos **755** o **777**
+En cPanel → **phpMyAdmin** → Tu BD → **Import** → `database/schema/schema.sql`
 
-### 8. Verificar instalación
+### 7. Configurar permisos y .htaccess
 
-1. Ve a: https://tudominio.com/public/
-2. Genera un certificado de prueba
-3. Escanea el código QR generado
-
-## 🎨 Personalización
-
-### Cambiar plantilla de certificado
-
-1. Sube tu imagen PNG/JPG a `assets/templates/`
-2. Actualiza en la base de datos:
-
-```sql
-UPDATE configuracion_plantillas 
-SET archivo_plantilla = 'tu_plantilla.png',
-    posicion_nombre_x = 400,
-    posicion_nombre_y = 300,
-    tamanio_fuente = 48
-WHERE id = 1;
+```bash
+# Permisos
+uploads/ → 755 o 777
+config/  → 755
 ```
 
-### Agregar fuentes personalizadas
-
-1. Sube archivos `.ttf` o `.otf` a `assets/fonts/`
-2. Actualiza en la base de datos:
-
-```sql
-UPDATE configuracion_plantillas 
-SET fuente_nombre = 'MiFuente'
-WHERE id = 1;
+Archivo `.htaccess` en la raíz del proyecto:
+```apache
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^$ public/ [L]
+    RewriteRule (.*) public/$1 [L]
+</IfModule>
 ```
 
-### Cambiar posición del QR
+### 8. Seguridad adicional en producción
 
-```sql
-UPDATE configuracion_plantillas 
-SET posicion_qr = 'bottom-right',  -- opciones: top-left, top-right, bottom-left, bottom-right
-    posicion_qr_x = 50,
-    posicion_qr_y = 50
-WHERE id = 1;
-```
+1. **Proteger config/**
+   ```apache
+   # config/.htaccess
+   Deny from all
+   ```
+
+2. **Habilitar HTTPS** en cPanel → SSL/TLS Status → Let's Encrypt
+
+### ✅ Checklist de producción
+
+- [ ] Base de datos creada e importada
+- [ ] Usuario MySQL con permisos
+- [ ] Archivos subidos al servidor
+- [ ] `config/database.php` con credenciales de producción
+- [ ] `BASE_URL` correctamente configurado
+- [ ] Permisos en `uploads/`
+- [ ] `.htaccess` configurado
+- [ ] Certificado SSL activo
+- [ ] Certificado de prueba generado exitosamente
+
+---
 
 ## 🔧 Troubleshooting
 
-### Error: "Class not found"
-```powershell
-composer dump-autoload
-```
+| Problema | Solución |
+|----------|----------|
+| Class not found | `composer dump-autoload` |
+| Cannot write to uploads/ | `icacls uploads /grant Everyone:F` |
+| Error de conexión a BD | Verificar credenciales en `config/database.php` |
+| Certificados no se generan | Verificar plantilla en `assets/templates/` y permisos de `uploads/` |
+| QR no redirige | Verificar `BASE_URL` en `config/database.php` |
+| Port 80 already in use | `net stop was /y` (detiene IIS) |
+| Error extensión GD | En `php.ini`: cambiar `;extension=gd` a `extension=gd`, reiniciar Apache |
+| Error 500 en producción | Verificar permisos y `.htaccess` |
 
-### Error: "Cannot write to uploads/"
-```powershell
-icacls uploads /grant Everyone:F
-```
-
-### Error de conexión a base de datos
-- Verifica credenciales en `config/database.php`
-- Asegúrate que MySQL esté corriendo
-
-### Certificados no se generan
-- Verifica que existe `assets/templates/default_template.png`
-- Verifica permisos de escritura en `uploads/`
-- Revisa logs de PHP (en XAMPP: `xampp/apache/logs/error.log`)
-
-### QR no redirige correctamente
-- Verifica que `BASE_URL` esté correctamente configurado en `config/database.php`
+---
 
 ## 📚 Estructura del Proyecto
 
 ```
 cce-certificados/
+├── app/
+│   └── Views/              # Vistas (plantillas HTML)
+│       ├── dashboard/
+│       ├── grupos/
+│       ├── estudiantes/
+│       ├── categorias/
+│       ├── usuarios/
+│       ├── mi_perfil/
+│       ├── admin_fuentes/
+│       └── login/
 ├── assets/
-│   ├── fonts/          # Fuentes personalizadas (.ttf, .otf)
-│   ├── templates/      # Plantillas de certificados (PNG/JPG)
-│   └── logos/          # Logo institucional
+│   ├── fonts/              # Fuentes personalizadas (.ttf, .otf)
+│   ├── templates/          # Plantillas de certificados
+│   └── logos/              # Logo institucional
 ├── config/
-│   └── database.php    # Configuración de BD (crear desde .example)
+│   └── database.php        # Configuración de BD
 ├── database/
-│   └── schema.sql      # Estructura de base de datos
+│   ├── schema/             # Esquemas base
+│   ├── migrations/         # Migraciones SQL
+│   ├── seeders/            # Scripts de datos iniciales
+│   └── scripts/            # Utilidades de diagnóstico
 ├── includes/
-│   └── Certificate.php # Clase principal de certificados
-├── public/             # Carpeta pública (punto de entrada)
-│   ├── css/
-│   ├── js/
-│   ├── index.php       # Página principal
-│   ├── generate.php    # API para generar certificados
-│   ├── verify.php      # Verificación de certificados
-│   └── list.php        # API para listar certificados
-├── uploads/            # Certificados generados (PNG + PDF)
-├── vendor/             # Dependencias de Composer
-├── .htaccess          # Redireccionamiento a /public
-└── composer.json       # Dependencias PHP
+│   ├── Auth.php            # Autenticación
+│   └── Certificate.php     # Generación de certificados
+├── public/                 # Carpeta pública
+│   ├── api/                # Endpoints REST
+│   ├── auth/               # Login, verify, logout
+│   ├── dashboard/          # Panel principal
+│   ├── grupos/             # Gestión de grupos
+│   ├── categorias/         # Gestión de categorías
+│   ├── estudiantes/        # Gestión de estudiantes
+│   ├── certificados/       # Visualización y descarga
+│   ├── usuarios/           # Gestión de usuarios
+│   ├── perfil/             # Perfil de usuario
+│   ├── admin/              # Administración de fuentes
+│   ├── css/                # Estilos
+│   └── js/                 # Scripts
+├── uploads/                # Certificados generados
+└── vendor/                 # Dependencias Composer
 ```
 
 ## 🔒 Seguridad
 
-- Todos los archivos sensibles están protegidos por `.htaccess`
-- Las consultas SQL usan prepared statements (PDO)
-- La carpeta `uploads/` solo permite acceso a imágenes y PDFs
-- Los datos se validan y sanitizan antes de procesarse
+- Autenticación obligatoria con sistema de roles
+- Consultas SQL con prepared statements (PDO)
+- Sanitización de datos de entrada
+- Carpeta `uploads/` protegida
+- Archivos de configuración inaccesibles públicamente
 
 ## 📝 Licencia
 

@@ -244,16 +244,18 @@ class Auth {
             $isAjax = !empty($_SERVER['HTTP_X_REQUESTED_WITH']) && 
                       strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest';
             $isJson = strpos($_SERVER['HTTP_ACCEPT'] ?? '', 'application/json') !== false;
-            $isApi = strpos($_SERVER['REQUEST_URI'] ?? '', 'api_') !== false;
+            $isApi = strpos($_SERVER['REQUEST_URI'] ?? '', '/api/') !== false;
+            
+            $loginUrl = defined('BASE_URL') ? BASE_URL . '/auth/login.php' : 'auth/login.php';
             
             if ($isAjax || $isJson || $isApi) {
                 http_response_code(401);
                 header('Content-Type: application/json');
-                echo json_encode(['success' => false, 'message' => 'No autenticado', 'redirect' => 'login.php']);
+                echo json_encode(['success' => false, 'message' => 'No autenticado', 'redirect' => $loginUrl]);
                 exit;
             }
             
-            header('Location: login.php');
+            header('Location: ' . $loginUrl);
             exit;
         }
     }
@@ -402,51 +404,65 @@ class Auth {
     }
 }
 
-/**
- * Función helper para verificar permisos en las vistas
- */
-function puede(string $modulo, string $accion): bool {
-    return Auth::can($modulo, $accion);
+if (!function_exists('puede')) {
+    /**
+     * Función helper para verificar permisos en las vistas
+     */
+    function puede(string $modulo, string $accion): bool {
+        return Auth::can($modulo, $accion);
+    }
 }
 
-/**
- * Función helper para verificar si es admin
- */
-function esAdmin(): bool {
-    return Auth::isAdmin();
+if (!function_exists('esAdmin')) {
+    /**
+     * Función helper para verificar si es admin
+     */
+    function esAdmin(): bool {
+        return Auth::isAdmin();
+    }
 }
 
-/**
- * Función helper para verificar si es superadmin
- */
-function esSuperAdmin(): bool {
-    return Auth::isSuperAdmin();
+if (!function_exists('esSuperAdmin')) {
+    /**
+     * Función helper para verificar si es superadmin
+     */
+    function esSuperAdmin(): bool {
+        return Auth::isSuperAdmin();
+    }
 }
 
-/**
- * Función helper para verificar si es instructor
- */
-function esInstructor(): bool {
-    return Auth::isInstructor();
+if (!function_exists('esInstructor')) {
+    /**
+     * Función helper para verificar si es instructor
+     */
+    function esInstructor(): bool {
+        return Auth::isInstructor();
+    }
 }
 
-/**
- * Función helper para verificar si es oficinista
- */
-function esOficinista(): bool {
-    return Auth::isOficinista();
+if (!function_exists('esOficinista')) {
+    /**
+     * Función helper para verificar si es oficinista
+     */
+    function esOficinista(): bool {
+        return Auth::isOficinista();
+    }
 }
 
-/**
- * Función helper para verificar acceso a grupo
- */
-function tieneAccesoGrupo(int $grupo_id): bool {
-    return Auth::tieneAccesoGrupo($grupo_id);
+if (!function_exists('tieneAccesoGrupo')) {
+    /**
+     * Función helper para verificar acceso a grupo
+     */
+    function tieneAccesoGrupo(int $grupo_id): bool {
+        return Auth::tieneAccesoGrupo($grupo_id);
+    }
 }
 
-/**
- * Función helper para verificar acceso a categoría
- */
-function tieneAccesoCategoria(int $categoria_id): bool {
-    return Auth::tieneAccesoCategoria($categoria_id);
+if (!function_exists('tieneAccesoCategoria')) {
+    /**
+     * Función helper para verificar acceso a categoría
+     */
+    function tieneAccesoCategoria(int $categoria_id): bool {
+        return Auth::tieneAccesoCategoria($categoria_id);
+    }
 }
