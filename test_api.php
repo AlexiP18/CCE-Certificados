@@ -21,9 +21,9 @@ try {
         }
         
         $stmt = $conn->prepare("
-            SELECT g.nombre, c.nombre as categoria_nombre 
+            SELECT g.nombre, 
+                   (SELECT nombre FROM categorias WHERE grupo_id = g.id LIMIT 1) as categoria_nombre 
             FROM grupos g 
-            LEFT JOIN categorias c ON g.categoria_id = c.id 
             WHERE g.id = ?
         ");
         $stmt->execute([$grupo_id]);

@@ -185,25 +185,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             
             $sql = "
                       SELECT ce.id as matricula_id, ce.estudiante_id, ce.fecha_matricula, ce.estado, ce.notas, ce.periodo_id,
-                      e.id, e.nombre, e.cedula, e.celular, e.email, e.fecha_nacimiento, e.destacado as es_destacado,
-                      e.es_menor, e.representante_nombre, e.representante_cedula,
-                      e.representante_celular, e.representante_email, e.representante_fecha_nacimiento,
+                      e.id, e.nombre, e.cedula, e.celular, e.email, e.fecha_nacimiento, ce.es_destacado,
+                      e.es_menor, 
+                      rep.nombre as representante_nombre, rep.cedula as representante_cedula,
+                      rep.celular as representante_celular, rep.email as representante_email, rep.fecha_nacimiento as representante_fecha_nacimiento,
                       e.representante_id,
                       cert.codigo as certificado_codigo, cert.fecha as certificado_fecha, cert.id as certificado_id,
                       cert.estado as certificado_estado, cert.razon as certificado_razon,
-                      cert.fecha_creacion as certificado_fecha_creacion,
+                      cert.fecha_creacion as certificado_fecha_creacion, cert.archivo_pdf as certificado_archivo_pdf,
+                      cert.archivo_imagen as certificado_archivo_imagen,
                       (SELECT COUNT(*) FROM estudiantes_referencias er WHERE er.estudiante_id = e.id) as tiene_referencias
                 FROM categoria_estudiantes ce
                 INNER JOIN estudiantes e ON ce.estudiante_id = e.id
-                LEFT JOIN certificados cert ON cert.nombre = e.nombre AND cert.categoria_id = ? AND cert.grupo_id = ?
+                LEFT JOIN estudiantes rep ON e.representante_id = rep.id
+                LEFT JOIN certificados cert ON cert.nombre = e.nombre AND cert.categoria_id = ? AND cert.grupo_id = ? AND cert.periodo_id <=> ?
                 WHERE ce.categoria_id = ?
             ";
             
-            $params = [$categoria_id, $grupo_id, $categoria_id];
+            $params = [$categoria_id, $grupo_id, $periodo_id, $categoria_id];
             
             if ($periodo_id) {
                 $sql .= " AND ce.periodo_id = ?";
                 $params[] = $periodo_id;
+            } else {
+                $sql .= " AND ce.periodo_id IS NULL";
             }
             
             $sql .= " ORDER BY e.nombre ASC";
@@ -225,13 +230,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 echo json_encode(['success' => false, 'message' => 'ID requerido']);
                 exit;
             }
-            $stmt = $pdo->prepare("SELECT id, nombre, cedula, celular, email, fecha_nacimiento, destacado as es_destacado, es_menor, es_solo_representante FROM estudiantes WHERE id = ?");
+            $stmt = $pdo->prepare("
+                SELECT e.id, e.nombre, e.cedula, e.celular, e.email, e.fecha_nacimiento, 0 as es_destacado, 
+                       e.es_menor, e.es_solo_representante, e.representante_id,
+                       rep.nombre as representante_nombre, rep.cedula as representante_cedula,
+                       rep.celular as representante_celular, rep.email as representante_email, rep.fecha_nacimiento as representante_fecha_nacimiento
+                FROM estudiantes e 
+                LEFT JOIN estudiantes rep ON e.representante_id = rep.id
+                WHERE e.id = ?
+            ");
             $stmt->execute([$id]);
             $est = $stmt->fetch(PDO::FETCH_ASSOC);
             if ($est) {
                 echo json_encode(['success' => true, 'estudiante' => $est]);
             } else {
                 echo json_encode(['success' => false, 'message' => 'Estudiante no encontrado']);
+            }
+            break;
+
+        case 'historial_auditoria':
+            $estudiante_id = $_GET['estudiante_id'] ?? 0;
+            if (!$estudiante_id) {
+                echo json_encode(['success' => false, 'message' => 'ID inválido']);
+                exit;
+            }
+            try {
+                $stmt = $pdo->prepare("
+                    SELECT a.*, u.nombre_completo as usuario_nombre
+                    FROM estudiantes_auditoria a
+                    LEFT JOIN usuarios u ON a.usuario_id = u.id
+                    WHERE a.estudiante_id = ?
+                    ORDER BY a.fecha DESC
+                ");
+                $stmt->execute([$estudiante_id]);
+                $historial = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                echo json_encode(['success' => true, 'historial' => $historial]);
+            } catch (PDOException $e) {
+                echo json_encode(['success' => false, 'message' => 'Error: ' . $e->getMessage()]);
             }
             break;
             
@@ -250,11 +285,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 SELECT ce.id, ce.estudiante_id, ce.fecha_matricula, ce.estado, ce.notas, ce.periodo_id,
                        e.nombre, e.cedula, e.celular, e.email, e.fecha_nacimiento,
                        e.es_menor, 
-                       COALESCE(rep.nombre, e.representante_nombre) as representante_nombre,
-                       COALESCE(rep.cedula, e.representante_cedula) as representante_cedula,
-                       COALESCE(rep.celular, e.representante_celular) as representante_celular,
-                       COALESCE(rep.email, e.representante_email) as representante_email,
-                       COALESCE(rep.fecha_nacimiento, e.representante_fecha_nacimiento) as representante_fecha_nacimiento,
+                       rep.nombre as representante_nombre,
+                       rep.cedula as representante_cedula,
+                       rep.celular as representante_celular,
+                       rep.email as representante_email,
+                       rep.fecha_nacimiento as representante_fecha_nacimiento,
                        e.representante_id
                 FROM categoria_estudiantes ce
                 INNER JOIN estudiantes e ON ce.estudiante_id = e.id
@@ -508,9 +543,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $stmt = $pdo->prepare("
                         INSERT INTO estudiantes (
                             nombre, cedula, celular, email, fecha_nacimiento, es_menor,
-                            representante_nombre, representante_cedula,
-                            representante_celular, representante_email, representante_fecha_nacimiento, representante_id, activo
-                        ) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, 1)
+                            representante_id, activo
+                        ) VALUES (?, ?, ?, ?, ?, 1, ?, 1)
                     ");
                     $stmt->execute([
                         $menor['nombre'],
@@ -518,11 +552,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         !empty($menor['celular']) ? $menor['celular'] : null,
                         !empty($menor['email']) ? $menor['email'] : null,
                         $menor['fecha_nacimiento'],
-                        $representante['nombre'],
-                        $representante['cedula'],
-                        $representante['celular'],
-                        !empty($representante['email']) ? $representante['email'] : null,
-                        $representante['fecha_nacimiento'] ?? null,
                         $representante_id
                     ]);
                     $estudiante_id = $pdo->lastInsertId();
@@ -632,6 +661,50 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             try {
                 $pdo->beginTransaction();
                 
+                // Si es menor, buscar/crear el representante como fila propia
+                $representante_id_fk = null;
+                if ($es_menor && !empty($representante_cedula)) {
+                    $stmt = $pdo->prepare("SELECT id FROM estudiantes WHERE cedula = ? AND activo = 1");
+                    $stmt->execute([$representante_cedula]);
+                    $repExistente = $stmt->fetch(PDO::FETCH_ASSOC);
+                    
+                    if ($repExistente) {
+                        $representante_id_fk = $repExistente['id'];
+                        // Actualizar datos del representante
+                        $stmt = $pdo->prepare("
+                            UPDATE estudiantes SET 
+                                nombre = COALESCE(NULLIF(?, ''), nombre),
+                                celular = COALESCE(NULLIF(?, ''), celular),
+                                email = COALESCE(NULLIF(?, ''), email),
+                                fecha_nacimiento = COALESCE(NULLIF(?, ''), fecha_nacimiento)
+                            WHERE id = ?
+                        ");
+                        $stmt->execute([
+                            $representante_nombre,
+                            $representante_celular,
+                            $representante_email,
+                            $representante_fecha_nacimiento,
+                            $representante_id_fk
+                        ]);
+                    } else {
+                        // Crear representante como "solo representante"
+                        $stmt = $pdo->prepare("
+                            INSERT INTO estudiantes (
+                                nombre, cedula, celular, email, fecha_nacimiento,
+                                es_menor, es_solo_representante, activo
+                            ) VALUES (?, ?, ?, ?, ?, 0, 1, 1)
+                        ");
+                        $stmt->execute([
+                            $representante_nombre,
+                            $representante_cedula,
+                            !empty($representante_celular) ? $representante_celular : null,
+                            !empty($representante_email) ? $representante_email : null,
+                            !empty($representante_fecha_nacimiento) ? $representante_fecha_nacimiento : null
+                        ]);
+                        $representante_id_fk = $pdo->lastInsertId();
+                    }
+                }
+
                 // Verificar si ya existe por cédula (solo si no es menor y tiene cédula)
                 $estudiante_id = null;
                 if (!$es_menor && !empty($cedula)) {
@@ -648,10 +721,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $stmt = $pdo->prepare("
                         INSERT INTO estudiantes (
                             nombre, cedula, celular, email, fecha_nacimiento,
-                            es_menor, representante_nombre, representante_cedula,
-                            representante_celular, representante_email, representante_fecha_nacimiento,
-                            activo
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+                            es_menor, representante_id, activo
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, 1)
                     ");
                     $stmt->execute([
                         $nombre,
@@ -660,11 +731,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         !empty($email) ? $email : null,
                         !empty($fecha_nacimiento) ? $fecha_nacimiento : null,
                         $es_menor,
-                        !empty($representante_nombre) ? $representante_nombre : null,
-                        !empty($representante_cedula) ? $representante_cedula : null,
-                        !empty($representante_celular) ? $representante_celular : null,
-                        !empty($representante_email) ? $representante_email : null,
-                        !empty($representante_fecha_nacimiento) ? $representante_fecha_nacimiento : null
+                        $representante_id_fk
                     ]);
                     $estudiante_id = $pdo->lastInsertId();
                 }
@@ -745,6 +812,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $email = trim($_POST['email'] ?? '');
             $fecha_nacimiento = $_POST['fecha_nacimiento'] ?? null;
             $es_destacado = isset($_POST['es_destacado']) ? (int)$_POST['es_destacado'] : 0;
+            $categoria_id = $_POST['categoria_id'] ?? 0;
             
             if (!$id || !$nombre) {
                 echo json_encode(['success' => false, 'message' => 'Datos incompletos']);
@@ -763,6 +831,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         exit;
                     }
                 }
+                // Fetch old state for audit
+                $stmtOld = $pdo->prepare("SELECT nombre, cedula, celular, email, fecha_nacimiento FROM estudiantes WHERE id = ?");
+                $stmtOld->execute([$id]);
+                $oldData = $stmtOld->fetch(PDO::FETCH_ASSOC);
+                
+                $newData = [
+                    'nombre' => $nombre,
+                    'cedula' => !empty($cedula) ? $cedula : null,
+                    'celular' => !empty($celular) ? $celular : null,
+                    'email' => !empty($email) ? $email : null,
+                    'fecha_nacimiento' => !empty($fecha_nacimiento) ? $fecha_nacimiento : null
+                ];
+                
+                $cambios = [];
+                if ($oldData) {
+                    foreach ($newData as $key => $val) {
+                        if ($oldData[$key] != $val) {
+                            $cambios[$key] = [
+                                'old' => $oldData[$key],
+                                'new' => $val
+                            ];
+                        }
+                    }
+                }
                 
                 $stmt = $pdo->prepare("
                     UPDATE estudiantes SET 
@@ -770,20 +862,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         cedula = ?, 
                         celular = ?, 
                         email = ?, 
-                        fecha_nacimiento = ?,
-                        destacado = ?
+                        fecha_nacimiento = ?
                     WHERE id = ?
                 ");
                 
                 $stmt->execute([
-                    $nombre,
-                    !empty($cedula) ? $cedula : null,
-                    !empty($celular) ? $celular : null,
-                    !empty($email) ? $email : null,
-                    !empty($fecha_nacimiento) ? $fecha_nacimiento : null,
-                    $es_destacado,
+                    $newData['nombre'],
+                    $newData['cedula'],
+                    $newData['celular'],
+                    $newData['email'],
+                    $newData['fecha_nacimiento'],
                     $id
                 ]);
+
+                // Actualizar es_destacado en categoria_estudiantes (per-categoría)
+                if ($categoria_id) {
+                    $stmtDest = $pdo->prepare("UPDATE categoria_estudiantes SET es_destacado = ? WHERE estudiante_id = ? AND categoria_id = ?");
+                    $stmtDest->execute([$es_destacado, $id, $categoria_id]);
+                }
+
+                // Insert into audit table if there are changes
+                if (!empty($cambios)) {
+                    $stmtAudit = $pdo->prepare("INSERT INTO estudiantes_auditoria (estudiante_id, usuario_id, accion, detalles) VALUES (?, ?, 'actualizacion', ?)");
+                    $stmtAudit->execute([$id, $_SESSION['usuario_id'] ?? null, json_encode($cambios)]);
+                }
 
                 // Actualizar referencias si se enviaron
                 if (isset($_POST['referencias'])) {
@@ -820,6 +922,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         case 'establecer_destacados':
             $ids = json_decode($_POST['ids'] ?? '[]', true);
+            $categoria_id = $_POST['categoria_id'] ?? 0;
             if (!is_array($ids) || empty($ids)) {
                 echo json_encode(['success' => false, 'message' => 'IDs requeridos']);
                 exit;
@@ -827,8 +930,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             try {
                 $placeholders = implode(',', array_fill(0, count($ids), '?'));
-                $stmt = $pdo->prepare("UPDATE estudiantes SET destacado = 1 WHERE id IN ($placeholders)");
-                $stmt->execute($ids);
+                $params = $ids;
+                $sql = "UPDATE categoria_estudiantes SET es_destacado = 1 WHERE estudiante_id IN ($placeholders)";
+                if ($categoria_id) {
+                    $sql .= " AND categoria_id = ?";
+                    $params[] = $categoria_id;
+                }
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute($params);
 
                 echo json_encode([
                     'success' => true,
@@ -841,6 +950,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         case 'quitar_destacados':
             $ids = json_decode($_POST['ids'] ?? '[]', true);
+            $categoria_id = $_POST['categoria_id'] ?? 0;
             if (!is_array($ids) || empty($ids)) {
                 echo json_encode(['success' => false, 'message' => 'IDs requeridos']);
                 exit;
@@ -848,8 +958,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             try {
                 $placeholders = implode(',', array_fill(0, count($ids), '?'));
-                $stmt = $pdo->prepare("UPDATE estudiantes SET destacado = 0 WHERE id IN ($placeholders)");
-                $stmt->execute($ids);
+                $params = $ids;
+                $sql = "UPDATE categoria_estudiantes SET es_destacado = 0 WHERE estudiante_id IN ($placeholders)";
+                if ($categoria_id) {
+                    $sql .= " AND categoria_id = ?";
+                    $params[] = $categoria_id;
+                }
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute($params);
 
                 echo json_encode([
                     'success' => true,

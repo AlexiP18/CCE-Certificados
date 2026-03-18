@@ -15,6 +15,17 @@ if (empty($grupo_id)) {
 
 $pdo = getConnection();
 
+// Obtener instructores activos para asignación en categorías
+$stmt = $pdo->prepare("
+    SELECT u.id, u.nombre_completo, u.cedula
+    FROM usuarios u
+    INNER JOIN roles r ON u.rol_id = r.id
+    WHERE u.activo = 1 AND r.nombre = 'instructor'
+    ORDER BY u.nombre_completo ASC
+");
+$stmt->execute();
+$instructores = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
 // Obtener información del grupo
 $stmt = $pdo->prepare("SELECT * FROM grupos WHERE id = ? AND activo = 1");
 $stmt->execute([$grupo_id]);
@@ -92,17 +103,27 @@ $categorias_por_periodo = [];
 foreach ($periodos as $periodo) {
     $stmt = $pdo->prepare("
         SELECT c.*, 
-               COUNT(DISTINCT cert.id) as total_certificados,
+               iu.id as instructor_id,
+               iu.nombre_completo as instructor_nombre,
+             iu.cedula as instructor_cedula,
+               COUNT(DISTINCT cert.id) as total_aprobados,
+               COUNT(DISTINCT CASE WHEN cert.archivo_imagen IS NOT NULL OR cert.archivo_pdf IS NOT NULL THEN cert.id END) as total_certificados,
                COUNT(DISTINCT ce.estudiante_id) as total_estudiantes
         FROM categorias c
         INNER JOIN categoria_periodos cp ON c.id = cp.categoria_id AND cp.periodo_id = ? AND cp.activo = 1
-        LEFT JOIN certificados cert ON c.id = cert.categoria_id
+        LEFT JOIN certificados cert ON c.id = cert.categoria_id AND cert.periodo_id = ?
         LEFT JOIN categoria_estudiantes ce ON c.id = ce.categoria_id AND ce.estado = 'activo' AND ce.periodo_id = ?
+        LEFT JOIN (
+            SELECT ic.categoria_id, MIN(ic.usuario_id) as usuario_id
+            FROM instructor_categorias ic
+            GROUP BY ic.categoria_id
+        ) icx ON c.id = icx.categoria_id
+        LEFT JOIN usuarios iu ON icx.usuario_id = iu.id
         WHERE c.grupo_id = ? AND c.activo = 1
-        GROUP BY c.id
+        GROUP BY c.id, iu.id, iu.nombre_completo, iu.cedula
         ORDER BY c.nombre ASC
     ");
-    $stmt->execute([$periodo['id'], $periodo['id'], $grupo_id]);
+    $stmt->execute([$periodo['id'], $periodo['id'], $periodo['id'], $grupo_id]);
     $categorias_por_periodo[$periodo['id']] = $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 

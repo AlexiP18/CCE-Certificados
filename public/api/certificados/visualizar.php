@@ -63,6 +63,7 @@ try {
                         cert.nombre = e.nombre 
                         AND cert.categoria_id = ce.categoria_id 
                         AND cert.grupo_id = c.grupo_id
+                        AND cert.periodo_id <=> ce.periodo_id
                     )
                     WHERE ce.categoria_id = ? AND e.activo = 1 AND ce.estado = 'activo'
                     ORDER BY p.fecha_inicio DESC, e.nombre ASC
@@ -94,6 +95,7 @@ try {
                         cert.nombre = e.nombre 
                         AND cert.categoria_id = ce.categoria_id 
                         AND cert.grupo_id = c.grupo_id
+                        AND cert.periodo_id <=> ce.periodo_id
                     )
                     WHERE c.grupo_id = ? AND e.activo = 1 AND c.activo = 1 AND ce.estado = 'activo'
                     ORDER BY c.nombre ASC, p.fecha_inicio DESC, e.nombre ASC
@@ -122,11 +124,12 @@ try {
                 throw new Exception('Faltan parámetros requeridos');
             }
             
-            // Obtener datos del estudiante
+            // Obtener datos del estudiante y su periodo matriculado
             $stmt = $pdo->prepare("
-                SELECT e.*, c.grupo_id, c.nombre as categoria_nombre
+                SELECT e.*, c.grupo_id, c.nombre as categoria_nombre, ce.periodo_id
                 FROM estudiantes e
                 JOIN categorias c ON e.categoria_id = c.id
+                JOIN categoria_estudiantes ce ON e.id = ce.estudiante_id AND ce.categoria_id = c.id
                 WHERE e.id = ?
             ");
             $stmt->execute([$estudiante_id]);
@@ -142,7 +145,8 @@ try {
                 'id' => $categoria_id,
                 'nombre' => $estudiante['nombre'],
                 'razon' => '',
-                'fecha' => date('Y-m-d')
+                'fecha' => date('Y-m-d'),
+                'periodo_id' => $estudiante['periodo_id']
             ];
             
             // Incluir el código de preview
@@ -151,7 +155,7 @@ try {
             $_SERVER['REQUEST_METHOD'] = 'POST';
             
             // Simular petición de preview
-            $preview = generarPreviewCertificado($pdo, $estudiante, $categoria_id);
+            $preview = generarPreviewCertificado($pdo, $estudiante, $categoria_id, $estudiante['periodo_id']);
             
             if ($preview) {
                 echo json_encode([
@@ -173,11 +177,12 @@ try {
                 throw new Exception('Faltan parámetros requeridos');
             }
             
-            // Obtener datos del estudiante
+            // Obtener datos del estudiante y periodo
             $stmt = $pdo->prepare("
-                SELECT e.*, c.grupo_id, c.nombre as categoria_nombre
+                SELECT e.*, c.grupo_id, c.nombre as categoria_nombre, ce.periodo_id
                 FROM estudiantes e
                 JOIN categorias c ON e.categoria_id = c.id
+                JOIN categoria_estudiantes ce ON e.id = ce.estudiante_id AND ce.categoria_id = c.id
                 WHERE e.id = ?
             ");
             $stmt->execute([$estudiante_id]);
@@ -187,12 +192,12 @@ try {
                 throw new Exception('Estudiante no encontrado');
             }
             
-            // Verificar si ya existe el certificado
+            // Verificar si ya existe el certificado para ese periodo
             $stmt = $pdo->prepare("
                 SELECT * FROM certificados 
-                WHERE nombre = ? AND categoria_id = ? AND grupo_id = ?
+                WHERE nombre = ? AND categoria_id = ? AND grupo_id = ? AND periodo_id <=> ?
             ");
-            $stmt->execute([$estudiante['nombre'], $categoria_id, $estudiante['grupo_id']]);
+            $stmt->execute([$estudiante['nombre'], $categoria_id, $estudiante['grupo_id'], $estudiante['periodo_id']]);
             $certificadoExistente = $stmt->fetch(PDO::FETCH_ASSOC);
             
             if ($certificadoExistente) {
@@ -228,7 +233,7 @@ try {
             }
             
             // Si no existe o no se encontró el archivo, generar al vuelo
-            $result = generarCertificadoAlVuelo($pdo, $estudiante, $categoria_id, $formato);
+            $result = generarCertificadoAlVuelo($pdo, $estudiante, $categoria_id, $formato, $estudiante['periodo_id']);
             
             if ($result['success']) {
                 echo json_encode($result);
@@ -251,7 +256,7 @@ try {
 /**
  * Generar preview del certificado
  */
-function generarPreviewCertificado($pdo, $estudiante, $categoria_id) {
+function generarPreviewCertificado($pdo, $estudiante, $categoria_id, $periodo_id = null) {
     try {
         // Obtener categoría y grupo
         $stmt = $pdo->prepare("
@@ -270,9 +275,9 @@ function generarPreviewCertificado($pdo, $estudiante, $categoria_id) {
         // Verificar si ya existe el certificado
         $stmt = $pdo->prepare("
             SELECT * FROM certificados 
-            WHERE nombre = ? AND categoria_id = ? AND grupo_id = ?
+            WHERE nombre = ? AND categoria_id = ? AND grupo_id = ? AND periodo_id <=> ?
         ");
-        $stmt->execute([$estudiante['nombre'], $categoria_id, $categoria['grupo_id']]);
+        $stmt->execute([$estudiante['nombre'], $categoria_id, $categoria['grupo_id'], $periodo_id]);
         $certExistente = $stmt->fetch(PDO::FETCH_ASSOC);
         
         if ($certExistente && $certExistente['archivo_imagen']) {
@@ -298,6 +303,7 @@ function generarPreviewCertificado($pdo, $estudiante, $categoria_id) {
             'fecha' => date('Y-m-d'),
             'grupo_id' => $categoria['grupo_id'],
             'categoria_id' => $categoria_id,
+            'periodo_id' => $periodo_id,
             'estudiante_id' => $estudiante['id'],
             'es_destacado' => isset($estudiante['destacado']) ? (bool)$estudiante['destacado'] : false
         ];
@@ -327,7 +333,7 @@ function generarPreviewCertificado($pdo, $estudiante, $categoria_id) {
 /**
  * Generar certificado al vuelo sin guardarlo en BD
  */
-function generarCertificadoAlVuelo($pdo, $estudiante, $categoria_id, $formato = 'pdf') {
+function generarCertificadoAlVuelo($pdo, $estudiante, $categoria_id, $formato = 'pdf', $periodo_id = null) {
     try {
         $certificate = new \CCE\Certificate($pdo);
         
@@ -347,6 +353,7 @@ function generarCertificadoAlVuelo($pdo, $estudiante, $categoria_id, $formato = 
             'fecha' => date('Y-m-d'),
             'grupo_id' => $cat['grupo_id'],
             'categoria_id' => $categoria_id,
+            'periodo_id' => $periodo_id,
             'estudiante_id' => $estudiante['id'],
             'es_destacado' => isset($estudiante['destacado']) ? (bool)$estudiante['destacado'] : false
         ];
@@ -354,9 +361,9 @@ function generarCertificadoAlVuelo($pdo, $estudiante, $categoria_id, $formato = 
         // Verificar si ya existe para regenerar
         $stmt = $pdo->prepare("
             SELECT codigo FROM certificados 
-            WHERE nombre = ? AND categoria_id = ? AND grupo_id = ?
+            WHERE nombre = ? AND categoria_id = ? AND grupo_id = ? AND periodo_id <=> ?
         ");
-        $stmt->execute([$estudiante['nombre'], $categoria_id, $cat['grupo_id']]);
+        $stmt->execute([$estudiante['nombre'], $categoria_id, $cat['grupo_id'], $periodo_id]);
         $existente = $stmt->fetch();
         
         if ($existente) {

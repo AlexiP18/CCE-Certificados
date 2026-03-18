@@ -204,14 +204,14 @@ try {
             // Usamos categoria_estudiantes para obtener las inscripciones reales, no solo certificados
             $sql = "SELECT DISTINCT e.*, 
                     GROUP_CONCAT(DISTINCT CONCAT(g.id, '##', g.nombre, '##', COALESCE(g.color, '#cccccc'), '##', COALESCE(g.icono, ''), '##', cat.id, '##', cat.nombre, '##', COALESCE(cat.icono, ''), '##', COALESCE(p.nombre, '-')) SEPARATOR '||') as enrollment_data,
-                    COUNT(DISTINCT ec.id) as total_certificados,
+                    COUNT(DISTINCT c.id) as total_certificados,
                     (SELECT COUNT(*) FROM estudiantes child WHERE child.representante_id = e.id) as num_hijos
                     FROM estudiantes e
                     LEFT JOIN categoria_estudiantes ce ON e.id = ce.estudiante_id
                     LEFT JOIN categorias cat ON ce.categoria_id = cat.id
                     LEFT JOIN grupos g ON cat.grupo_id = g.id
                     LEFT JOIN periodos p ON ce.periodo_id = p.id
-                    LEFT JOIN estudiante_certificados ec ON e.id = ec.estudiante_id";
+                    LEFT JOIN certificados c ON e.id = c.estudiante_id";
             
             $where = [];
             $params = [];
@@ -248,7 +248,7 @@ try {
             
             // Contar total
             $countSql = "SELECT COUNT(DISTINCT e.id) FROM estudiantes e
-                        LEFT JOIN estudiante_certificados ec ON e.id = ec.estudiante_id";
+                        LEFT JOIN certificados c ON e.id = c.estudiante_id";
             
             if (!empty($where)) {
                 $countSql .= " WHERE " . implode(" AND ", $where);
@@ -299,18 +299,16 @@ try {
             $cedula = $input['cedula'] ?? null;
             $celular = $input['celular'] ?? null;
             $fecha_nacimiento = $input['fecha_nacimiento'] ?? null;
-            $destacado = isset($input['destacado']) ? (int)$input['destacado'] : 0;
-            
             if (empty($nombre)) {
                 throw new Exception('El nombre es requerido');
             }
             
             $stmt = $pdo->prepare("
-                INSERT INTO estudiantes (nombre, cedula, celular, fecha_nacimiento, destacado)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO estudiantes (nombre, cedula, celular, fecha_nacimiento)
+                VALUES (?, ?, ?, ?)
             ");
             
-            $stmt->execute([$nombre, $cedula, $celular, $fecha_nacimiento, $destacado]);
+            $stmt->execute([$nombre, $cedula, $celular, $fecha_nacimiento]);
             
             echo json_encode([
                 'success' => true,
@@ -329,8 +327,12 @@ try {
             $celular = $input['celular'] ?? null;
             $email = $input['email'] ?? null;
             $fecha_nacimiento = $input['fecha_nacimiento'] ?? null;
-            $destacado = isset($input['destacado']) ? (int)$input['destacado'] : 0;
             $es_menor = isset($input['es_menor']) ? (int)$input['es_menor'] : 0;
+            $representante_nombre = $input['representante_nombre'] ?? null;
+            $representante_cedula = $input['representante_cedula'] ?? null;
+            $representante_celular = $input['representante_celular'] ?? null;
+            $representante_email = $input['representante_email'] ?? null;
+            $representante_fecha_nacimiento = $input['representante_fecha_nacimiento'] ?? null;
             
             if (empty($id) || empty($nombre)) {
                 throw new Exception('ID y nombre son requeridos');
@@ -343,14 +345,112 @@ try {
                     $celular = '+593' . $celular;
                 }
             }
+
+            // Formatear celular representante
+            if ($representante_celular) {
+                $representante_celular = preg_replace('/[^0-9]/', '', $representante_celular);
+                if (strlen($representante_celular) === 9) {
+                    $representante_celular = '+593' . $representante_celular;
+                }
+            }
             
+            // Fetch old state for audit
+            $stmtOld = $pdo->prepare("SELECT nombre, cedula, celular, email, fecha_nacimiento, es_menor FROM estudiantes WHERE id = ?");
+            $stmtOld->execute([$id]);
+            $oldData = $stmtOld->fetch(PDO::FETCH_ASSOC);
+
+            // Fetch old representative data for audit if minor
+            $oldRepData = [];
+            if ($es_menor && $oldData) {
+                $r_stmt = $pdo->prepare("SELECT representante_id FROM estudiantes WHERE id = ?");
+                $r_stmt->execute([$id]);
+                $r_id = $r_stmt->fetchColumn();
+                if ($r_id) {
+                    $stmtOldRep = $pdo->prepare("SELECT nombre as representante_nombre, cedula as representante_cedula, celular as representante_celular, email as representante_email, fecha_nacimiento as representante_fecha_nacimiento FROM estudiantes WHERE id = ?");
+                    $stmtOldRep->execute([$r_id]);
+                    $oldRepData = $stmtOldRep->fetch(PDO::FETCH_ASSOC);
+                }
+            }
+            
+            $newData = [
+                'nombre' => $nombre,
+                'cedula' => !empty($cedula) ? $cedula : null,
+                'celular' => !empty($celular) ? $celular : null,
+                'email' => !empty($email) ? $email : null,
+                'fecha_nacimiento' => !empty($fecha_nacimiento) ? $fecha_nacimiento : null,
+                'es_menor' => $es_menor
+            ];
+            
+            $cambios = [];
+            if ($oldData) {
+                foreach ($newData as $key => $val) {
+                    if ($oldData[$key] != $val) {
+                        $cambios[$key] = [
+                            'old' => $oldData[$key],
+                            'new' => $val
+                        ];
+                    }
+                }
+            }
+
             $stmt = $pdo->prepare("
                 UPDATE estudiantes 
-                SET nombre = ?, cedula = ?, celular = ?, email = ?, fecha_nacimiento = ?, destacado = ?, es_menor = ?
+                SET nombre = ?, cedula = ?, celular = ?, email = ?, fecha_nacimiento = ?, 
+                    es_menor = ?
                 WHERE id = ?
             ");
             
-            $stmt->execute([$nombre, $cedula, $celular, $email, $fecha_nacimiento, $destacado, $es_menor, $id]);
+            $stmt->execute([
+                $newData['nombre'], $newData['cedula'], $newData['celular'], $newData['email'], $newData['fecha_nacimiento'], 
+                $newData['es_menor'],
+                $id
+            ]);
+            
+            // Sincronización de datos de representante (solo se actualiza su propia fila)
+            if ($es_menor) {
+                $r_stmt = $pdo->prepare("SELECT representante_id FROM estudiantes WHERE id = ?");
+                $r_stmt->execute([$id]);
+                $r_id = $r_stmt->fetchColumn();
+                
+                if ($r_id) {
+                    $newRepData = [
+                        'representante_nombre' => $representante_nombre,
+                        'representante_cedula' => !empty($representante_cedula) ? $representante_cedula : null,
+                        'representante_celular' => !empty($representante_celular) ? $representante_celular : null,
+                        'representante_email' => !empty($representante_email) ? $representante_email : null,
+                        'representante_fecha_nacimiento' => !empty($representante_fecha_nacimiento) ? $representante_fecha_nacimiento : null
+                    ];
+
+                    if ($oldRepData) {
+                        foreach ($newRepData as $key => $val) {
+                            if ($oldRepData[$key] != $val) {
+                                $cambios[$key] = [
+                                    'old' => $oldRepData[$key],
+                                    'new' => $val
+                                ];
+                            }
+                        }
+                    }
+
+                    // Actualizar fila real del representante
+                    $upd_rep = $pdo->prepare("
+                        UPDATE estudiantes 
+                        SET nombre = ?, cedula = ?, celular = ?, email = ?, fecha_nacimiento = ?
+                        WHERE id = ?
+                    ");
+                    $upd_rep->execute([
+                        $newRepData['representante_nombre'], $newRepData['representante_cedula'], $newRepData['representante_celular'], $newRepData['representante_email'],
+                        $newRepData['representante_fecha_nacimiento'],
+                        $r_id
+                    ]);
+                }
+            }
+
+            // Insert into audit table if there are changes
+            if (!empty($cambios)) {
+                $stmtAudit = $pdo->prepare("INSERT INTO estudiantes_auditoria (estudiante_id, usuario_id, accion, detalles) VALUES (?, ?, 'actualizacion', ?)");
+                $stmtAudit->execute([$id, $_SESSION['usuario_id'] ?? null, json_encode($cambios)]);
+            }
             
             echo json_encode([
                 'success' => true,
@@ -368,12 +468,12 @@ try {
                 throw new Exception('ID es requerido');
             }
             
-            $stmt = $pdo->prepare("DELETE FROM estudiantes WHERE id = ?");
+            $stmt = $pdo->prepare("UPDATE estudiantes SET activo = 0 WHERE id = ?");
             $stmt->execute([$id]);
             
             echo json_encode([
                 'success' => true,
-                'message' => 'Estudiante eliminado correctamente'
+                'message' => 'Estudiante dado de baja correctamente'
             ]);
             break;
 
@@ -429,26 +529,30 @@ try {
                     e.cedula,
                     e.celular,
                     e.email,
-                    e.email,
                     e.fecha_nacimiento,
                     e.fecha_creacion,
+                    e.fecha_actualizacion,
                     e.es_menor,
-                    e.representante_nombre,
-                    e.representante_cedula,
-                    e.representante_celular,
-                    e.representante_email,
+                    COALESCE(ce.es_destacado, 0) as es_destacado,
+                    rep.nombre as representante_nombre,
+                    rep.cedula as representante_cedula,
+                    rep.celular as representante_celular,
+                    rep.email as representante_email,
+                    rep.fecha_nacimiento as representante_fecha_nacimiento,
+                    e.representante_id,
+                    (SELECT COUNT(*) FROM estudiantes_referencias er WHERE er.estudiante_id = e.id) as tiene_referencias,
                     ce.estado,
                     ce.categoria_id,
                     ce.periodo_id,
                     c.nombre as categoria_nombre,
                     c.icono as categoria_icono,
-                    c.color as categoria_color,
                     p.nombre as periodo_nombre,
                     p.fecha_inicio as periodo_fecha_inicio
                 FROM estudiantes e
+                LEFT JOIN estudiantes rep ON e.representante_id = rep.id
                 INNER JOIN categoria_estudiantes ce ON e.id = ce.estudiante_id
                 INNER JOIN categorias c ON ce.categoria_id = c.id
-                INNER JOIN periodos p ON ce.periodo_id = p.id
+                LEFT JOIN periodos p ON ce.periodo_id = p.id
                 WHERE c.grupo_id = ?
                 ORDER BY c.nombre ASC, e.nombre ASC
             ");
@@ -471,27 +575,32 @@ try {
                         'email' => $row['email'],
                         'fecha_nacimiento' => $row['fecha_nacimiento'],
                         'fecha_creacion' => $row['fecha_creacion'],
+                        'fecha_actualizacion' => $row['fecha_actualizacion'],
                         'es_menor' => $row['es_menor'],
+                        'es_destacado' => $row['es_destacado'],
                         'representante_nombre' => $row['representante_nombre'],
                         'representante_cedula' => $row['representante_cedula'],
                         'representante_celular' => $row['representante_celular'],
                         'representante_email' => $row['representante_email'],
+                        'representante_fecha_nacimiento' => $row['representante_fecha_nacimiento'],
+                        'representante_id' => $row['representante_id'],
+                        'tiene_referencias' => $row['tiene_referencias'],
                         // Estado general (tomamos el del registro actual, aunque podría variar por categoría)
                         'estado' => $row['estado'],
                         'categorias' => []
                     ];
                 }
                 
-                // Agregar categoría a la lista
                 $estudiantesMap[$id]['categorias'][] = [
                     'id' => $row['categoria_id'],
                     'nombre' => $row['categoria_nombre'],
                     'icono' => $row['categoria_icono'],
-                    'color' => $row['categoria_color'],
+                    'color' => '#3498db', // Fallback color as column dropped
                     'periodo' => $row['periodo_nombre'],
                     'fecha_inicio' => $row['periodo_fecha_inicio'],
                     'periodo_id' => $row['periodo_id'],
-                    'estado' => $row['estado']
+                    'estado' => $row['estado'],
+                    'es_destacado' => $row['es_destacado']
                 ];
             }
             

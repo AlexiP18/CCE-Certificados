@@ -334,6 +334,30 @@ body {
     font-size: 16px;
 }
 
+.user-avatar.user-avatar-photo {
+    background: #f3f4f6;
+    overflow: hidden;
+    position: relative;
+}
+
+.user-avatar.user-avatar-photo img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.user-avatar-fallback {
+    width: 100%;
+    height: 100%;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: 600;
+    font-size: 16px;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+}
+
 .user-info-cell strong {
     display: block;
     color: #2c3e50;
@@ -623,21 +647,84 @@ body {
 .modal-content {
     background: white;
     border-radius: 20px;
-    padding: 30px;
     width: 100%;
-    max-width: 500px;
+    max-width: 920px;
     max-height: 90vh;
-    overflow-y: auto;
+    overflow: hidden;
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    display: flex;
+    flex-direction: column;
 }
 
 .modal-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 25px;
-    padding-bottom: 15px;
+    padding: 20px 24px;
     border-bottom: 1px solid #e9ecef;
+    background: #fff;
+    position: sticky;
+    top: 0;
+    z-index: 5;
+}
+
+#form-usuario {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.modal-form-body {
+    padding: 20px 24px 10px;
+    overflow-y: auto;
+    max-height: calc(90vh - 150px);
+}
+
+.form-grid-2 {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+}
+
+.form-grid-3 {
+    display: grid;
+    grid-template-columns: 2fr 1fr 2fr;
+    gap: 14px;
+}
+
+.instructor-fields {
+    margin: 8px 0 14px;
+    padding: 14px;
+    border: 1px solid #e9ecef;
+    border-radius: 12px;
+    background: #fafbff;
+}
+
+.instructor-fields-title {
+    font-weight: 700;
+    font-size: 14px;
+    color: #374151;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.form-group textarea {
+    width: 100%;
+    padding: 12px 15px;
+    border: 2px solid #e9ecef;
+    border-radius: 10px;
+    font-size: 14px;
+    transition: all 0.3s;
+    resize: vertical;
+    font-family: inherit;
+}
+
+.form-group textarea:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
 }
 
 .modal-title {
@@ -745,10 +832,73 @@ body {
 .form-actions {
     display: flex;
     gap: 12px;
-    justify-content: flex-end;
-    margin-top: 25px;
-    padding-top: 20px;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 0;
+    padding: 16px 24px 20px;
     border-top: 1px solid #e9ecef;
+    background: #fff;
+}
+
+.form-actions-buttons {
+    display: flex;
+    gap: 12px;
+}
+
+.switch-field {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.switch-field input {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.switch-slider {
+    position: relative;
+    width: 46px;
+    height: 26px;
+    border-radius: 99px;
+    background: #d1d5db;
+    transition: background 0.2s ease;
+    flex-shrink: 0;
+}
+
+.switch-slider::before {
+    content: '';
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #ffffff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    transition: transform 0.2s ease;
+}
+
+.switch-field input:checked + .switch-slider {
+    background: #16a34a;
+}
+
+.switch-field input:checked + .switch-slider::before {
+    transform: translateX(20px);
+}
+
+.switch-field input:focus + .switch-slider {
+    box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.2);
+}
+
+.switch-text {
+    font-size: 14px;
+    color: #374151;
+    font-weight: 600;
 }
 
 .btn {
@@ -805,6 +955,20 @@ body {
 
 @media (max-width: 768px) {
 
+    .modal-content {
+        max-width: 96vw;
+    }
+
+    .form-grid-2 {
+        grid-template-columns: 1fr;
+        gap: 0;
+    }
+
+    .form-grid-3 {
+        grid-template-columns: 1fr;
+        gap: 0;
+    }
+
     .users-table th,
     .users-table td {
         padding: 12px 15px;
@@ -813,5 +977,14 @@ body {
     .table-footer {
         flex-direction: column;
         text-align: center;
+    }
+
+    .form-actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .form-actions-buttons {
+        justify-content: flex-end;
     }
 }

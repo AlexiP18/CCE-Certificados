@@ -72,9 +72,8 @@ try {
                 'plantilla_categoria' => null
             ];
             
-            // Verificar plantilla global
-            $stmt = $pdo->query("SELECT id, nombre, archivo_plantilla FROM configuracion_plantillas WHERE activa = 1 LIMIT 1");
-            $resultado['plantilla_global'] = $stmt->fetch(PDO::FETCH_ASSOC);
+            // Verificar plantilla global (Table removed - Skipping global check)
+            $resultado['plantilla_global'] = null;
             
             // Verificar plantilla de grupo
             if ($grupo_id) {
@@ -98,6 +97,42 @@ try {
             echo json_encode([
                 'success' => true,
                 'diagnostico' => $resultado
+            ]);
+            break;
+            
+        case 'desaprobar':
+            // Eliminar solo el registro de aprobación (desaprobar)
+            $categoria_id = $_POST['categoria_id'] ?? 0;
+            $estudiante_id = $_POST['estudiante_id'] ?? 0;
+            $grupo_id = $_POST['grupo_id'] ?? 0;
+            $periodo_id = $_POST['periodo_id'] ?? null;
+            
+            if (empty($categoria_id) || empty($estudiante_id)) {
+                throw new Exception('Faltan datos para desaprobar');
+            }
+            
+            // Obtener el nombre del estudiante porque los certificados guardan el nombre 
+            $stmt = $pdo->prepare("SELECT nombre FROM estudiantes WHERE id = ?");
+            $stmt->execute([$estudiante_id]);
+            $estudiante = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$estudiante) {
+                throw new Exception('Estudiante no encontrado');
+            }
+            
+            $sql = "DELETE FROM certificados WHERE categoria_id = ? AND nombre = ? AND periodo_id <=> ?";
+            $params = [$categoria_id, $estudiante['nombre'], $periodo_id];
+            if (!empty($grupo_id)) {
+                $sql .= " AND grupo_id = ?";
+                $params[] = $grupo_id;
+            }
+            
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute($params);
+            
+            echo json_encode([
+                'success' => true,
+                'message' => 'Estudiante desaprobado exitosamente'
             ]);
             break;
             
@@ -140,15 +175,18 @@ try {
                 LEFT JOIN certificados cert ON cert.categoria_id = ce.categoria_id 
                     AND cert.nombre = e.nombre 
                     AND cert.grupo_id = ?
+                    AND cert.periodo_id <=> ?
                 WHERE ce.categoria_id = ?
                 AND ce.estado = 'activo'
             ";
             
-            $params = [$categoria['grupo_id'], $categoria_id];
+            $params = [$categoria['grupo_id'], $periodo_id, $categoria_id];
             
             if ($periodo_id) {
                 $sql .= " AND ce.periodo_id = ?";
                 $params[] = $periodo_id;
+            } else {
+                $sql .= " AND ce.periodo_id IS NULL";
             }
             
             $sql .= " ORDER BY e.nombre ASC";
@@ -165,15 +203,95 @@ try {
             ]);
             break;
             
+        case 'toggle_aprobacion_batch':
+            $categoria_id = $data['categoria_id'] ?? 0;
+            $periodo_id = $data['periodo_id'] ?? null;
+            $grupo_id = $data['grupo_id'] ?? 0;
+            $estudiantes_ids = $data['estudiantes_ids'] ?? [];
+            $fecha = $data['fecha'] ?? date('Y-m-d');
+            $estadoCertificado = 'activo';
+            
+            if (empty($categoria_id) || empty($estudiantes_ids)) {
+                throw new Exception('Faltan datos para procesar (Categoría o Estudiantes)');
+            }
+            
+            // Obtener info de categoría
+            $stmt = $pdo->prepare("SELECT c.*, g.id as grupo_id, g.nombre as grupo_nombre FROM categorias c JOIN grupos g ON c.grupo_id = g.id WHERE c.id = ?");
+            $stmt->execute([$categoria_id]);
+            $categoria = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$categoria) throw new Exception('Categoría no encontrada');
+            
+            $placeholders = str_repeat('?,', count($estudiantes_ids) - 1) . '?';
+            $stmt = $pdo->prepare("SELECT * FROM estudiantes WHERE id IN ($placeholders)");
+            $stmt->execute($estudiantes_ids);
+            $estudiantes = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            $certificate = new \CCE\Certificate($pdo);
+            
+            $aprobados = 0;
+            $desaprobados = 0;
+            $errores = 0;
+            
+            foreach ($estudiantes as $estudiante) {
+                try {
+                    $stmt = $pdo->prepare("SELECT id FROM certificados WHERE categoria_id = ? AND nombre = ? AND grupo_id = ? AND periodo_id <=> ?");
+                    $stmt->execute([$categoria_id, $estudiante['nombre'], $categoria['grupo_id'], $periodo_id]);
+                    $existente = $stmt->fetch(PDO::FETCH_ASSOC);
+                    
+                    if ($existente) {
+                        // Ya existe -> Desaprobar
+                        $stmtDel = $pdo->prepare("DELETE FROM certificados WHERE id = ?");
+                        $stmtDel->execute([$existente['id']]);
+                        $desaprobados++;
+                    } else {
+                        // No existe -> Aprobar (insertar en BD)
+                        $codigo = $certificate->generateCode();
+                        $fechasGeneracion = json_encode([date('Y-m-d H:i:s')]);
+                        
+                        $stmtIns = $pdo->prepare("
+                            INSERT INTO certificados (codigo, nombre, razon, fecha, grupo_id, categoria_id, periodo_id, estudiante_id, fechas_generacion, estado)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ");
+                        $stmtIns->execute([
+                            $codigo,
+                            $estudiante['nombre'],
+                            'Por su participación',
+                            $fecha,
+                            $categoria['grupo_id'],
+                            $categoria_id,
+                            $periodo_id,
+                            $estudiante['id'],
+                            $fechasGeneracion,
+                            $estadoCertificado
+                        ]);
+                        $aprobados++;
+                    }
+                } catch (Exception $e) {
+                    $errores++;
+                }
+            }
+            
+            echo json_encode([
+                'success' => true,
+                'resumen' => [
+                    'aprobados' => $aprobados,
+                    'desaprobados' => $desaprobados,
+                    'errores' => $errores
+                ]
+            ]);
+            break;
+            
         case 'generar_batch':
             // Generar certificados para múltiples estudiantes
             $categoria_id = $data['categoria_id'] ?? 0;
+            $periodo_id = $data['periodo_id'] ?? null;
             $grupo_id = $data['grupo_id'] ?? 0;
             $estudiantes_ids = $data['estudiantes_ids'] ?? [];
             $estudiantes_data = $data['estudiantes_data'] ?? []; // Info adicional (es_destacado, etc.)
             $fecha = $data['fecha'] ?? date('Y-m-d');
             $razon = $data['razon'] ?? null;
             $guardar_archivos = $data['guardar_archivos'] ?? false; // Por defecto NO guardar archivos
+            $skip_template_check = $data['skip_template_check'] ?? false;
             $estadoCertificado = 'activo'; // La generación ES la aprobación
             
             if (empty($categoria_id)) {
@@ -202,12 +320,8 @@ try {
             $tieneTemplate = false;
             $detalleValidacion = [];
             
-            // 1. Verificar plantilla global
-            $stmtGlobal = $pdo->query("SELECT id FROM configuracion_plantillas WHERE activa = 1 AND archivo_plantilla IS NOT NULL AND archivo_plantilla != '' LIMIT 1");
-            if ($stmtGlobal->fetch()) {
-                $tieneTemplate = true;
-                $detalleValidacion[] = 'global';
-            }
+            // 1. Verificar plantilla global (Obsolete, table removed)
+            // No longer checking global template
             
             // 2. Verificar plantilla del grupo (slider con es_activa=1)
             $stmtGrupo = $pdo->prepare("SELECT id, archivo FROM grupo_plantillas WHERE grupo_id = ? AND es_activa = 1 LIMIT 1");
@@ -232,7 +346,7 @@ try {
             }
             
             // Si no hay plantilla, devolver error específico ANTES de intentar generar
-            if (!$tieneTemplate) {
+            if (!$tieneTemplate && !$skip_template_check) {
                 echo json_encode([
                     'success' => false,
                     'error_type' => 'PLANTILLA_NO_CONFIGURADA',
@@ -259,12 +373,12 @@ try {
             
             foreach ($estudiantes as $estudiante) {
                 try {
-                    // Verificar si ya tiene certificado
+                    // Verificar si ya tiene certificado para ESE periodo
                     $stmt = $pdo->prepare("
                         SELECT id, codigo, fechas_generacion FROM certificados 
-                        WHERE categoria_id = ? AND nombre = ? AND grupo_id = ?
+                        WHERE categoria_id = ? AND nombre = ? AND grupo_id = ? AND periodo_id <=> ?
                     ");
-                    $stmt->execute([$categoria_id, $estudiante['nombre'], $categoria['grupo_id']]);
+                    $stmt->execute([$categoria_id, $estudiante['nombre'], $categoria['grupo_id'], $periodo_id]);
                     $existente = $stmt->fetch(PDO::FETCH_ASSOC);
                     
                     if ($existente) {
@@ -302,6 +416,7 @@ try {
                         'fecha' => $fecha,
                         'grupo_id' => $categoria['grupo_id'],
                         'categoria_id' => $categoria_id,
+                        'periodo_id' => $periodo_id,
                         'estado' => $estadoCertificado,
                         'es_destacado' => isset($estudiante['destacado']) ? (bool)$estudiante['destacado'] : false
                     ];
@@ -310,26 +425,58 @@ try {
                         $dataCert['razon'] = $razon;
                     }
                     
-                    // Generar certificado
-                    $result = $certificate->create($dataCert);
-                    
-                    if ($result['success']) {
+                    // Si solo estamos aprobando sin plantilla, insertar directo en BD
+                    if ($skip_template_check) {
+                        $codigo = $certificate->generateCode();
+                        $fechasGeneracion = json_encode([date('Y-m-d H:i:s')]);
+                        
+                        $stmt = $pdo->prepare("
+                            INSERT INTO certificados (codigo, nombre, razon, fecha, grupo_id, categoria_id, periodo_id, estudiante_id, fechas_generacion, estado)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ");
+                        $stmt->execute([
+                            $codigo,
+                            $estudiante['nombre'],
+                            $dataCert['razon'] ?? 'Por su participación',
+                            $fecha,
+                            $categoria['grupo_id'],
+                            $categoria_id,
+                            $periodo_id,
+                            $estudiante['id'],
+                            $fechasGeneracion,
+                            $estadoCertificado
+                        ]);
+                        
                         $resultados[] = [
                             'estudiante_id' => $estudiante['id'],
                             'nombre' => $estudiante['nombre'],
                             'success' => true,
-                            'codigo' => $result['codigo'],
+                            'codigo' => $codigo,
                             'ya_existia' => false
                         ];
                         $exitosos++;
                     } else {
-                        $resultados[] = [
-                            'estudiante_id' => $estudiante['id'],
-                            'nombre' => $estudiante['nombre'],
-                            'success' => false,
-                            'error' => $result['error']
-                        ];
-                        $errores++;
+                        // Generar certificado físico (PDF e Imagen)
+                        $result = $certificate->create($dataCert);
+                        
+                        if ($result['success']) {
+                            $resultados[] = [
+                                'estudiante_id' => $estudiante['id'],
+                                'nombre' => $estudiante['nombre'],
+                                'success' => true,
+                                'codigo' => $result['codigo'],
+                                'ya_existia' => false
+                            ];
+                            $exitosos++;
+                        } else {
+                            $resultados[] = [
+                                'estudiante_id' => $estudiante['id'],
+                                'nombre' => $estudiante['nombre'],
+                                'success' => false,
+                                'error' => $result['error']
+                            ];
+                            $errores++;
+                        }
                     }
                 } catch (Exception $e) {
                     $msgError = $e->getMessage();

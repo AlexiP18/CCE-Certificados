@@ -4,6 +4,7 @@
  */
 
 require_once '../../includes/Auth.php';
+require_once '../../includes/SiteSettings.php';
 Auth::requireAuth();
 Auth::requirePermission('usuarios', 'ver');
 
@@ -19,6 +20,8 @@ $es_admin = esAdmin();
 $basePath = '..';
 $cssPath = '../css';
 $jsPath = '../js';
+
+$siteConfig = SiteSettings::toViewModel(SiteSettings::get($pdo), $basePath);
 
 // Cargar la vista
 require_once '../../app/Views/usuarios/index.php';

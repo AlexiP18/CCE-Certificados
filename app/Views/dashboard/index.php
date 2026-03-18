@@ -3,20 +3,47 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CCE - Sistema de Certificados</title>
+    <title><?= htmlspecialchars($siteConfig['site_name']) ?> - Sistema de Certificados</title>
+    <?php if (!empty($siteConfig['favicon_url'])): ?>
+    <link rel="icon" type="image/x-icon" href="<?= htmlspecialchars($siteConfig['favicon_url']) ?>">
+    <?php endif; ?>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
     <!-- Estilos Base -->
     <link rel="stylesheet" href="<?= $cssPath ?>/style.css">
     <!-- Estilos Específicos Dashboard -->
     <link rel="stylesheet" href="<?= $cssPath ?>/dashboard/index.css">
+    <style>
+        :root {
+            --site-primary: <?= htmlspecialchars($siteConfig['primary_color']) ?>;
+            --site-secondary: <?= htmlspecialchars($siteConfig['secondary_color']) ?>;
+        }
+
+        .top-nav .nav-link.active,
+        .btn-admin,
+        .hero-section {
+            background: linear-gradient(135deg, var(--site-primary), var(--site-secondary)) !important;
+        }
+
+        .nav-logo-image {
+            width: 34px;
+            height: 34px;
+            object-fit: contain;
+            border-radius: 8px;
+            background: #fff;
+            padding: 2px;
+        }
+    </style>
     <script type="module" src="https://cdn.jsdelivr.net/npm/emoji-picker-element@^1/index.js"></script>
 </head>
 <body>
     <!-- Menú de Navegación -->
     <nav class="top-nav">
         <div class="nav-logo">
+            <?php if (!empty($siteConfig['logo_nav_url'])): ?>
+            <img src="<?= htmlspecialchars($siteConfig['logo_nav_url']) ?>" alt="Logo" class="nav-logo-image" onerror="this.style.display='none'">
+            <?php endif; ?>
             <i class="fas fa-graduation-cap"></i>
-            <span>CCE Certificados</span>
+            <span><?= htmlspecialchars($siteConfig['site_name']) ?></span>
         </div>
         <ul class="nav-menu">
             <li><a href="<?= $basePath ?>/dashboard/index.php" class="nav-link active"><i class="fas fa-home"></i> Inicio</a></li>
@@ -30,6 +57,9 @@
             <?php if (puede('usuarios', 'ver')): ?>
             <li><a href="<?= $basePath ?>/usuarios/index.php" class="nav-link"><i class="fas fa-user-cog"></i> Usuarios</a></li>
             <?php endif; ?>
+            <?php if (esAdmin()): ?>
+            <li><a href="<?= $basePath ?>/configuracion/index.php" class="nav-link"><i class="fas fa-sliders-h"></i> Configuracion</a></li>
+            <?php endif; ?>
             <li class="nav-user">
                 <a href="<?= $basePath ?>/perfil/index.php" class="nav-link" title="Mi Perfil"><i class="fas fa-user-circle"></i> <?= htmlspecialchars($usuario['nombre_completo']) ?></a>
                 <a href="<?= $basePath ?>/auth/logout.php" class="nav-link logout-link" title="Cerrar Sesión"><i class="fas fa-sign-out-alt"></i></a>
@@ -40,8 +70,8 @@
     <div class="container main-content">
         <!-- Hero Section -->
         <div class="hero-section">
-            <h1><i class="fas fa-graduation-cap"></i> Sistema de Certificados</h1>
-            <p>Casa de la Cultura CCE</p>
+            <h1><i class="fas fa-graduation-cap"></i> <?= htmlspecialchars($siteConfig['site_name']) ?></h1>
+            <p><?= htmlspecialchars($siteConfig['institution_name']) ?></p>
         </div>
 
         <!-- Sección de Grupos -->
@@ -101,8 +131,8 @@
                                 <span class="stat-label">Categorías</span>
                             </div>
                             <div class="stat-item">
-                                <span class="stat-value"><?= $grupo['total_certificados'] ?></span>
-                                <span class="stat-label">Certificados</span>
+                                <span class="stat-value"><?= $grupo['total_estudiantes'] ?></span>
+                                <span class="stat-label">Estudiantes</span>
                             </div>
                         </div>
 

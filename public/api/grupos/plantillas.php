@@ -330,6 +330,10 @@ switch ($action) {
                          $grupoConfig['posicion_destacado_x'] = $grupoConfig['destacado_posicion_x'];
                          $grupoConfig['posicion_destacado_y'] = $grupoConfig['destacado_posicion_y'];
                      }
+                     // grupos table uses 'tamanio_destacado', JS expects 'destacado_tamanio'
+                     if (!isset($grupoConfig['destacado_tamanio']) && isset($grupoConfig['tamanio_destacado'])) {
+                         $grupoConfig['destacado_tamanio'] = $grupoConfig['tamanio_destacado'];
+                     }
                      
                      $grupoConfig['plantilla_id'] = null; // system template
                      $response['config'] = $grupoConfig;
@@ -351,6 +355,56 @@ switch ($action) {
         $isSystem = empty($plantilla_id) || $plantilla_id === 'system';
         
         try {
+            if ($isSystem) {
+                // El sistema ya no almacena configuraciones visuales en `grupos`.
+                // Si la vista envía requests sin plantilla (o 'system'), creamos una en `grupo_plantillas` al vuelo.
+                $stmt = $conn->prepare("UPDATE grupo_plantillas SET es_activa = 0 WHERE grupo_id = ?");
+                $stmt->execute([$grupo_id]);
+                
+                $stmt = $conn->prepare("SELECT MAX(orden) as max_orden FROM grupo_plantillas WHERE grupo_id = ?");
+                $stmt->execute([$grupo_id]);
+                $result = $stmt->fetch(PDO::FETCH_ASSOC);
+                $nuevoOrden = ($result['max_orden'] ?? -1) + 1;
+                
+                $stmt = $conn->prepare("
+                    INSERT INTO grupo_plantillas (grupo_id, nombre, archivo, orden, es_activa) 
+                    VALUES (?, 'Plantilla Principal', '', ?, 1)
+                ");
+                $stmt->execute([$grupo_id, $nuevoOrden]);
+                $plantilla_id = $conn->lastInsertId();
+                $isSystem = false; // Tratamos esta nueva plantilla como cualquier otra.
+            }
+
+            // Migración: agregar columna firma_imagen si no existe
+            try { $conn->exec("ALTER TABLE grupo_plantillas ADD COLUMN firma_imagen VARCHAR(255) DEFAULT NULL"); } catch(Exception $e){}
+
+            // Manejar subida de imagen de firma
+            $firmaImagenFilename = $_POST['firma_imagen_actual'] ?? null;
+            // Obtener valor actual si no viene en POST
+            if ($firmaImagenFilename === null) {
+                $s = $conn->prepare("SELECT firma_imagen FROM grupo_plantillas WHERE id = ? AND grupo_id = ?");
+                $s->execute([$plantilla_id, $grupo_id]);
+                $row = $s->fetch(PDO::FETCH_ASSOC);
+                $firmaImagenFilename = $row['firma_imagen'] ?? null;
+            }
+
+            if (isset($_FILES['firma_imagen']) && $_FILES['firma_imagen']['error'] === UPLOAD_ERR_OK) {
+                $uploadDir = dirname(dirname(__DIR__)) . '/uploads/firmas/';
+                if (!is_dir($uploadDir)) {
+                    mkdir($uploadDir, 0755, true);
+                }
+                $file = $_FILES['firma_imagen'];
+                $extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+                $allowedExtensions = ['png', 'jpg', 'jpeg', 'gif', 'webp'];
+                if (in_array($extension, $allowedExtensions)) {
+                    $newFilename = 'firma_' . $grupo_id . '_' . $plantilla_id . '_' . time() . '.' . $extension;
+                    $destPath = $uploadDir . $newFilename;
+                    if (move_uploaded_file($file['tmp_name'], $destPath)) {
+                        $firmaImagenFilename = 'uploads/firmas/' . $newFilename;
+                    }
+                }
+            }
+
             // Manejar subida de imagen personalizada de destacado
             $destacadoImagenFilename = $_POST['destacado_imagen_actual'] ?? null;
             
@@ -365,7 +419,7 @@ switch ($action) {
                 $allowedExtensions = ['png', 'jpg', 'jpeg', 'gif', 'webp'];
                 
                 if (in_array($extension, $allowedExtensions)) {
-                    $newFilename = 'sticker_' . $grupo_id . '_' . ($isSystem ? 'sys' : $plantilla_id) . '_' . time() . '.' . $extension;
+                    $newFilename = 'sticker_' . $grupo_id . '_' . $plantilla_id . '_' . time() . '.' . $extension;
                     $destPath = $uploadDir . $newFilename;
                     
                     if (move_uploaded_file($file['tmp_name'], $destPath)) {
@@ -374,43 +428,23 @@ switch ($action) {
                 }
             }
             
-            if ($isSystem) {
-                // The 'grupos' table has 'posicion_destacado_x' (not 'destacado_posicion_x')
-                // and does NOT have 'alineacion_razon'
-                $sql = "UPDATE grupos SET
-                    posicion_nombre_x = ?, posicion_nombre_y = ?,
-                    posicion_razon_x = ?, posicion_razon_y = ?,
-                    posicion_fecha_x = ?, posicion_fecha_y = ?,
-                    posicion_qr_x = ?, posicion_qr_y = ?,
-                    posicion_firma_x = ?, posicion_firma_y = ?,
-                    fuente_nombre = ?, formato_nombre = ?,
-                    fuente_razon = ?, fuente_fecha = ?,
-                    tamanio_fuente = ?, tamanio_razon = ?, tamanio_fecha = ?,
-                    tamanio_qr = ?, tamanio_firma = ?,
-                    color_texto = ?, color_razon = ?, color_fecha = ?,
-                    razon_defecto = ?, formato_fecha = ?, variables_habilitadas = ?,
-                    ancho_razon = ?,
-                    destacado_habilitado = ?, destacado_tipo = ?, destacado_icono = ?, destacado_imagen = ?,
-                    posicion_destacado_x = ?, posicion_destacado_y = ?, tamanio_destacado = ?
-                WHERE id = ?";
-            } else {
-                $sql = "UPDATE grupo_plantillas SET
-                    posicion_nombre_x = ?, posicion_nombre_y = ?,
-                    posicion_razon_x = ?, posicion_razon_y = ?,
-                    posicion_fecha_x = ?, posicion_fecha_y = ?,
-                    posicion_qr_x = ?, posicion_qr_y = ?,
-                    posicion_firma_x = ?, posicion_firma_y = ?,
-                    fuente_nombre = ?, formato_nombre = ?,
-                    fuente_razon = ?, fuente_fecha = ?,
-                    tamanio_fuente = ?, tamanio_razon = ?, tamanio_fecha = ?,
-                    tamanio_qr = ?, tamanio_firma = ?,
-                    color_texto = ?, color_razon = ?, color_fecha = ?,
-                    razon_defecto = ?, formato_fecha = ?, variables_habilitadas = ?,
-                    ancho_razon = ?, alineacion_razon = ?,
-                    destacado_habilitado = ?, destacado_tipo = ?, destacado_icono = ?, destacado_imagen = ?,
-                    destacado_posicion_x = ?, destacado_posicion_y = ?, destacado_tamanio = ?
-                WHERE id = ? AND grupo_id = ?";
-            }
+            // Forzamos siempre UPDATE sobre `grupo_plantillas` ya que `grupos` ya no almacena esto.
+            $sql = "UPDATE grupo_plantillas SET
+                posicion_nombre_x = ?, posicion_nombre_y = ?,
+                posicion_razon_x = ?, posicion_razon_y = ?,
+                posicion_fecha_x = ?, posicion_fecha_y = ?,
+                posicion_qr_x = ?, posicion_qr_y = ?,
+                posicion_firma_x = ?, posicion_firma_y = ?,
+                fuente_nombre = ?, formato_nombre = ?,
+                fuente_razon = ?, fuente_fecha = ?,
+                tamanio_fuente = ?, tamanio_razon = ?, tamanio_fecha = ?,
+                tamanio_qr = ?, tamanio_firma = ?, firma_imagen = ?,
+                color_texto = ?, color_razon = ?, color_fecha = ?,
+                razon_defecto = ?, formato_fecha = ?, variables_habilitadas = ?,
+                ancho_razon = ?, alineacion_razon = ?,
+                destacado_habilitado = ?, destacado_tipo = ?, destacado_icono = ?, destacado_imagen = ?,
+                destacado_posicion_x = ?, destacado_posicion_y = ?, destacado_tamanio = ?
+            WHERE id = ? AND grupo_id = ?";
             $stmt = $conn->prepare($sql);
             
             // Determinar si destacado está habilitado según variables_habilitadas
@@ -438,6 +472,7 @@ switch ($action) {
                 $_POST['tamanio_fecha'] ?? 20,
                 $_POST['tamanio_qr'] ?? 200,
                 $_POST['tamanio_firma'] ?? 200,
+                $firmaImagenFilename,
                 $_POST['color_texto'] ?? '#000000',
                 $_POST['color_razon'] ?? '#333333',
                 $_POST['color_fecha'] ?? '#333333',
@@ -447,10 +482,7 @@ switch ($action) {
                 $_POST['ancho_razon'] ?? 600
             ];
             
-            // alineacion_razon only exists in grupo_plantillas, not in grupos
-            if (!$isSystem) {
-                $binds[] = $_POST['alineacion_razon'] ?? 'justify';
-            }
+            $binds[] = $_POST['alineacion_razon'] ?? 'justify';
             
             // Destacado columns exist in BOTH tables
             $binds[] = $destacadoHabilitado;
@@ -461,12 +493,8 @@ switch ($action) {
             $binds[] = $_POST['posicion_destacado_y'] ?? 50;
             $binds[] = $_POST['destacado_tamanio'] ?? 100;
             
-            if ($isSystem) {
-                $binds[] = $grupo_id;
-            } else {
-                $binds[] = $plantilla_id;
-                $binds[] = $grupo_id;
-            }
+            $binds[] = $plantilla_id;
+            $binds[] = $grupo_id;
             
             $stmt->execute($binds);
             

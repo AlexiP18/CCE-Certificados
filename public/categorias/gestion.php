@@ -22,11 +22,19 @@ if (empty($categoria_id)) {
 
 $pdo = getConnection();
 
-// Obtener información de la categoría y grupo
+// Obtener información de la categoría, grupo e instructor asignado
 $stmt = $pdo->prepare("
-    SELECT c.*, g.id as grupo_id, g.nombre as grupo_nombre, g.color as grupo_color, g.icono as grupo_icono
+    SELECT c.*, 
+           g.id as grupo_id, g.nombre as grupo_nombre, g.color as grupo_color, g.icono as grupo_icono,
+           iu.id as instructor_id, iu.nombre_completo as instructor_nombre, iu.cedula as instructor_cedula
     FROM categorias c
     JOIN grupos g ON c.grupo_id = g.id
+    LEFT JOIN (
+        SELECT ic.categoria_id, MIN(ic.usuario_id) as usuario_id
+        FROM instructor_categorias ic
+        GROUP BY ic.categoria_id
+    ) icx ON c.id = icx.categoria_id
+    LEFT JOIN usuarios iu ON icx.usuario_id = iu.id
     WHERE c.id = ? AND c.activo = 1
 ");
 $stmt->execute([$categoria_id]);
@@ -64,7 +72,7 @@ foreach ($periodos as $p) {
     }
 }
 
-$color_principal = $categoria['color'] ?: '#3498db';
+$color_principal = $categoria['grupo_color'] ?? '#3498db';
 
 // Cargar la vista
 require_once '../../app/Views/estudiantes/gestion.php';

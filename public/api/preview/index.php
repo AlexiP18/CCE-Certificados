@@ -839,17 +839,28 @@ try {
     $firmaPath = null;
     
     // 1. Check for uploaded file first (preview of new signature)
-    if (isset($_FILES['firma_imagen']) && $_FILES['firma_imagen']['error'] === UPLOAD_ERR_OK) {
+    if (isset($_FILES['firma_imagen_file']) && $_FILES['firma_imagen_file']['error'] === UPLOAD_ERR_OK) {
+        $firmaPath = $_FILES['firma_imagen_file']['tmp_name'];
+    } elseif (isset($_FILES['firma_imagen']) && $_FILES['firma_imagen']['error'] === UPLOAD_ERR_OK) {
         $firmaPath = $_FILES['firma_imagen']['tmp_name'];
-    } 
+    }
     // 2. Use existing configuration
     elseif (!empty($certConfig['firma_imagen'])) {
-         $firmaPath = resolveAssetPath('assets/firmas/' . $certConfig['firma_imagen']);
+        $firmaVal = $certConfig['firma_imagen'];
+        // Si ya incluye un subdirectorio (uploads/firmas/ o assets/firmas/) usar directo
+        if (strpos($firmaVal, '/') !== false) {
+            $firmaPath = resolveAssetPath($firmaVal);
+        } else {
+            // Nombre de archivo solo — buscar en uploads/firmas/ primero, luego assets/firmas/
+            $firmaPath = resolveAssetPath('uploads/firmas/' . $firmaVal)
+                      ?? resolveAssetPath('assets/firmas/' . $firmaVal);
+        }
     }
     // 3. Fallback: convention-based path grupo_{id}_firma.png
     if (!$firmaPath && $tipo === 'grupo') {
         $conventionName = 'grupo_' . $id . '_firma.png';
-        $firmaPath = resolveAssetPath('assets/firmas/' . $conventionName);
+        $firmaPath = resolveAssetPath('assets/firmas/' . $conventionName)
+                  ?? resolveAssetPath('uploads/firmas/' . $conventionName);
     }
     
     // Helper function for text with fallback
@@ -1135,10 +1146,8 @@ try {
         if ($stickerPath && file_exists($stickerPath)) {
             try {
                 $stickerImg = Image::make($stickerPath);
-                
-                $stickerImg->resize($destacadoTamanio, null, function ($constraint) {
-                    $constraint->aspectRatio();
-                });
+                // Forzar cuadrado igual que el lienzo frontend (tamanio x tamanio)
+                $stickerImg->fit($destacadoTamanio, $destacadoTamanio);
                 
                 // Coordenadas = top-left del cuadro (igual que el lienzo frontend)
                 $img->insert($stickerImg, 'top-left', $destacadoPosX, $destacadoPosY);

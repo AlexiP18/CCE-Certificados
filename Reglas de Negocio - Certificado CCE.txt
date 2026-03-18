@@ -1,0 +1,106 @@
+ESTRUCTURA
+* El header siempre se debe mantener el mismo, solo permitiendo la visualización de ciertos botones según el tipo de usuario.
+* Se debe garantizar la responsividad de la pagina tanto para tablet y movil.
+* Se debe garantizar que los usuarios en función de sus permisos, no puedan redirigirse a apartados no permitidos.
+* Se debe garantizar las seguridades correspondientes al usuario al momento de loguearse.
+
+USUARIOS
+--USUARIO-ADMINISTRADOR
+* Existen los usuarios Administradores, los cuales son 3 y uno es Superadministrador que puede controlar a los otros dos Administadores.
+* Pueden crear y gestionar a los demas tipos de usuario como instructor y oficinista. Solo el usuario Superadministador puede gestionar a los otros Administradores.
+* Es el unico tipo de usuario que puede aprobar y generar los certificados por primera vez.
+* Puede realizar la gestión de las áreas del sistema, asi como establecer nuevos estudiantes,plantilas y su configuracion, fuentes de letra, grupos, categorias, periodos.
+* Puede además establecer los colores y logos institucionales.
+* Puede gestionar sus datos personales como cargo, nombre, cedula, # de celular, correo, foto de perfil y contraseña.
+
+--USUARIO-OFICINISTA
+* Su gestión varia en función de los permisos establecidos por el Administrado. Puede gestionar grupos y categorias pero solo puede ingresar/editar estudiantes, asi como descargar los certificados de los mismos en caso de estar aprobados y generados.
+* Puede gestionar sus datos personales como Cargo, nombre, cedula, # de celular, correo, foto de perfil y contraseña.
+
+--USUARIO-INSTRUCTOR
+* Solo puede visualizar la información de su categoria respectiva, asi como los estudiantes adscritos a la misma, pero no tiene una gestion como tal ya que no puede agregar, editar o eliminar. Solo puede visualizar, establecer estudiantes destacados y descargar la lista de los estudiantes y certificados pero solo los certificados que ya han sido aprobados y generado por los usuarios Administradores.
+* Puede visualizar su usuario, asi como tambien puede actualizar sus datos respectivos como nombre completo, cedula, correo, # de celular, Datos de residencia(Direccion, Código Postal, Posicionamiento Google Maps), titulos o certificados educativos que lo avalen, trayectoria profeisonal contraseña, foto de perfil.
+* La única información que esta abierta al público es su nombre, cedula, correo, # de celular, foto de perfil, titulos o certificados que desea colocar, asi como su trayectoria profesional, el resto de información solo puede ser visualizada por él y por los administradores.
+* Puede gestionar sus categorias tomando en cuenta tambien a los grupos en los que este. Aunque solo puede visualizarlos y no puede modificar la información de los mismos.
+* Puede visualizar sus estudiantes,asi como los datos de los mismos, asi como los datos del representante si se diera el caso de menor de edad.
+* Puede establecer estudiantes destacados.
+* Puede gestionar varias categorias de distintos periodos en los que dicto cursos.
+* Puede generar certificados pero solo aquellos que ya hayan sido generados y aprobados por el Usuario Administrador.
+* Asi mismo puede generar el documento con la lista de los estudiantes de su categoria respectiva, ya sea en formato excel o pdf.
+
+--USUARIO-VISITANTE
+* No es un tipo de usuario en sí, ya que este apartado esta abierto al público.
+* Puede visualizar sus datos registrados en la institución mediante la busqueda por medio de su cedula o id de estudiante.
+* Puede visualizar sus certificados adscritos, asi como descargarlos.
+* Puede verificar o buscar sus certificados por medio del codigo del certificado o delcodigo QR establecido en el mismo.
+* Cuando este usuario ingresa su número de cedula se abre un apartado que gara su información personal como Nombre, cedula, grupos y categorias respectivas a las que pertenece, las cuales debe aparecer como terminadas o en curso, y tambien la posibilidad de visualizar y descargar sus certificados en caso de que estos ya hayan sido aprobados y generados.
+
+
+
+GRUPOS
+* Estas se establecen para definir las áreas donde se esatblecen las categorias para emitir los certificados respectivos.
+* Este apartado puede estar administrado tambien por algun tipo de usuario oficinista. En donde tambien aquí se puede establecer el usuario del mismo, a traves de uno ya registrado.
+* Se puede administrar de manera general los estudiantes y certificados de las categorias que esten adscritas a este grupo.
+* Aquí se pueden establecer varios periodos que pueden o no coincidor con los de otros grupos.
+* Se puede configurar la plantilla que se va a usar por defecto en este grupo y para todas la categorias que pertenezcan a este.
+* Se puede configurar el nombre, descripción, icono(emoticon), color y el usuario-oficinista que puede administrar el mismo.
+* Al momento de crear el grupo se pregunta si se desea incluir uno o varios periodos ya establecidos en otros grupos.
+* Si el grupo ya tenía categorias y/o estudiantes adcritos a este la información del mismo no se puede eliminar, solo se podría dar de baja. Y la relación que tendrían los estudiantes adscritos a este asi como sus certificados en el caso de que han sido aprobados y generados, tampoco se perdería.
+* Se mantiene un archivo tipo log para poder controlar los cambios que se hacen a este, las categorias que se establecen en el mismo, asi como los estudiantes, asi como tambien la información de si es dado de baja este grupo.
+* En caso de querer eliminar de forma definitiva un grupo este se puede realizar pero solo si no tenía categorias y estudiantes adscritos a este.
+
+
+
+CATEGORIAS
+* Estan son contenidas por el grupo respectivo.
+* Puede configurarse Nombre, Descripción, icono(emoticon), color ya no porque hereda el color establecido en su grupo respectivo. Y tambien establecer el usuario tallerista.
+* Puede estar administrada por un tallerista el cual puede administrar su perfil como sus datos personales y contraseña. Y tambien puede visualizar los estudiantes de su categoria, asi mismo descargar una lista con los datos de los mismos. Asi como descargar los certificados pero aquellos que ya han sido aprobados y generados por el Superadministador o Administrador.
+* Estos pueden estar establecidos en distintos periodos, por tal razon siempre cuando se crea un nuevo periodo se pregunta si se desea incluir en este nuevo periodos categorias de periodos anteriores, asi como tambien incluir los estudiantes ya establecidos en la categorias de esos periodos anteriores.
+* En el caso de que no se quiera usar una plantilla por defecto se puede establecer una para esta categoria.
+* Si la categoria ya tenía estudiantes adcritos a este la información del mismo no se puede eliminar, solo se podría dar de baja. Y la relación que tendrían los estudiantes adscritos a este asi como sus certificadosen en el caso de que han sido aprobados y generados, tampoco se perdería.
+* La finalización de una categoria se da cuando en base a la fecha actual, si ya paso el rango del periodo en donde se establecio la categoria. Por tanto los estudiantes adscritos a esa categoria tendría establecidas esa categoria como terminadas. Pero aún quedaría pendientes la generación de certificados que eso solo lo realizan lo administradores.
+* El regsitro log aquí ya se graba en el apartado de grupos en conjunto con este.
+* En caso de querer eliminar de forma definitiva una categoria este se puede realizar pero solo si no tenía estudiantes adscritos a este.
+
+
+
+ESTUDIANTES
+* Se puede establecer estudiantes menores de edad, pero deben establecerse un "Representante Legal" en donde los campos de nombre, fecha de nacimiento, cedula, correo y celular para el representante son obligatorios al igual para estudiantes mayores de  edad. Para los estudiantes menores de edad solo los campos de nombre y fecha de nacimiento son obligatorios.
+* Los estudiantes tienen sus certificados adjunto, y una vez queden matriculados en una categoria sin importar el grupo, ya quedan establecidos en la base de datos y por tanto pueden matricularse en otras categorias sin importar el grupo sin necesidad de volver a colocar sus datos personales.
+* Una vez generados sus certificados estos, pueden visualizarlos en un apartado de visualización de certificados, a si como en el apartado de verificación que se hace por medio de un QR o codigo del certificado. Pueden descargarlos y visualizarlos de forma publica sin necesidad de loguearse, ya sea ellos o alguien externo.
+* Hay 3 tipos de estudiantes, el estudiante mayor de edad, el estudiante menor de edad que requiere de un representante y el representante que quiere tambien ser estudiante, como los datos de este de todas forma quedan registrados, la forma de loguearse es buscando su usuario por cedula y agreagrlo en l categoria que desee.
+* Cabe aclarar que los estudiantes pueden estas en diversas categorias de varios grupos.
+* Tambien un estudiante no se puede eliminar del todo del sistema, su información personal, sus grupos y categorias respectivas, la información de sus certificiados, se conservan solo que ya no es un usuario activo. Y el único que puede visualziarlo es el usaurio superadministrador.
+* Las columnas de información de un estudiante son: id, cedula(No se puede repetir), nombre, fecha_nacimiento, celular(Debe grabarse con el 593 de ecuador), email, es_menor, representante_id, destacado, activo, fecha_creacion/matriculación.
+* Asi mismo se debe tener un registro tipo log de los cambios que se hace al estudiante en su edición y tambien si es dado de baja.
+
+
+
+PERIODOS
+* Los periodos solo se pueden gestionar en grupos
+* Estos pueden establecerse en un rango de varios meses, o solo en el rango de un mes o menos de determinados días
+* Estos traen por defecto el nombre establecido según su rango de meses o de dáis en el caso de que sea solo un mes.
+* Tambien se puede eliminiar aunque estos si se eliminan directamente en la base de datos
+* Cuando se crea nuevos periodos, siempre se comprueba primero en la base de datos, para asi comprobar su existencia y no crear repetidos.
+* Cuando se crea un nuevo periodo en el grupo, siempre se pregunta al momento de crear si desea agregar en este nuevo periodo, categorias establecidas en otros periodos ya establecidos en el grupo, asi como tambien si se desea incluir los estudiantes establecidos en las categorias de esos periodos, tomando en cuenta que esos estudiantes se estan matriculando automaticamente a ese nuevo periodo de la categoria.
+
+
+
+FUENTES
+* Permitir subir fuentes en formato TTF(El más usual), OTF, WOFF, WOFF2, establecer el nombre y categoria de la misma.
+* Desde este apartado se puede editar la información de la misma asi como tambien eliminarla.
+* Se puede establecer si es de tipo sans-serif, serif, display, manuscritas, monoespaciadas
+
+
+
+PLANTILLAS
+* Las plantillas se pueden definir tanto en grupos como categorias, manteniendo una por defecto en grupo, y la cual es la prioritaria en el caso de que no este definida una plantilla especifica en una categoria.
+* Se puede establecer en cada grupo hasta 6 plantillas/imagen a configurar, en donde cada plantilla tiene un lienzo con variables como Nombre, Razon, Fecha, QR, Firmay Destacado en donde se puede establecer su posicionamiento en la misma.
+* Cada variable (nombre, razón, fecha) se puede establecer sus propiedades en todas como Fuente, Tamaño de Fuente(px), color del texto y formato (mayusculas, minusculas, intercalado) para el caso de nombre.
+* La variable Razon se puede configurar tanto en el lienzo de la plantilla como en sus propiedades el "Ancho del área de texto (px)". En esta variable tambien tiene subvariables por asi decirlo para establecer en el parametro de "Texto predeterminado" que son {grupo}, {categoria}, {nombre}, {fecha}, las cuales sirve para que al momento de generar el certificado esatblezca los datos respectivos de forma dinámica. Tambien se puede establecer la alineación esta puede ser a la izquierda, centrado, derecha y justificado.
+* En la variable Fecha se puede establecer un "Formato de Fecha" establecidos en un select, las cuales pueden ser del tipo 05 de Marzo de 2026, 05/03/2026, 2026-03-05 y Marzo 05,2026
+* Tanto en las variables QR y Firma se puede establecer "El tamaño-escala en px de los mismos". Y para firma se establezca una imagen personalizada de la misma.
+* Vale aclarar tambien que estas variables se puede habilitar/deshabilitar en el lienzo de la plantilla según convenga.
+* Este apartado de configuración de plantillas tambien tiene para "Previsualizar" la configuración establecida por el momento en la misma y como se vera en el certificado despues. En el caso de la variable Nombre obviamente se usa un nombre de ejemplo el cual es de algun estudiante establecido en ese grupo solo para mostrar como se va a ver en el certificado.
+* En el caso de que la variable Firma no este configurada se debera notificar al momento de querer previsaulizar el certificado.
+* Tambien se puede restablecer la configuración de la plantilla a los datios prederetminados o por defecto que salen en un inicio.

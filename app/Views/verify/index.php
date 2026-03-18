@@ -3,17 +3,42 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Verificación de Certificado - CCE</title>
+    <title>Verificación de Certificado - <?= htmlspecialchars($siteConfig['site_name']) ?></title>
+    <?php if (!empty($siteConfig['favicon_url'])): ?>
+    <link rel="icon" type="image/x-icon" href="<?= htmlspecialchars($siteConfig['favicon_url']) ?>">
+    <?php endif; ?>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
     <link rel="stylesheet" href="<?= $basePath ?>/css/style.css">
     <link rel="stylesheet" href="<?= $cssPath ?>/verify/index.css">
+    <style>
+        :root {
+            --site-primary: <?= htmlspecialchars($siteConfig['primary_color']) ?>;
+            --site-secondary: <?= htmlspecialchars($siteConfig['secondary_color']) ?>;
+        }
+
+        .nav-logo-image {
+            width: 34px;
+            height: 34px;
+            object-fit: contain;
+            border-radius: 8px;
+            background: #fff;
+            padding: 2px;
+        }
+
+        .top-nav .nav-link.active {
+            background: linear-gradient(135deg, var(--site-primary), var(--site-secondary)) !important;
+        }
+    </style>
 </head>
 <body>
     <!-- Menú de Navegación -->
     <nav class="top-nav">
         <div class="nav-logo">
+            <?php if (!empty($siteConfig['logo_nav_url'])): ?>
+            <img src="<?= htmlspecialchars($siteConfig['logo_nav_url']) ?>" alt="Logo" class="nav-logo-image" onerror="this.style.display='none'">
+            <?php endif; ?>
             <i class="fas fa-graduation-cap"></i>
-            <span>CCE Certificados</span>
+            <span><?= htmlspecialchars($siteConfig['site_name']) ?></span>
         </div>
         <ul class="nav-menu">
             <li><a href="<?= $basePath ?>/dashboard/index.php" class="nav-link"><i class="fas fa-home"></i> Inicio</a></li>
@@ -24,7 +49,7 @@
 
     <div class="container">
         <header>
-            <img src="<?= $basePath ?>/../assets/logos/logo-cce.png" alt="Logo CCE" class="logo" onerror="this.style.display='none'">
+            <img src="<?= htmlspecialchars(!empty($siteConfig['logo_header_url']) ? $siteConfig['logo_header_url'] : ($basePath . '/../assets/logos/logo-cce.png')) ?>" alt="Logo institucional" class="logo" onerror="this.style.display='none'">
             <h1>Verificación de Certificado</h1>
         </header>
 

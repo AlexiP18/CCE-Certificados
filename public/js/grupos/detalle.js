@@ -9,6 +9,144 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+function getInstructorLabel(inst) {
+    return `${inst.nombre_completo}${inst.cedula ? ' | CI: ' + inst.cedula : ''}`;
+}
+
+function syncInstructorIdFromSearch() {
+    const input = document.getElementById('instructor_search');
+    const hidden = document.getElementById('instructor_id');
+    if (!input || !hidden) return;
+
+    const value = (input.value || '').trim();
+    if (!value) {
+        hidden.value = '';
+        return;
+    }
+
+    const valueLower = value.toLowerCase();
+    const instructores = INSTRUCTORES_CATEGORIA || [];
+
+    // 1) Coincidencia exacta por etiqueta visible
+    let match = instructores.find(inst => getInstructorLabel(inst) === value);
+
+    // 2) Coincidencia exacta por cédula
+    if (!match) {
+        match = instructores.find(inst => (inst.cedula || '') === value);
+    }
+
+    // 3) Coincidencia única por texto parcial (nombre o cédula)
+    if (!match) {
+        const candidates = instructores.filter(inst => {
+            const nombre = (inst.nombre_completo || '').toLowerCase();
+            const cedula = (inst.cedula || '').toLowerCase();
+            return nombre.includes(valueLower) || cedula.includes(valueLower);
+        });
+
+        if (candidates.length === 1) {
+            match = candidates[0];
+            // Normalizar input a la etiqueta canónica cuando hay match único.
+            input.value = getInstructorLabel(match);
+        }
+    }
+
+    hidden.value = match ? String(match.id) : '';
+}
+
+function setInstructorById(instructorId) {
+    const input = document.getElementById('instructor_search');
+    const hidden = document.getElementById('instructor_id');
+    if (!input || !hidden) return;
+
+    if (!instructorId) {
+        input.value = '';
+        hidden.value = '';
+        return;
+    }
+
+    const match = (INSTRUCTORES_CATEGORIA || []).find(inst => String(inst.id) === String(instructorId));
+    if (match) {
+        input.value = getInstructorLabel(match);
+        hidden.value = String(match.id);
+    } else {
+        input.value = '';
+        hidden.value = '';
+    }
+}
+
+function clearInstructorSearch() {
+    setInstructorById(null);
+    hideInstructorSuggestions();
+}
+
+function getInstructorSuggestionsContainer() {
+    return document.getElementById('instructorSuggestions');
+}
+
+function hideInstructorSuggestions() {
+    const container = getInstructorSuggestionsContainer();
+    if (!container) return;
+    container.style.display = 'none';
+    container.innerHTML = '';
+}
+
+function filtrarInstructores(texto) {
+    const query = (texto || '').trim().toLowerCase();
+    const instructores = INSTRUCTORES_CATEGORIA || [];
+
+    if (!query) {
+        return instructores.slice(0, 20);
+    }
+
+    return instructores.filter(inst => {
+        const nombre = (inst.nombre_completo || '').toLowerCase();
+        const cedula = (inst.cedula || '').toLowerCase();
+        return nombre.includes(query) || cedula.includes(query);
+    }).slice(0, 20);
+}
+
+function seleccionarInstructorDesdeSugerencia(inst) {
+    setInstructorById(inst.id);
+    hideInstructorSuggestions();
+}
+
+function renderInstructorSuggestions(texto) {
+    const container = getInstructorSuggestionsContainer();
+    if (!container) return;
+
+    const resultados = filtrarInstructores(texto);
+
+    if (!resultados.length) {
+        container.innerHTML = '<div style="padding: 10px 12px; font-size: 13px; color: #95a5a6;">Sin coincidencias</div>';
+        container.style.display = 'block';
+        return;
+    }
+
+    container.innerHTML = resultados.map(inst => {
+        const nombre = escapeHtml(inst.nombre_completo || '');
+        const cedula = escapeHtml(inst.cedula || '');
+        return `
+            <button type="button" data-inst-id="${inst.id}" style="width: 100%; text-align: left; padding: 10px 12px; border: none; border-bottom: 1px solid #f1f3f5; background: #fff; cursor: pointer; display: flex; flex-direction: column; gap: 2px;">
+                <span style="font-weight: 600; color: #2c3e50; font-size: 13px;">${nombre}</span>
+                <span style="font-size: 12px; color: #7f8c8d;">${cedula ? 'CI: ' + cedula : 'Sin cédula'}</span>
+            </button>
+        `;
+    }).join('');
+
+    container.style.display = 'block';
+
+    container.querySelectorAll('button[data-inst-id]').forEach(btn => {
+        btn.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            const instId = btn.getAttribute('data-inst-id');
+            const inst = (INSTRUCTORES_CATEGORIA || []).find(i => String(i.id) === String(instId));
+            if (inst) {
+                seleccionarInstructorDesdeSugerencia(inst);
+            }
+        });
+    });
+}
+
 // ========== SISTEMA DE NOTIFICACIONES ==========
 function showNotification(message, type = 'info') {
     const existing = document.querySelector('.app-notification');
@@ -1217,6 +1355,7 @@ function openModal(periodoId = null) {
     document.getElementById('btnTextGuardarCategoria').textContent = 'Crear Categoría';
     document.getElementById('categoriaForm').reset();
     document.getElementById('categoria_id').value = '';
+    setInstructorById(null);
     document.querySelectorAll('#categoriaModal .icon-option').forEach(o => o.classList.remove('selected'));
     document.querySelector('#categoriaModal .icon-option[data-icon="📚"]').classList.add('selected');
     document.querySelector('#categoriaModal #icono').value = '📚';
@@ -1353,6 +1492,7 @@ async function editarCategoria(id) {
             document.getElementById('categoria_id').value = cat.id;
             document.getElementById('nombre').value = cat.nombre;
             document.getElementById('descripcion').value = cat.descripcion || '';
+            setInstructorById(cat.instructor_id || null);
             // Actualizar contador
             updateCharCounter(document.getElementById('descripcion'), 'categoriaCharCounter');
 
@@ -1530,6 +1670,16 @@ document.getElementById('grupoForm').addEventListener('submit', async function (
 document.getElementById('categoriaForm').addEventListener('submit', async function (e) {
     e.preventDefault();
 
+    syncInstructorIdFromSearch();
+
+    const instructorSearch = document.getElementById('instructor_search');
+    const instructorId = document.getElementById('instructor_id');
+    if (instructorSearch && instructorId && instructorSearch.value.trim() !== '' && !instructorId.value) {
+        showNotification('Seleccione un instructor válido de la lista o deje el campo vacío.', 'warning');
+        instructorSearch.focus();
+        return;
+    }
+
     const formData = new FormData(this);
     formData.append('action', document.getElementById('categoria_id').value ? 'update' : 'create');
 
@@ -1581,4 +1731,39 @@ document.addEventListener('DOMContentLoaded', function () {
             periodTabsNav.scrollLeft += evt.deltaY;
         });
     }
+
+    const instructorSearch = document.getElementById('instructor_search');
+    if (instructorSearch) {
+        instructorSearch.addEventListener('focus', () => {
+            renderInstructorSuggestions(instructorSearch.value || '');
+        });
+
+        instructorSearch.addEventListener('input', () => {
+            syncInstructorIdFromSearch();
+            renderInstructorSuggestions(instructorSearch.value || '');
+        });
+
+        instructorSearch.addEventListener('change', syncInstructorIdFromSearch);
+
+        instructorSearch.addEventListener('blur', () => {
+            syncInstructorIdFromSearch();
+            setTimeout(() => hideInstructorSuggestions(), 120);
+        });
+
+        instructorSearch.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                hideInstructorSuggestions();
+            }
+        });
+    }
+
+    document.addEventListener('click', (e) => {
+        const input = document.getElementById('instructor_search');
+        const panel = getInstructorSuggestionsContainer();
+        if (!input || !panel) return;
+
+        if (e.target !== input && !panel.contains(e.target)) {
+            hideInstructorSuggestions();
+        }
+    });
 });

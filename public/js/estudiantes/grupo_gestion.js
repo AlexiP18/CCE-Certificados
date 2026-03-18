@@ -8,6 +8,7 @@
 // const grupoColor = ...;
 
 let estudiantesFiltrados = [];
+let datosPaginados = [];
 let estudiantesSeleccionados = new Set();
 let selectedCerts = new Set();
 let paginaActual = 1;
@@ -84,10 +85,7 @@ async function cargarEstudiantes() {
             if (document.getElementById('totalMenores'))
                 document.getElementById('totalMenores').textContent = menores;
 
-            // Apply initial hierarchical sort
-            estudiantesFiltrados = aplicarOrdenJerarquico(estudiantesFiltrados);
-
-            renderTabla();
+            prepararJerarquia(estudiantesFiltrados);
         } else {
             mostrarError('Error al cargar estudiantes');
         }
@@ -131,47 +129,87 @@ function filtrarEstudiantes() {
         return cumple;
     });
 
-    estudiantesFiltrados = aplicarOrdenJerarquico(estudiantesFiltrados);
     paginaActual = 1;
-    renderTabla();
+    prepararJerarquia(estudiantesFiltrados);
 }
 
-function aplicarOrdenJerarquico(lista) {
-    const mapPorCedula = new Map();
-    lista.forEach(est => {
-        if (est.cedula) mapPorCedula.set(est.cedula, est);
-    });
+// Prepara datosPaginados con jerarquía: representantes (reales o virtuales) con sus menores
+function prepararJerarquia(lista) {
+    estudiantesFiltrados = lista;
+    datosPaginados = [];
 
-    const hijosConPadreEnLista = new Set();
-    const mapPadreHijos = new Map();
+    if (!lista || lista.length === 0) {
+        renderTabla();
+        return;
+    }
 
+    const idsEnLista = new Set(lista.map(e => parseInt(e.id)));
+
+    // 1. Agrupar menores por representante
+    const menoresPorRep = new Map();
     lista.forEach(est => {
-        if (est.es_menor == 1 && est.representante_cedula && mapPorCedula.has(est.representante_cedula)) {
-            hijosConPadreEnLista.add(est.id);
-            const repCed = est.representante_cedula;
-            if (!mapPadreHijos.has(repCed)) {
-                mapPadreHijos.set(repCed, []);
+        if (est.es_menor == 1 && est.representante_cedula) {
+            const repId = est.representante_id ? parseInt(est.representante_id) : null;
+            let key;
+            if (repId && idsEnLista.has(repId)) {
+                key = repId;                       // Representante es mayor en la lista
+            } else {
+                key = 'rep_' + est.representante_cedula;  // Representante virtual
             }
-            mapPadreHijos.get(repCed).push(est);
+            if (!menoresPorRep.has(key)) menoresPorRep.set(key, []);
+            menoresPorRep.get(key).push(est);
         }
     });
 
-    const nuevaLista = [];
+    const procesados = new Set();
+
+    // 2. Estudiantes mayores (peuvent tener menores a cargo)
     lista.forEach(est => {
-        if (hijosConPadreEnLista.has(est.id)) return;
+        if (est.es_menor == 1) return; // Los menores se renderizan bajo su representante
 
-        nuevaLista.push(est);
+        const filaMayor = { tipo: 'estudiante', data: est, menores: [] };
 
-        if (est.cedula && mapPadreHijos.has(est.cedula)) {
-            const hijos = mapPadreHijos.get(est.cedula);
-            hijos.forEach(hijo => {
-                hijo.is_hierarchical_child = true;
-                nuevaLista.push(hijo);
-            });
+        const repId = parseInt(est.id);
+        if (menoresPorRep.has(repId)) {
+            filaMayor.menores = menoresPorRep.get(repId);
+            menoresPorRep.get(repId).forEach(m => procesados.add(m.id));
+        }
+
+        datosPaginados.push(filaMayor);
+    });
+
+    // 3. Representantes virtuales (menores cuyo representante NO está en la lista)
+    lista.forEach(est => {
+        if (est.es_menor == 1 && !procesados.has(est.id)) {
+            const key = 'rep_' + est.representante_cedula;
+            const yaAgregado = datosPaginados.find(f => f.tipo === 'representante_virtual' && f.cedula === est.representante_cedula);
+
+            if (!yaAgregado && menoresPorRep.has(key)) {
+                const grupoMenores = menoresPorRep.get(key);
+                datosPaginados.push({
+                    tipo: 'representante_virtual',
+                    nombre: est.representante_nombre,
+                    cedula: est.representante_cedula,
+                    celular: est.representante_celular,
+                    email: est.representante_email,
+                    menores: grupoMenores
+                });
+                grupoMenores.forEach(m => procesados.add(m.id));
+            } else if (!yaAgregado) {
+                // Menor huérfano sin representante claro: lo mostramos solo
+                datosPaginados.push({ tipo: 'estudiante', data: est, menores: [] });
+            }
         }
     });
 
-    return nuevaLista;
+    // 4. Ordenar alfabéticamente por nombre principal
+    datosPaginados.sort((a, b) => {
+        const nA = a.tipo === 'estudiante' ? (a.data.nombre || '') : (a.nombre || '');
+        const nB = b.tipo === 'estudiante' ? (b.data.nombre || '') : (b.nombre || '');
+        return nA.localeCompare(nB);
+    });
+
+    renderTabla();
 }
 
 // ========== RENDERING ==========
@@ -180,7 +218,7 @@ function renderTabla() {
     const tbody = document.getElementById('estudiantesBody');
     const footer = document.getElementById('paginationFooter');
 
-    const totalItems = estudiantesFiltrados.length;
+    const totalItems = datosPaginados.length;
     let inicio = 0;
     let fin = totalItems;
 
@@ -196,7 +234,7 @@ function renderTabla() {
         totalPaginasGlobal = 1;
     }
 
-    const paginados = estudiantesFiltrados.slice(inicio, fin);
+    const paginados = datosPaginados.slice(inicio, fin);
 
     if (document.getElementById('countBadge'))
         document.getElementById('countBadge').textContent = `${totalItems} estudiantes`;
@@ -237,157 +275,268 @@ function renderTabla() {
         if (e.representante_cedula) representantesCedulas.add(e.representante_cedula);
     });
 
-    tbody.innerHTML = paginados.map((est, idx) => {
-        const iniciales = est.nombre ? est.nombre.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase() : '?';
-        const colorCat = est.categoria_color || '#95a5a6';
-        const esMenor = est.es_menor == 1;
-        const isSelected = estudiantesSeleccionados.has(est.id);
+    let htmlContent = '';
 
-        let rowClass = isSelected ? 'row-selected' : '';
-        if (esMenor) rowClass += ' estudiante-menor';
-
-        if (est.cedula && representantesCedulas.has(est.cedula)) {
-            rowClass += ' estudiante-representante';
-        }
-
-        let nameClass = 'student-name';
-        if (est.is_hierarchical_child) {
-            nameClass += ' student-indent';
-        }
-
-        // Age Calculation
-        let edadHtml = '<span style="color: #cbd5e0;">-</span>';
-        if (est.fecha_nacimiento) {
-            const birthDate = new Date(est.fecha_nacimiento);
-            const today = new Date();
-            let age = today.getFullYear() - birthDate.getFullYear();
-            const m = today.getMonth() - birthDate.getMonth();
-            if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
-                age--;
+    paginados.forEach(fila => {
+        if (fila.tipo === 'estudiante') {
+            const repUniqueId = 'est-' + fila.data.id;
+            const hasMenores = fila.menores && fila.menores.length > 0;
+            htmlContent += buildEstudianteRowHtml(fila.data, repUniqueId, hasMenores, representantesCedulas);
+            if (hasMenores) {
+                fila.menores.forEach(menor => {
+                    htmlContent += buildMenorRowHtml(menor, repUniqueId);
+                });
             }
-            const fechaDisplay = est.fecha_nacimiento.split('-').reverse().join('/');
-            edadHtml = `
-                <div style="line-height: 1.2;">
-                    <div>${fechaDisplay}</div>
-                    <small style="color: #7f8c8d; font-weight: 600;">(${age} años)</small>
-                </div>
-            `;
-        }
-
-        // Simplified Contact Column (Icons only, no fancy chips)
-        // Similar to standard simplified layout in gestion_categoria
-        // Chip Contacto Unificado (Original Style: Chips with text)
-        let contactoHtml = '<div style="display: flex; flex-direction: column; gap: 4px; align-items: flex-start;">';
-
-        let hasPhone = false;
-        let hasEmail = false;
-
-        // 1. WhatsApp
-        if (est.celular) {
-            contactoHtml += `<a href="https://wa.me/${formatPhoneLink(est.celular)}" target="_blank" class="contact-chip contact-chip-whatsapp" style="max-width: 100%;"><i class="fab fa-whatsapp"></i> ${formatPhoneDisplay(est.celular)}</a>`;
-            hasPhone = true;
-        } else if (esMenor && est.representante_celular) {
-            contactoHtml += `<a href="https://wa.me/${formatPhoneLink(est.representante_celular)}" target="_blank" class="contact-chip contact-chip-whatsapp" title="Representante" style="max-width: 100%;"><i class="fas fa-user-tie"></i> ${formatPhoneDisplay(est.representante_celular)} (Rep)</a>`;
-            hasPhone = true;
-        }
-
-        // 2. Email
-        if (est.email) {
-            contactoHtml += `<a href="mailto:${est.email}" class="contact-chip contact-chip-email" style="max-width: 100%; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;"><i class="fas fa-envelope"></i> ${est.email}</a>`;
-            hasEmail = true;
-        } else if (esMenor && est.representante_email) {
-            contactoHtml += `<a href="mailto:${est.representante_email}" class="contact-chip contact-chip-email" title="Representante" style="max-width: 100%; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;"><i class="fas fa-user-tie"></i> ${est.representante_email} (Rep)</a>`;
-            hasEmail = true;
-        }
-
-        if (!hasPhone && !hasEmail) {
-            contactoHtml += '<span style="color: #cbd5e0;">-</span>';
-        }
-
-        contactoHtml += '</div>';
-
-        // Date registration
-        let fechaRegistroHtml = '<span style="color: #cbd5e0;">-</span>';
-        if (est.fecha_creacion) {
-            const fechaObj = new Date(est.fecha_creacion);
-            const dia = String(fechaObj.getDate()).padStart(2, '0');
-            const mes = String(fechaObj.getMonth() + 1).padStart(2, '0');
-            const anio = fechaObj.getFullYear();
-            fechaRegistroHtml = `<div style="line-height: 1.2;">
-                        <div style="font-weight: 500; color: #4b5563;">${dia}/${mes}/${anio}</div>
-                        <small style="color: #9ca3af;">Registro</small>
-                    </div>`;
-        }
-
-        // Categories Badge (retained as it's useful info, but simplified if needed)
-        let categoriasHtml = '<span style="color:#95a5a6;">-</span>';
-        if (est.categorias && est.categorias.length > 0) {
-            const catsGrouped = {};
-            est.categorias.forEach(c => {
-                const key = c.nombre;
-                if (!catsGrouped[key]) {
-                    catsGrouped[key] = { ...c, periodos: [] };
-                }
-                const exists = catsGrouped[key].periodos.some(p => p.nombre === c.periodo);
-                if (!exists) {
-                    catsGrouped[key].periodos.push({
-                        nombre: c.periodo,
-                        fecha: c.fecha_inicio || '0000-00-00'
-                    });
-                }
+        } else if (fila.tipo === 'representante_virtual') {
+            const repUniqueId = 'virt-' + (fila.cedula || '').replace(/[^a-zA-Z0-9]/g, '_');
+            htmlContent += buildRepresentanteVirtualRowHtml(fila, repUniqueId);
+            fila.menores.forEach(menor => {
+                htmlContent += buildMenorRowHtml(menor, repUniqueId);
             });
-            categoriasHtml = Object.values(catsGrouped).map(cat => {
-                // simple sort
-                cat.periodos.sort((a, b) => (a.fecha < b.fecha ? -1 : 1));
-                const periodosStr = cat.periodos.map(p => p.nombre).join('\n');
-                return `
-                    <span class="badge badge-categoria" 
-                          style="background: ${cat.color}20; color: ${cat.color}; display: inline-flex; width: fit-content; cursor: help; margin-bottom: 2px;"
-                          title="Períodos:&#10;${periodosStr}">
-                        ${cat.icono || '📁'} ${escapeHtml(cat.nombre || 'Sin categoría')}
-                    </span>
-                `;
-            }).join('<br>');
         }
+    });
 
-        return `
-            <tr class="${rowClass}">
-                <td class="sticky-col sticky-left-1">
-                    <input type="checkbox" class="select-checkbox" data-id="${est.id}" 
-                           onchange="toggleSelectStudent(${est.id})" ${isSelected ? 'checked' : ''}>
-                </td>
-                <td class="sticky-col sticky-left-2">
-                    <div class="${nameClass}">
-                        <div class="student-avatar" style="background: linear-gradient(135deg, ${colorCat}cc, ${colorCat});">${iniciales}</div>
-                        <div class="student-info">
-                            <strong>${escapeHtml(est.nombre)}</strong>
-                            ${esMenor ? '<span class="badge badge-menor"><i class="fas fa-child"></i> Menor de edad</span>' : ''}
-                        </div>
+
+    tbody.innerHTML = htmlContent;
+}
+
+// ========== ROW BUILDER HELPERS ==========
+
+function buildCeldasDatos(est) {
+    // Age
+    let edadHtml = '<span style="color: #cbd5e0;">-</span>';
+    if (est.fecha_nacimiento) {
+        const birthDate = new Date(est.fecha_nacimiento);
+        const fechaDisplay = est.fecha_nacimiento.split('-').reverse().join('/');
+        edadHtml = `<div>${fechaDisplay}</div><div class="badge badge-edad">${calcularEdad(est.fecha_nacimiento)} años</div>`;
+    }
+
+    // Historial
+    const historialHtml = `<button class="btn-icon btn-view" title="Ver Historial" onclick="abrirModalHistorial(${est.id})" style="margin: 0 auto;"><i class="fas fa-history"></i></button>`;
+
+    // Fecha Registro
+    let fechaRegistroHtml = '<span style="color:#cbd5e0;">-</span>';
+    if (est.fecha_creacion) {
+        const f = new Date(est.fecha_creacion);
+        const dia = String(f.getDate()).padStart(2,'0');
+        const mes = String(f.getMonth()+1).padStart(2,'0');
+        fechaRegistroHtml = `<div style="line-height:1.2;"><div style="font-weight:500;color:#4b5563;">${dia}/${mes}/${f.getFullYear()}</div><small style="color:#9ca3af;">Registro</small></div>`;
+    }
+
+    // Categorias
+    let categoriasHtml = '<span style="color:#95a5a6;">-</span>';
+    if (est.categorias && est.categorias.length > 0) {
+        const catsGrouped = {};
+        est.categorias.forEach(c => {
+            if (!catsGrouped[c.nombre]) catsGrouped[c.nombre] = { ...c, periodos: [] };
+            if (!catsGrouped[c.nombre].periodos.some(p => p.nombre === c.periodo)) {
+                catsGrouped[c.nombre].periodos.push({ 
+                    nombre: c.periodo, 
+                    fecha: c.fecha_inicio || '0000-00-00',
+                    es_destacado: c.es_destacado == 1
+                });
+            }
+        });
+        categoriasHtml = Object.values(catsGrouped).map(cat => {
+            cat.periodos.sort((a,b) => a.fecha < b.fecha ? -1 : 1);
+            
+            const tieneDestacado = cat.periodos.some(p => p.es_destacado);
+            const estrellaHdr = tieneDestacado ? '<i class="fas fa-star"></i>' : '';
+            
+            let tooltipHtml = '<div class="tooltip-content">';
+            cat.periodos.forEach(p => {
+                const estrellaPeriodo = p.es_destacado ? '<i class="fas fa-star tooltip-star"></i>' : '';
+                tooltipHtml += `
+                    <div class="tooltip-period-item">
+                        <span>${escapeHtml(p.nombre)}</span>
+                        ${estrellaPeriodo}
+                    </div>`;
+            });
+            tooltipHtml += '</div>';
+
+            return `
+                <span class="badge badge-categoria" style="background:${cat.color}20;color:${cat.color};display:inline-flex;width:fit-content;margin-bottom:0px;">
+                    ${cat.icono||'📁'} ${escapeHtml(cat.nombre||'Sin categoría')} ${estrellaHdr}
+                    ${tooltipHtml}
+                </span>`;
+        }).join('<br>');
+    }
+
+    // Contacto
+    const esMenor = est.es_menor == 1;
+    let contactoHtml = '<div style="display:flex;flex-direction:column;gap:4px;align-items:flex-start;">';
+    if (est.celular) {
+        contactoHtml += `<a href="https://wa.me/${formatPhoneLink(est.celular)}" target="_blank" class="contact-chip contact-chip-whatsapp" style="max-width:100%;"><i class="fab fa-whatsapp"></i> ${formatPhoneDisplay(est.celular)}</a>`;
+    } else if (esMenor && est.representante_celular) {
+        contactoHtml += `<a href="https://wa.me/${formatPhoneLink(est.representante_celular)}" target="_blank" class="contact-chip contact-chip-whatsapp" style="max-width:100%;"><i class="fas fa-user-tie"></i> ${formatPhoneDisplay(est.representante_celular)} (Rep)</a>`;
+    }
+    if (est.email) {
+        contactoHtml += `<a href="mailto:${est.email}" class="contact-chip contact-chip-email" style="max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><i class="fas fa-envelope"></i> ${est.email}</a>`;
+    } else if (esMenor && est.representante_email) {
+        contactoHtml += `<a href="mailto:${est.representante_email}" class="contact-chip contact-chip-email" style="max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><i class="fas fa-user-tie"></i> ${est.representante_email} (Rep)</a>`;
+    }
+    if (!est.celular && !(esMenor && est.representante_celular) && !est.email && !(esMenor && est.representante_email)) {
+        contactoHtml += '<span style="color:#cbd5e0;">-</span>';
+    }
+    contactoHtml += '</div>';
+
+    return { edadHtml, fechaRegistroHtml, categoriasHtml, contactoHtml, historialHtml };
+}
+
+function buildEstudianteRowHtml(est, repUniqueId, hasMenores, representantesCedulas) {
+    const iniciales = est.nombre ? est.nombre.split(' ').map(n=>n[0]).slice(0,2).join('').toUpperCase() : '?';
+    const colorCat = est.categoria_color || '#95a5a6';
+    const esMenor = est.es_menor == 1;
+    const isSelected = estudiantesSeleccionados.has(est.id);
+    const esRepresentante = representantesCedulas && est.cedula && representantesCedulas.has(est.cedula);
+
+    let rowClass = isSelected ? 'row-selected' : '';
+    if (esMenor) rowClass += ' estudiante-menor';
+    if (esRepresentante || hasMenores) rowClass += ' estudiante-representante';
+
+    const chevron = hasMenores
+        ? `<i id="toggle-${repUniqueId}" class="fas fa-chevron-right" onclick="toggleMenores('${repUniqueId}')" style="cursor:pointer;margin-right:8px;color:#3498db;width:15px;text-align:center;display:inline-block;" title="Ver menores"></i>`
+        : '<span style="display:inline-block;width:23px;"></span>';
+
+    const { edadHtml, fechaRegistroHtml, categoriasHtml, contactoHtml, historialHtml } = buildCeldasDatos(est);
+
+    return `
+        <tr class="${rowClass.trim()}">
+            <td class="sticky-col sticky-left-1">
+                <input type="checkbox" class="select-checkbox" data-id="${est.id}"
+                       onchange="toggleSelectStudent(${est.id})" ${isSelected ? 'checked' : ''}>
+            </td>
+            <td class="sticky-col sticky-left-2">
+                <div class="student-name">
+                    ${chevron}
+                    <div class="student-avatar" style="background:linear-gradient(135deg,${colorCat}cc,${colorCat});">${iniciales}</div>
+                    <div class="student-info">
+                        <strong>${escapeHtml(est.nombre)}</strong>
+                        ${esMenor ? '<span class="badge badge-menor"><i class="fas fa-child"></i> Menor de edad</span>' : ''}
                     </div>
-                </td>
-                <td>${est.cedula ? `<span class="cedula-cell">${escapeHtml(est.cedula)}</span>` : '<span style="color:#aaa">—</span>'}</td>
-                <td>${fechaRegistroHtml}</td>
-                <td>
-                    <div class="category-scroll-container">${categoriasHtml}</div>
-                </td>
-                <td>${edadHtml}</td>
-                <td style="text-align: center;">${contactoHtml}</td>
-                <td class="sticky-col sticky-right" style="text-align: right;">
-                    <div class="actions-cell" style="justify-content: flex-end;">
-                        <button class="btn-icon btn-view" onclick="verCertificados(${est.id})" title="Ver Certificados" style="color:#00348a;background:#e8f0fe;">
-                            <i class="fas fa-certificate"></i>
-                        </button>
-                        <button class="btn-icon btn-edit" onclick="editarEstudiante(${est.id})" title="Editar">
-                            <i class="fas fa-edit"></i>
-                        </button>
-                        <button class="btn-icon btn-delete" onclick="eliminarEstudiante(${est.id})" title="Quitar">
-                            <i class="fas fa-user-minus"></i>
-                        </button>
+                </div>
+            </td>
+            <td>${est.cedula ? `<span class="cedula-cell">${escapeHtml(est.cedula)}</span>` : '<span style="color:#aaa">—</span>'}</td>
+            <td>${fechaRegistroHtml}</td>
+            <td><div class="categorias-container">${categoriasHtml}</div></td>
+            <td>${edadHtml}</td>
+            <td style="text-align:center;">${historialHtml}</td>
+            <td style="text-align:center;">${contactoHtml}</td>
+            <td class="sticky-col sticky-right" style="text-align:right;">
+                <div class="actions-cell" style="justify-content:flex-end;">
+                    <button class="btn-icon btn-view" onclick="verCertificados(${est.id})" title="Ver Certificados" style="color:#00348a;background:#e8f0fe;"><i class="fas fa-certificate"></i></button>
+                    <button class="btn-icon btn-edit" onclick="editarEstudiante(${est.id})" title="Editar"><i class="fas fa-edit"></i></button>
+                    <button class="btn-icon btn-delete" onclick="eliminarEstudiante(${est.id})" title="Quitar"><i class="fas fa-user-minus"></i></button>
+                </div>
+            </td>
+        </tr>`;
+}
+
+function buildMenorRowHtml(est, repUniqueId) {
+    const iniciales = est.nombre ? est.nombre.split(' ').map(n=>n[0]).slice(0,2).join('').toUpperCase() : '?';
+    const colorCat = est.categoria_color || '#95a5a6';
+    const isSelected = estudiantesSeleccionados.has(est.id);
+
+    const { edadHtml, fechaRegistroHtml, categoriasHtml, contactoHtml, historialHtml } = buildCeldasDatos(est);
+
+    const rowClass = (isSelected ? 'row-selected ' : '') + `estudiante-menor menor-de-${repUniqueId}`;
+
+    return `
+        <tr class="${rowClass}" style="display:none;background:#f8fbff;">
+            <td class="sticky-col sticky-left-1">
+                <input type="checkbox" class="select-checkbox" data-id="${est.id}"
+                       onchange="toggleSelectStudent(${est.id})" ${isSelected ? 'checked' : ''}>
+            </td>
+            <td class="sticky-col sticky-left-2">
+                <div class="student-name student-indent">
+                    <i class="fas fa-level-up-alt fa-rotate-90" style="color: #bdc3c7; margin-right: 8px; margin-left: 5px;"></i>
+                    <div class="student-avatar" style="background:linear-gradient(135deg,${colorCat}cc,${colorCat});width:28px;height:28px;font-size:11px;">${iniciales}</div>
+                    <div class="student-info">
+                        <strong>${escapeHtml(est.nombre)}</strong>
+                        <span class="badge badge-menor"><i class="fas fa-child"></i> Menor de edad</span>
                     </div>
-                </td>
-            </tr>
-        `;
-    }).join('');
+                </div>
+            </td>
+            <td>${est.cedula ? `<span class="cedula-cell">${escapeHtml(est.cedula)}</span>` : '<span style="color:#aaa">—</span>'}</td>
+            <td>${fechaRegistroHtml}</td>
+            <td><div class="categorias-container">${categoriasHtml}</div></td>
+            <td>${edadHtml}</td>
+            <td style="text-align:center;">${historialHtml}</td>
+            <td style="text-align:center;">${contactoHtml}</td>
+            <td class="sticky-col sticky-right" style="text-align:right;">
+                <div class="actions-cell" style="justify-content:flex-end;">
+                    <button class="btn-icon btn-view" onclick="verCertificados(${est.id})" title="Ver Certificados" style="color:#00348a;background:#e8f0fe;"><i class="fas fa-certificate"></i></button>
+                    <button class="btn-icon btn-edit" onclick="editarEstudiante(${est.id})" title="Editar"><i class="fas fa-edit"></i></button>
+                    <button class="btn-icon btn-delete" onclick="eliminarEstudiante(${est.id})" title="Quitar"><i class="fas fa-user-minus"></i></button>
+                </div>
+            </td>
+        </tr>`;
+}
+
+function buildRepresentanteVirtualRowHtml(fila, repUniqueId) {
+    const hasMenores = fila.menores && fila.menores.length > 0;
+    const chevron = hasMenores
+        ? `<i id="toggle-${repUniqueId}" class="fas fa-chevron-right" onclick="toggleMenores('${repUniqueId}')" style="cursor:pointer;margin-right:8px;color:#3498db;width:15px;text-align:center;display:inline-block;" title="Ver menores (${fila.menores.length})"></i>`
+        : '<span style="display:inline-block;width:23px;"></span>';
+
+    let contactoHtml = '<div style="display:flex;flex-direction:column;gap:4px;align-items:flex-start;">';
+    if (fila.celular) {
+        contactoHtml += `<a href="https://wa.me/${formatPhoneLink(fila.celular)}" target="_blank" class="contact-chip contact-chip-whatsapp" style="max-width:100%;"><i class="fab fa-whatsapp"></i> ${formatPhoneDisplay(fila.celular)}</a>`;
+    }
+    if (fila.email) {
+        contactoHtml += `<a href="mailto:${fila.email}" class="contact-chip contact-chip-email" style="max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><i class="fas fa-envelope"></i> ${fila.email}</a>`;
+    }
+    if (!fila.celular && !fila.email) contactoHtml += '<span style="color:#cbd5e0;">-</span>';
+    contactoHtml += '</div>';
+
+    const countBadge = hasMenores
+        ? `<span style="background:#3498db22;color:#3498db;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:6px;font-weight:600;">${fila.menores.length} menor${fila.menores.length>1?'es':''}</span>`
+        : '';
+
+    return `
+        <tr class="estudiante-representante">
+            <td class="sticky-col sticky-left-1"></td>
+            <td class="sticky-col sticky-left-2">
+                <div class="student-name">
+                    ${chevron}
+                    <div class="student-avatar" style="background:linear-gradient(135deg,#7f8c8dcc,#7f8c8d);width:32px;height:32px;font-size:12px;">
+                        <i class="fas fa-user-tie" style="font-size:14px;"></i>
+                    </div>
+                    <div class="student-info">
+                        <strong>${escapeHtml(fila.nombre || 'Sin nombre')}</strong>
+                        <span style="display:inline-flex;align-items:center;gap:4px;">
+                            <span class="badge" style="background:#7f8c8d22;color:#7f8c8d;font-size:10px;"><i class="fas fa-user-tie"></i> Representante</span>
+                            ${countBadge}
+                        </span>
+                    </div>
+                </div>
+            </td>
+            <td>${fila.cedula ? `<span class="cedula-cell" style="opacity:0.85;">${escapeHtml(fila.cedula)}</span>` : '<span style="color:#aaa">—</span>'}</td>
+            <td></td>
+            <td></td>
+            <td></td>
+            <td style="text-align:center;">${contactoHtml}</td>
+            <td class="sticky-col sticky-right"></td>
+        </tr>`;
+}
+
+function toggleMenores(repUniqueId) {
+    const rows = document.querySelectorAll(`.menor-de-${repUniqueId}`);
+    const toggleEl = document.getElementById(`toggle-${repUniqueId}`);
+    let isHidden = false;
+    rows.forEach(row => {
+        if (row.style.display === 'none') {
+            row.style.display = 'table-row';
+            isHidden = false;
+        } else {
+            row.style.display = 'none';
+            isHidden = true;
+        }
+    });
+    if (toggleEl) {
+        toggleEl.classList.toggle('fa-chevron-down', !isHidden);
+        toggleEl.classList.toggle('fa-chevron-right', isHidden);
+    }
 }
 
 // ========== SELECTION & BULK ACTIONS ==========
@@ -1031,8 +1180,132 @@ document.addEventListener('keydown', function (e) {
         cerrarCertificadosModal();
         cerrarDeleteModal();
         cerrarHistorial();
+        cerrarModal(null, 'modalHistorial');
     }
 });
+
+function cerrarModal(event = null, modalId = null) {
+    if (event && event.target !== event.currentTarget) return;
+
+    if (modalId) {
+        const m = document.getElementById(modalId);
+        if (m) {
+            m.classList.remove('active');
+        }
+        return;
+    }
+
+    document.querySelectorAll('.modal').forEach(m => {
+        m.classList.remove('active');
+    });
+}
+
+function calcularEdad(fechaNacimiento) {
+    if (!fechaNacimiento) return '-';
+    const hoy = new Date();
+    const nacimiento = new Date(fechaNacimiento);
+    let edad = hoy.getFullYear() - nacimiento.getFullYear();
+    const m = hoy.getMonth() - nacimiento.getMonth();
+    if (m < 0 || (m === 0 && hoy.getDate() < nacimiento.getDate())) {
+        edad--;
+    }
+    return edad;
+}
+
+function abrirModalHistorial(estudianteId) {
+    const modal = document.getElementById('modalHistorial');
+    const container = document.getElementById('historialContainer');
+
+    if (!modal || !container) return;
+
+    // Mostrar modal con spinner
+    modal.classList.add('active');
+    container.innerHTML = `
+        <div style="text-align: center; padding: 40px; color: #6b7280;">
+            <i class="fas fa-spinner fa-spin fa-3x" style="margin-bottom: 15px;"></i>
+            <p>Cargando el historial del estudiante...</p>
+        </div>
+    `;
+
+    // Fetch al endpoint
+    fetch(`../api/categorias/estudiantes.php?action=historial_auditoria&estudiante_id=${estudianteId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success && data.historial && data.historial.length > 0) {
+                let html = '';
+                data.historial.forEach(item => {
+                    const fechaObj = new Date(item.fecha);
+                    const fechaFmt = fechaObj.toLocaleString('es-ES', {
+                        day: '2-digit', month: '2-digit', year: 'numeric',
+                        hour: '2-digit', minute: '2-digit'
+                    });
+
+                    // Traducir acción
+                    let accionLetra = item.accion;
+                    let iconColor = '#3498db';
+                    let iconClass = 'fa-info-circle';
+                    
+                    if (accionLetra === 'creacion') {
+                        iconColor = '#2ecc71'; iconClass = 'fa-plus-circle'; accionLetra = 'Creación';
+                    } else if (accionLetra === 'actualizacion') {
+                        iconColor = '#f39c12'; iconClass = 'fa-edit'; accionLetra = 'Actualización';
+                    } else if (accionLetra === 'eliminacion') {
+                        iconColor = '#e74c3c'; iconClass = 'fa-trash-alt'; accionLetra = 'Eliminación';
+                    } else if (accionLetra === 'cambio_categoria') {
+                        iconColor = '#9b59b6'; iconClass = 'fa-exchange-alt'; accionLetra = 'Cambio Categ.';
+                    }
+
+                    const usuario = item.usuario_nombre || 'Sistema / Desconocido';
+                    
+                    let detallesStr = '-';
+                    if (item.detalles) {
+                        try {
+                            const parsed = JSON.parse(item.detalles);
+                            const lines = [];
+                            if (typeof parsed === 'object') {
+                                for(let key in parsed) {
+                                    lines.push(`<strong>${key}:</strong> ${parsed[key]}`);
+                                }
+                                detallesStr = lines.join('<br>');
+                            } else {
+                                detallesStr = item.detalles;
+                            }
+                        }catch(e) {
+                            detallesStr = item.detalles;
+                        }
+                    }
+
+                    html += `
+                        <div class="audit-item" style="border-left-color: ${iconColor};">
+                            <div class="audit-header">
+                                <span><i class="fas ${iconClass}" style="color:${iconColor}; margin-right:5px;"></i> ${fechaFmt}</span>
+                                <span style="color: #4b5563;"><i class="fas fa-user-circle"></i> ${usuario}</span>
+                            </div>
+                            <div class="audit-action">${accionLetra}</div>
+                            <p class="audit-details" style="margin-top: 5px;">${detallesStr}</p>
+                        </div>
+                    `;
+                });
+                container.innerHTML = html;
+            } else {
+                container.innerHTML = `
+                    <div style="text-align: center; padding: 40px; color: #6b7280;">
+                        <i class="fas fa-history fa-3x" style="margin-bottom: 15px; opacity: 0.5;"></i>
+                        <p>No se encontraron registros en el historial de este estudiante.</p>
+                    </div>
+                `;
+            }
+        })
+        .catch(err => {
+            console.error('Error cargando historial:', err);
+            container.innerHTML = `
+                <div style="text-align: center; padding: 40px; color: #ef4444;">
+                    <i class="fas fa-exclamation-triangle fa-3x" style="margin-bottom: 15px;"></i>
+                    <p>Error al cargar el historial.</p>
+                </div>
+            `;
+        });
+}
 
 const detalleModal = document.getElementById('detalleModal');
 if (detalleModal) detalleModal.addEventListener('click', function (e) { if (e.target === this) cerrarModal(); });

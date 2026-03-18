@@ -1,5 +1,6 @@
 <?php
 require_once '../../includes/Auth.php';
+require_once '../../includes/SiteSettings.php';
 require_once '../../config/database.php';
 
 // Verificar autenticación
@@ -10,6 +11,7 @@ $usuario = Auth::user();
 $basePath = '..';
 $cssPath = '../css';
 $jsPath = '../js';
+$siteConfig = SiteSettings::toViewModel(SiteSettings::get($pdo), $basePath);
 
 try {
     $pdo = getConnection();

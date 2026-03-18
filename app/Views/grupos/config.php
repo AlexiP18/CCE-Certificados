@@ -83,13 +83,12 @@
             <div class="workspace-canvas-area" id="canvasArea">
                 
                 <div class="variables-toolbar">
-                    <span class="toolbar-label">Elementos Visibles:</span>
-                    <label class="toggle-switch"><input type="checkbox" id="toggle_nombre" value="nombre" checked> <span class="slider round"></span> <span class="label-text">Nombre</span></label>
-                    <label class="toggle-switch"><input type="checkbox" id="toggle_razon" value="razon" checked> <span class="slider round"></span> <span class="label-text">Razón</span></label>
-                    <label class="toggle-switch"><input type="checkbox" id="toggle_fecha" value="fecha" checked> <span class="slider round"></span> <span class="label-text">Fecha</span></label>
-                    <label class="toggle-switch"><input type="checkbox" id="toggle_qr" value="qr" checked> <span class="slider round"></span> <span class="label-text">QR</span></label>
-                    <label class="toggle-switch"><input type="checkbox" id="toggle_firma" value="firma" checked> <span class="slider round"></span> <span class="label-text">Firma</span></label>
-                    <label class="toggle-switch"><input type="checkbox" id="toggle_destacado" value="destacado"> <span class="slider round"></span> <span class="label-text">Destacado</span></label>
+                    <label class="toggle-switch" title="Nombre"><i class="fas fa-user toggle-icon"></i><input type="checkbox" id="toggle_nombre" value="nombre" checked> <span class="slider round"></span></label>
+                    <label class="toggle-switch" title="Razón"><i class="fas fa-file-alt toggle-icon"></i><input type="checkbox" id="toggle_razon" value="razon" checked> <span class="slider round"></span></label>
+                    <label class="toggle-switch" title="Fecha"><i class="fas fa-calendar toggle-icon"></i><input type="checkbox" id="toggle_fecha" value="fecha" checked> <span class="slider round"></span></label>
+                    <label class="toggle-switch" title="QR"><i class="fas fa-qrcode toggle-icon"></i><input type="checkbox" id="toggle_qr" value="qr" checked> <span class="slider round"></span></label>
+                    <label class="toggle-switch" title="Firma"><i class="fas fa-signature toggle-icon"></i><input type="checkbox" id="toggle_firma" value="firma" checked> <span class="slider round"></span></label>
+                    <label class="toggle-switch" title="Destacado"><i class="fas fa-star toggle-icon"></i><input type="checkbox" id="toggle_destacado" value="destacado"> <span class="slider round"></span></label>
                 </div>
 
                 <div class="canvas-wrapper" id="canvasWrapper">
@@ -125,9 +124,15 @@
                 </div>
 
                 <!-- Action Buttons Outside the Card -->
-                <div class="sidebar-actions-outside" style="display: flex; gap: 10px;">
-                    <button type="button" class="btn btn-outline" id="btnPreview" style="flex: 1; padding: 12px; font-size: 14px; border-radius: 8px; background: white; border: 1px solid var(--border-color);"><i class="fas fa-eye"></i> Previsualizar</button>
-                    <button type="button" class="btn btn-primary" id="btnSaveConfig" style="flex: 1; padding: 12px; font-size: 14px; border-radius: 8px;"><i class="fas fa-save"></i> Guardar Cambios</button>
+                <div class="sidebar-actions-outside">
+                    <button type="button" class="action-btn action-btn--preview" id="btnPreview">
+                        <i class="fas fa-eye"></i>
+                        <span>Previsualizar</span>
+                    </button>
+                    <button type="button" class="action-btn action-btn--save" id="btnSaveConfig">
+                        <i class="fas fa-save"></i>
+                        <span>Guardar Cambios</span>
+                    </button>
                 </div>
             </div>
         </div>
@@ -277,28 +282,10 @@
 
     <template id="panelDestacadoTemplate">
         <div class="panel-group">
-            <label>Tipo de Sello</label>
-            <select class="settings-input" data-bind="destacado_tipo">
-                <option value="icono">Predeterminado del Sistema</option>
-                <option value="imagen">Subir Personalizado</option>
-            </select>
-        </div>
-        
-        <div class="panel-group condition-grupo" data-condition="destacado_tipo:icono">
             <label>Selección de Icono</label>
             <div class="icon-selector-grid">
                <!-- Injected via JS -->
             </div>
-        </div>
-
-        <div class="panel-group condition-grupo" data-condition="destacado_tipo:imagen">
-             <label>Sello Personalizado (<small>opcional</small>)</label>
-            <div class="upload-dropzone" id="destacadoDropzone">
-                <i class="fas fa-upload"></i>
-                <span>Haz clic para subir PNG/JPG</span>
-                <input type="file" id="destacadoUploadDirect" accept="image/*" style="display:none;">
-            </div>
-            <div id="destacadoPreviewHolder" class="image-preview-holder"></div>
         </div>
         
         <div class="panel-group">

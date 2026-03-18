@@ -27,6 +27,9 @@
                             <?php if ($periodo_actual): ?>
                             &nbsp;|&nbsp; <i class="fas fa-calendar"></i> <?= htmlspecialchars($periodo_actual['nombre']) ?>
                             <?php endif; ?>
+                            <?php if (!empty($categoria['instructor_nombre'])): ?>
+                            &nbsp;|&nbsp; <i class="fas fa-chalkboard-teacher"></i> <?= htmlspecialchars($categoria['instructor_nombre']) ?><?php if (!empty($categoria['instructor_cedula'])): ?> | CI: <?= htmlspecialchars($categoria['instructor_cedula']) ?><?php endif; ?>
+                            <?php endif; ?>
                         </div>
                     </div>
                 </div>
@@ -100,10 +103,7 @@
                 </div>
                 <div class="bulk-buttons">
                     <button class="btn-bulk btn-bulk-primary" id="btnGenerarSeleccionados" onclick="generarCertificadosSeleccionados()" style="display: none;">
-                        <i class="fas fa-certificate"></i> Aprobar Certificados
-                    </button>
-                    <button class="btn-bulk btn-bulk-primary" id="btnRegenerarSeleccionados" onclick="regenerarCertificadosSeleccionados()" style="display: none; background: linear-gradient(135deg, #3498db, #2980b9);">
-                        <i class="fas fa-sync-alt"></i> Regenerar Certificados
+                        <i class="fas fa-check-double"></i> Aprobar / Desaprobar
                     </button>
                     <button class="btn-bulk btn-bulk-primary" id="btnDescargarPdfSeleccionados" onclick="descargarCertificadosSeleccionados('pdf')" style="display: none;">
                         <i class="fas fa-file-pdf"></i> Descargar PDF
@@ -111,11 +111,8 @@
                     <button class="btn-bulk btn-bulk-primary" id="btnDescargarImgSeleccionados" onclick="descargarCertificadosSeleccionados('imagen')" style="display: none;">
                         <i class="fas fa-image"></i> Descargar Imagen
                     </button>
-                    <button class="btn-bulk btn-bulk-primary" id="btnDestacadosSeleccionados" onclick="establecerDestacadosSeleccionados()" style="display: none; background: #f39c12; border-color: #f39c12;">
-                        <i class="fas fa-star"></i> Marcar
-                    </button>
-                    <button class="btn-bulk btn-bulk-primary" id="btnQuitarDestacadosSeleccionados" onclick="quitarDestacadosSeleccionados()" style="display: none; background: #95a5a6; border-color: #95a5a6;">
-                        <i class="far fa-star"></i> Desmarcar
+                    <button class="btn-bulk btn-bulk-primary" id="btnToggleDestacados" onclick="toggleDestacadosSeleccionados()" style="display: none; background: #f39c12; border-color: #f39c12;">
+                        <i class="fas fa-star"></i> Marcar / Desmarcar
                     </button>
                     <button class="btn-bulk btn-bulk-primary" id="btnQuitarSeleccionados" onclick="confirmarQuitarSeleccionados()" style="display: none; background: #e74c3c; border-color: #e74c3c;">
                         <i class="fas fa-trash-alt"></i> Quitar
@@ -254,7 +251,12 @@
                 <!-- Búsqueda de estudiante existente -->
                 <div class="form-group">
                     <label><i class="fas fa-search"></i> Buscar estudiante existente</label>
-                    <input type="text" id="buscarExistente" placeholder="Escribe nombre o cédula del estudiante...">
+                    <div style="position: relative; display: flex; align-items: center;">
+                        <input type="text" id="buscarExistente" placeholder="Escribe nombre o cédula del estudiante..." style="width: 100%; padding-right: 35px;">
+                        <button type="button" id="btnLimpiarBuscarExistente" onclick="limpiarBuscadorExistente()" style="display: none; position: absolute; right: 10px; background: none; border: none; color: #95a5a6; cursor: pointer; padding: 5px;">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
                     <div id="resultadosBusqueda" style="margin-top: 10px; max-height: 150px; overflow-y: auto;"></div>
                 </div>
                 
@@ -439,120 +441,115 @@
         </div>
     </div>
     
-    <!-- Modal para generar certificado -->
-    <div class="modal-overlay" id="modalGenerar" onclick="cerrarModal(event, 'modalGenerar')">
-        <div class="modal" onclick="event.stopPropagation()" style="max-width: 1100px; width: 95%; padding: 0; overflow: hidden; display: flex; flex-direction: column; max-height: 90vh;">
-            <div class="modal-header" style="background: linear-gradient(135deg, #27ae60, #229954); padding: 20px 25px; margin: 0; flex-shrink: 0;">
-                <h3 style="color: white; margin: 0;"><i class="fas fa-certificate"></i> Generar Certificados</h3>
-                <button class="modal-close" onclick="cerrarModal(null, 'modalGenerar')" style="background: rgba(255,255,255,0.2); color: white;">
-                    <i class="fas fa-times"></i>
-                </button>
-            </div>
-            <div id="modalGenerarContent" class="modal-body" style="padding: 25px; overflow-y: auto; flex: 1;">
-                <!-- Alerta si plantilla no configurada -->
-                <div id="generarPlantillaAlerta" style="display: none; background: linear-gradient(135deg, #fff3cd, #ffeeba); border: 1px solid #ffc107; border-radius: 10px; padding: 15px 20px; margin-bottom: 20px;">
-                    <div style="display: flex; align-items: center; gap: 12px;">
-                        <i class="fas fa-exclamation-triangle" style="color: #856404; font-size: 24px;"></i>
-                        <div>
-                            <strong style="color: #856404;">Plantilla no configurada</strong>
-                            <p style="margin: 5px 0 0 0; color: #856404; font-size: 13px;">Debe configurar la plantilla del certificado antes de generar. <a id="linkConfigPlantilla" href="#" style="color: #0056b3; font-weight: 600;">Ir a configuración</a></p>
-                        </div>
-                    </div>
-                </div>
-                
-                <div style="display: grid; grid-template-columns: 1.5fr 1fr; gap: 30px;">
-                    <!-- Columna izquierda: Preview -->
-                    <div>
-                        <h4 style="margin: 0 0 15px 0; color: #2c3e50; font-size: 16px;"><i class="fas fa-eye" style="color: #27ae60;"></i> Previsualización de Plantilla</h4>
-                        <div id="generarPreviewContainer" style="background: linear-gradient(145deg, #f8f9fa, #e9ecef); border-radius: 12px; padding: 20px; min-height: 350px; display: flex; align-items: center; justify-content: center; border: 1px solid #dee2e6;">
-                            <div id="generarPreviewLoading" style="text-align: center;">
-                                <i class="fas fa-spinner fa-spin fa-2x" style="color: #27ae60;"></i>
-                                <p style="margin-top: 10px; color: #7f8c8d;">Cargando previsualización...</p>
-                            </div>
-                            <img id="generarPreviewImage" src="" alt="Previsualización" style="display: none; max-width: 100%; max-height: 450px; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.15);">
-                        </div>
-                        <p style="color: #7f8c8d; font-size: 12px; margin-top: 12px; text-align: center;">
-                            <i class="fas fa-info-circle"></i> Así lucirán los certificados generados
-                        </p>
-                    </div>
-                    
-                    <!-- Columna derecha: Opciones y lista -->
-                    <div>
-                        <h4 style="margin: 0 0 15px 0; color: #2c3e50; font-size: 16px;"><i class="fas fa-cog" style="color: #27ae60;"></i> Opciones de Generación</h4>
-                        
-                        <div class="form-group" style="margin-bottom: 20px;">
-                            <label style="font-weight: 600; color: #34495e; display: block; margin-bottom: 8px;"><i class="fas fa-calendar" style="color: #27ae60;"></i> Fecha del Certificado</label>
-                            <input type="date" id="fechaCertificado" value="<?= date('Y-m-d') ?>" style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 14px; transition: border-color 0.3s;" onfocus="this.style.borderColor='#27ae60'" onblur="this.style.borderColor='#e0e0e0'">
-                        </div>
-                        
-                        <h4 style="margin: 20px 0 15px 0; color: #2c3e50; font-size: 16px;"><i class="fas fa-users" style="color: #27ae60;"></i> Estudiantes a certificar (<span id="generarCount" style="color: #27ae60; font-weight: 700;">0</span>)</h4>
-                        <div id="listaEstudiantesGenerar" style="max-height: 220px; overflow-y: auto; background: #f8f9fa; border-radius: 8px; padding: 12px; border: 1px solid #e0e0e0;">
-                            <!-- Se llena dinámicamente -->
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="modal-footer" style="margin-top: 25px; padding-top: 20px; border-top: 1px solid #eee; display: flex; justify-content: flex-end; gap: 12px;">
-                    <button type="button" class="btn btn-secondary" onclick="cerrarModal(null, 'modalGenerar')" style="padding: 12px 24px;">
-                        <i class="fas fa-times"></i> Cancelar
-                    </button>
-                    <button type="button" class="btn" id="btnConfirmarGenerar" onclick="confirmarGeneracion()" style="background: linear-gradient(135deg, #27ae60, #229954); color: white; padding: 12px 24px; font-weight: 600;">
-                        <i class="fas fa-certificate"></i> Generar Certificados
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Modal para regenerar certificados -->
-    <div class="modal-overlay" id="modalRegenerar" onclick="cerrarModal(event, 'modalRegenerar')">
-        <div class="modal" onclick="event.stopPropagation()" style="max-width: 1100px; width: 95%; padding: 0; overflow: hidden; display: flex; flex-direction: column; max-height: 90vh;">
+    <!-- Modal para aprobar certificado por lotes -->
+    <div class="modal-overlay" id="modalAprobarLote" onclick="cerrarModal(event, 'modalAprobarLote')">
+        <div class="modal" onclick="event.stopPropagation()" style="max-width: 1050px; width: 95%; padding: 0; overflow: hidden; display: flex; flex-direction: column; max-height: 90vh;">
             <div class="modal-header" style="background: linear-gradient(135deg, <?= $color_principal ?>, <?= $color_principal ?>dd); padding: 20px 25px; margin: 0; flex-shrink: 0;">
-                <h3 style="color: white; margin: 0;"><i class="fas fa-sync-alt"></i> Regenerar Certificados</h3>
-                <button class="modal-close" onclick="cerrarModal(null, 'modalRegenerar')" style="background: rgba(255,255,255,0.2); color: white;">
+                <h3 style="color: white; margin: 0;"><i class="fas fa-check-double"></i> Aprobar / Desaprobar por Lote</h3>
+                <button class="modal-close" onclick="cerrarModal(null, 'modalAprobarLote')" style="background: rgba(255,255,255,0.2); color: white;">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
-            <div class="modal-body" style="padding: 25px; overflow-y: auto; flex: 1;">
-                <div style="display: grid; grid-template-columns: 1.5fr 1fr; gap: 30px;">
-                    <!-- Columna izquierda: Preview (más ancha) -->
-                    <div>
-                        <h4 style="margin: 0 0 15px 0; color: #2c3e50; font-size: 16px;"><i class="fas fa-eye" style="color: <?= $color_principal ?>;"></i> Previsualización de Plantilla</h4>
-                        <div id="regenerarPreviewContainer" style="background: linear-gradient(145deg, #f8f9fa, #e9ecef); border-radius: 12px; padding: 20px; min-height: 350px; display: flex; align-items: center; justify-content: center; border: 1px solid #dee2e6;">
-                            <div id="regenerarPreviewLoading" style="text-align: center;">
-                                <i class="fas fa-spinner fa-spin fa-2x" style="color: <?= $color_principal ?>;"></i>
-                                <p style="margin-top: 10px; color: #7f8c8d;">Cargando previsualización...</p>
-                            </div>
-                            <img id="regenerarPreviewImage" src="" alt="Previsualización" style="display: none; max-width: 100%; max-height: 450px; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.15);">
-                        </div>
-                        <p style="color: #7f8c8d; font-size: 12px; margin-top: 12px; text-align: center;">
-                            <i class="fas fa-info-circle"></i> Esta es la configuración actual de la plantilla
-                        </p>
+            <div id="modalAprobarLoteContent" class="modal-body" style="padding: 25px; overflow-y: auto; overflow-x: auto; flex: 1;">
+                <p style="color: #666; margin-bottom: 20px;">
+                    Verifica la lista de estudiantes seleccionados para aprobación. Puedes quitar de la lista a los estudiantes que no desees aprobar en este lote.
+                </p>
+                
+                <div class="bulk-actions" id="bulkActionsModal" style="display: none; padding: 12px 15px; background: #e8f0fe; border-radius: 8px; margin-bottom: 15px; align-items: center; justify-content: space-between; border: 1px solid #c2dbfe;">
+                    <div class="bulk-info" style="color: #1967d2; font-weight: 500;">
+                        <i class="fas fa-check-circle" style="margin-right: 5px;"></i>
+                        <span><span id="selectedCountModal">0</span> estudiantes marcados</span>
+                    </div>
+                    <div class="bulk-buttons">
+                        <button class="btn-bulk btn-bulk-cancel" onclick="quitarSeleccionadosDeLoteModal()" style="background: #e74c3c; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-size: 13px;">
+                            <i class="fas fa-user-times"></i> Quitar del lote
+                        </button>
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                    <div class="search-input-wrapper" style="border: 1px solid #ccc; border-radius: 8px; overflow: hidden; display: flex; align-items: center; padding: 0 10px; background: white; flex: 1;">
+                        <i class="fas fa-search" style="color: #7f8c8d;"></i>
+                        <input type="text" id="searchInputAprobarLote" placeholder="Buscar por nombre o cédula..." style="border: none; padding: 10px; width: 100%; outline: none;" oninput="filtrarListaAprobarLote()">
                     </div>
                     
-                    <!-- Columna derecha: Opciones y lista -->
-                    <div>
-                        <h4 style="margin: 0 0 15px 0; color: #2c3e50; font-size: 16px;"><i class="fas fa-cog" style="color: #3498db;"></i> Opciones de Regeneración</h4>
-                        
-                        <div class="form-group" style="margin-bottom: 20px;">
-                            <label style="font-weight: 600; color: #34495e; display: block; margin-bottom: 8px;"><i class="fas fa-comment-alt" style="color: #3498db;"></i> Razón de la regeneración</label>
-                            <textarea id="regenerarRazon" rows="3" placeholder="Ej: Actualización de plantilla, corrección de diseño, cambio de logo..." style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 14px; resize: vertical; transition: border-color 0.3s;" onfocus="this.style.borderColor='#3498db'" onblur="this.style.borderColor='#e0e0e0'"></textarea>
-                            <small style="color: #95a5a6; display: block; margin-top: 6px;">Opcional: Se guardará en el historial del certificado</small>
-                        </div>
-                        
-                        <h4 style="margin: 20px 0 15px 0; color: #2c3e50; font-size: 16px;"><i class="fas fa-users" style="color: #3498db;"></i> Estudiantes a regenerar (<span id="regenerarCount" style="color: #3498db; font-weight: 700;">0</span>)</h4>
-                        <div id="listaEstudiantesRegenerar" style="max-height: 220px; overflow-y: auto; background: #f8f9fa; border-radius: 8px; padding: 12px; border: 1px solid #e0e0e0;">
-                            <!-- Se llena dinámicamente -->
+                    <div class="dropdown-filter" style="position: relative;">
+                        <button class="btn btn-outline" onclick="toggleDropdownFiltroModal()" id="btnFiltroModal">
+                            <i class="fas fa-filter"></i> <span id="filtroTextoModal">Todos</span> <i class="fas fa-caret-down" style="margin-left: 5px;"></i>
+                        </button>
+                        <div class="dropdown-filter-menu" id="dropdownFiltroModal" style="display: none; position: absolute; top: calc(100% + 5px); right: 0; left: auto; background: white; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-radius: 8px; border: 1px solid #eee; min-width: 200px; z-index: 1000; overflow: hidden;">
+                            <a onclick="aplicarFiltroModal('todos')" class="active" style="display: block; padding: 12px 15px; color: #2c3e50; text-decoration: none; border-bottom: 1px solid #eee; cursor: pointer;"><i class="fas fa-users" style="width: 20px; color: #3498db;"></i> Todos</a>
+                            <a onclick="aplicarFiltroModal('representante')" style="display: block; padding: 12px 15px; color: #2c3e50; text-decoration: none; border-bottom: 1px solid #eee; cursor: pointer;"><i class="fas fa-users" style="width: 20px; color: #2ecc71;"></i> Con Representante</a>
+                            <a onclick="aplicarFiltroModal('mayores')" style="display: block; padding: 12px 15px; color: #2c3e50; text-decoration: none; border-bottom: 1px solid #eee; cursor: pointer;"><i class="fas fa-user-graduate" style="width: 20px; color: #9b59b6;"></i> Mayores de edad</a>
+                            <a onclick="aplicarFiltroModal('destacados')" style="display: block; padding: 12px 15px; color: #2c3e50; text-decoration: none; cursor: pointer;"><i class="fas fa-star" style="width: 20px; color: #f1c40f;"></i> Destacados</a>
                         </div>
                     </div>
                 </div>
+
+                <div class="table-wrapper" style="overflow-x: visible;">
+                    <table class="data-table" style="width: 100%; border-collapse: collapse;">
+                        <thead>
+                            <tr style="background-color: #f8f9fa; border-bottom: 2px solid #dee2e6;">
+                                <th style="padding: 12px; text-align: left; width: 40px;">
+                                    <input type="checkbox" id="selectAllModal" onchange="toggleSelectAllModal(this)" style="cursor: pointer;">
+                                </th>
+                                <th style="padding: 12px; text-align: left; width: 50px;">N°</th>
+                                <th style="padding: 12px; text-align: left;">Nombre</th>
+                                <th style="padding: 12px; text-align: left;">Cédula</th>
+                                <th style="padding: 12px; text-align: center; width: 100px;">Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody id="listaEstudiantesAprobarLote">
+                            <!-- Se llena dinámicamente -->
+                        </tbody>
+                    </table>
+                </div>
                 
-                <div class="modal-footer" style="margin-top: 25px; padding-top: 20px; border-top: 1px solid #eee; display: flex; justify-content: flex-end; gap: 12px;">
-                    <button type="button" class="btn btn-secondary" onclick="cerrarModal(null, 'modalRegenerar')" style="padding: 12px 24px;">
+                <!-- Pagination Footer Modal -->
+                <div class="pagination-footer" id="paginationFooterModal" style="display: none; flex-wrap: nowrap !important; white-space: nowrap !important; justify-content: space-between; align-items: center; padding-bottom: 5px; min-width: 800px;">
+                    <div class="pagination-info" style="white-space: nowrap !important; flex-shrink: 0; margin-right: 15px;">
+                        Mostrando <span id="pagStartModal">0</span> - <span id="pagEndModal">0</span> de <span id="pagTotalModal">0</span> estudiantes
+                    </div>
+                    <div class="pagination-controls" style="flex-wrap: nowrap !important; white-space: nowrap !important; flex-shrink: 0; display: flex; align-items: center; gap: 15px;">
+                        <div style="display: flex; align-items: center; gap: 5px;">
+                            <label style="margin: 0;">Filas por página:</label>
+                            <select id="rowsPerPageModal" onchange="cambiarFilasPorPaginaModal(this.value)">
+                                <option value="10" selected>10</option>
+                                <option value="25">25</option>
+                                <option value="50">50</option>
+                                <option value="100">100</option>
+                                <option value="-1">Todas</option>
+                            </select>
+                        </div>
+                        
+                        <div class="pagination-buttons">
+                            <button class="btn-page" id="btnPageFirstModal" onclick="irPaginaModal(1)" title="Primera"><i class="fas fa-angle-double-left"></i></button>
+                            <button class="btn-page" id="btnPagePrevModal" onclick="prevPaginaModal()" title="Anterior"><i class="fas fa-angle-left"></i></button>
+                            
+                            <span class="pagination-current">
+                                Página <input type="number" id="pageInputModal" value="1" min="1" onchange="irPaginaManualModal(this.value)"> de <span id="totalPagesModal">1</span>
+                            </span>
+                            
+                            <button class="btn-page" id="btnPageNextModal" onclick="nextPaginaModal()" title="Siguiente"><i class="fas fa-angle-right"></i></button>
+                            <button class="btn-page" id="btnPageLastModal" onclick="irPaginaModal('last')" title="Última"><i class="fas fa-angle-double-right"></i></button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Modal Footer fijo (fuera del scroll) -->
+            <div class="modal-footer" style="padding: 15px 25px; border-top: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; background: #fff;">
+                <div style="font-weight: bold; color: <?= $color_principal ?>; display: flex; align-items: center; gap: 15px; font-size: 14px;">
+                    <div>Total a aprobar: <span id="aprobarLoteCount" style="font-size: 16px;">0</span></div>
+                    <div style="color: #f39c12;" title="Seleccionados Destacados"><i class="fas fa-star"></i> <span id="aprobarLoteDestacados">0</span></div>
+                    <div style="color: #9b59b6;" title="Seleccionados Menores de Edad"><i class="fas fa-child"></i> <span id="aprobarLoteMenores">0</span></div>
+                    <div style="color: #3498db;" title="Seleccionados Representantes"><i class="fas fa-user-tie"></i> <span id="aprobarLoteRepresentantes">0</span></div>
+                </div>
+                <div style="display: flex; gap: 12px;">
+                    <button type="button" class="btn btn-secondary" onclick="cerrarModal(null, 'modalAprobarLote')" style="padding: 12px 24px;">
                         <i class="fas fa-times"></i> Cancelar
                     </button>
-                    <button type="button" class="btn" id="btnConfirmarRegenerar" onclick="confirmarRegeneracion()" style="background: linear-gradient(135deg, #3498db, #2980b9); color: white; padding: 12px 24px; font-weight: 600;">
-                        <i class="fas fa-sync-alt"></i> Regenerar Certificados
+                    <button type="button" class="btn" id="btnConfirmarAprobarLote" onclick="confirmarAprobacionLote()" style="background: linear-gradient(135deg, <?= $color_principal ?>, <?= $color_principal ?>dd); color: white; padding: 12px 24px; font-weight: 600;">
+                        <i class="fas fa-check-double"></i> Aprobar / Desaprobar
                     </button>
                 </div>
             </div>
@@ -733,6 +730,38 @@
             </div>
         </div>
     </div>
+    
+    <!-- Modal de confirmación para desaprobar estudiante -->
+    <div class="modal-overlay" id="modalConfirmarDesaprobar">
+        <div class="modal" onclick="event.stopPropagation()" style="max-width: 420px; padding: 0; border-radius: 16px; overflow: hidden;">
+            <div style="background: linear-gradient(135deg, #f39c12 0%, #d35400 100%); padding: 25px 30px; text-align: center;">
+                <div style="width: 60px; height: 60px; background: rgba(255,255,255,0.2); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 15px;">
+                    <i class="fas fa-undo" style="font-size: 28px; color: white;"></i>
+                </div>
+                <h3 style="color: white; margin: 0; font-size: 20px; font-weight: 600;">Deshacer Aprobación</h3>
+            </div>
+            <div style="padding: 25px 30px; text-align: center;">
+                <p style="color: #2c3e50; font-size: 15px; margin: 0 0 10px 0;">
+                    ¿Estás seguro de deshacer la aprobación de:
+                </p>
+                <p id="confirmarDesaprobarNombre" style="color: #d35400; font-size: 18px; font-weight: 600; margin: 0 0 15px 0;">
+                    <!-- Nombre del estudiante -->
+                </p>
+                <p style="color: #7f8c8d; font-size: 13px; margin: 0; background: #f8f9fa; padding: 12px; border-radius: 8px;">
+                    <i class="fas fa-info-circle"></i> El estado del certificado volverá a "Pendiente". Puedes generarlo o aprobarlo nuevamente en cualquier momento.
+                </p>
+            </div>
+            <div style="padding: 20px 30px; background: #f8f9fa; display: flex; gap: 12px; justify-content: center;">
+                <button type="button" class="btn btn-secondary" onclick="cerrarModal(null, 'modalConfirmarDesaprobar')" style="min-width: 100px;">
+                    Cancelar
+                </button>
+                <button type="button" id="btnConfirmarDesaprobar" class="btn" style="background: #e67e22; color: white; min-width: 100px;">
+                    <i class="fas fa-undo"></i> Desaprobar
+                </button>
+            </div>
+        </div>
+    </div>
+    
     <!-- Modal de confirmación para quitar MÚLTIPLES estudiantes -->
     <div class="modal-overlay" id="modalConfirmarQuitarSeleccionados">
         <div class="modal" onclick="event.stopPropagation()" style="max-width: 450px; padding: 0; border-radius: 16px; overflow: hidden;">

@@ -186,14 +186,6 @@ try {
             
             $stmt->execute([$nombre, $descripcion, $icono, $color, $id]);
             
-            // También actualizar el color de todas las categorías de este grupo
-            $stmt = $pdo->prepare("
-                UPDATE categorias 
-                SET color = ?
-                WHERE grupo_id = ? AND activo = 1
-            ");
-            $stmt->execute([$color, $id]);
-            
             echo json_encode([
                 'success' => true,
                 'message' => 'Grupo actualizado correctamente'

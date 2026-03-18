@@ -154,7 +154,8 @@
                             <th>Cédula</th>
                             <th>Fecha Matriculación</th>
                             <th>Categoría</th>
-                            <th>Fecha Nac. (Edad)</th>
+                            <th>Fecha Nac</th>
+                            <th>Historial</th>
                             <th>Contacto</th>
                             <th class="sticky-col sticky-right" style="text-align: right; background: #f8f9fa;">Acciones</th>
                         </tr>
@@ -336,13 +337,28 @@
         </div>
     </div>
 
-    <!-- Modal Historial -->
+    <!-- Modal Historial de Generaciones Original -->
     <div id="historyModal">
         <div class="history-content">
             <span class="history-close" onclick="cerrarHistorial()">&times;</span>
             <h3 style="margin-top:0; color:#333;">Historial de Generación</h3>
             <ul class="history-list" id="historyList"></ul>
             <button class="btn-bulk" onclick="cerrarHistorial()" style="width:100%; background:var(--color-grupo); color:white; border:none; border-radius:8px; padding:10px; cursor:pointer;">Cerrar</button>
+        </div>
+    </div>
+
+    <!-- Modal Historial de Auditoria (Nuevo) -->
+    <div id="modalHistorial" class="modal" onclick="cerrarModal(event, 'modalHistorial')">
+        <div class="modal-content modal-lg" onclick="event.stopPropagation()" style="background: white; border-radius: 12px; width: 90%; max-width: 800px; padding: 0; overflow: hidden; display: flex; flex-direction: column; max-height: 90vh;">
+            <div class="modal-header" style="background: linear-gradient(135deg, var(--color-grupo), var(--color-grupo)dd); padding: 20px 25px; margin: 0; flex-shrink: 0; display: flex; justify-content: space-between; align-items: center;">
+                <h3 style="color: white; margin: 0;"><i class="fas fa-history"></i> Historial de Cambios</h3>
+                <button class="modal-close" onclick="cerrarModal(null, 'modalHistorial')" style="background: rgba(255,255,255,0.2); color: white; border: none; width: 32px; height: 32px; border-radius: 50%; cursor: pointer;">×</button>
+            </div>
+            <div class="modal-body" style="padding: 25px; overflow-y: auto; flex: 1;">
+                <div id="historialContainer">
+                    <!-- Contenido cargado dinámicamente -->
+                </div>
+            </div>
         </div>
     </div>
 

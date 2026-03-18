@@ -1,5 +1,6 @@
 <?php
 require_once '../../includes/Auth.php';
+require_once '../../includes/SiteSettings.php';
 require_once '../../config/database.php';
 
 // Verificar autenticación
@@ -19,6 +20,8 @@ $usuarioCompleto = $stmt->fetch(PDO::FETCH_ASSOC);
 
 // Verificar si es superadmin
 $esSuperAdmin = isset($usuarioCompleto['es_superadmin']) && $usuarioCompleto['es_superadmin'] == 1;
+
+$siteConfig = SiteSettings::toViewModel(SiteSettings::get($pdo), BASE_URL);
 
 // Cargar la vista
 require_once '../../app/Views/mi_perfil/index.php';

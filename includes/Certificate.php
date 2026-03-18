@@ -35,51 +35,47 @@ class Certificate {
      * La plantilla puede venir después del grupo o categoría
      */
     private function loadConfig() {
-        $stmt = $this->pdo->query("SELECT * FROM configuracion_plantillas WHERE activa = 1 LIMIT 1");
-        $this->config = $stmt->fetch();
-        
-        // Si no hay plantilla global, inicializar con valores por defecto
-        // La plantilla puede venir del grupo o categoría después
-        if (!$this->config) {
-            $this->config = [
-                'archivo_plantilla' => null,
-                'posicion_nombre_x' => 540,
-                'posicion_nombre_y' => 380,
-                'posicion_razon_x' => 540,
-                'posicion_razon_y' => 450,
-                'posicion_fecha_x' => 540,
-                'posicion_fecha_y' => 520,
-                'posicion_qr_x' => 900,
-                'posicion_qr_y' => 40,
-                'posicion_firma_x' => 540,
-                'posicion_firma_y' => 580,
-                'fuente_nombre' => 'times',
-                'fuente_razon' => 'times',
-                'fuente_fecha' => 'times',
-                'tamanio_fuente' => 36,
-                'tamanio_razon' => 24,
-                'tamanio_fecha' => 18,
-                'tamanio_qr' => 100,
-                'tamanio_firma' => 80,
-                'color_texto' => '#000000',
-                'color_razon' => '#333333',
-                'color_fecha' => '#666666',
-                'razon_defecto' => '',
-                'formato_fecha' => 'd/m/Y',
-                'variables_habilitadas' => 'nombre,razon,fecha,qr',
-                'ancho_razon' => 600,
-                'lineas_razon' => 0, // 0 = auto, >0 = número fijo de líneas del canvas
-                'alineacion_razon' => 'justified', // left, center, right, justified
-                // Configuración de destacado
-                'destacado_habilitado' => 0,
-                'destacado_tipo' => 'icono',
-                'destacado_icono' => 'estrella',
-                'destacado_imagen' => null,
-                'destacado_posicion_x' => 50,
-                'destacado_posicion_y' => 50,
-                'destacado_tamanio' => 100
-            ];
-        }
+        // La tabla configuracion_plantillas ha sido eliminada.
+        // Inicializar con valores por defecto. 
+        // La configuración real vendrá del grupo o categoría después.
+        $this->config = [
+            'archivo_plantilla' => null,
+            'posicion_nombre_x' => 540,
+            'posicion_nombre_y' => 380,
+            'posicion_razon_x' => 540,
+            'posicion_razon_y' => 450,
+            'posicion_fecha_x' => 540,
+            'posicion_fecha_y' => 520,
+            'posicion_qr_x' => 900,
+            'posicion_qr_y' => 40,
+            'posicion_firma_x' => 540,
+            'posicion_firma_y' => 580,
+            'fuente_nombre' => 'times',
+            'fuente_razon' => 'times',
+            'fuente_fecha' => 'times',
+            'tamanio_fuente' => 36,
+            'tamanio_razon' => 24,
+            'tamanio_fecha' => 18,
+            'tamanio_qr' => 100,
+            'tamanio_firma' => 80,
+            'color_texto' => '#000000',
+            'color_razon' => '#333333',
+            'color_fecha' => '#666666',
+            'razon_defecto' => '',
+            'formato_fecha' => 'd/m/Y',
+            'variables_habilitadas' => 'nombre,razon,fecha,qr',
+            'ancho_razon' => 600,
+            'lineas_razon' => 0, // 0 = auto, >0 = número fijo de líneas del canvas
+            'alineacion_razon' => 'justified', // left, center, right, justified
+            // Configuración de destacado
+            'destacado_habilitado' => 0,
+            'destacado_tipo' => 'icono',
+            'destacado_icono' => 'estrella',
+            'destacado_image' => null,
+            'destacado_posicion_x' => 50,
+            'destacado_posicion_y' => 50,
+            'destacado_tamanio' => 100
+        ];
     }
     
     /**

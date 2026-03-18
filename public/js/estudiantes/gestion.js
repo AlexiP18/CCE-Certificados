@@ -44,6 +44,13 @@ document.addEventListener('DOMContentLoaded', function () {
     // Búsqueda de estudiante existente
     document.getElementById('buscarExistente').addEventListener('input', function () {
         clearTimeout(timeout);
+        
+        // Mostrar/ocultar botón de limpiar
+        const btnLimpiar = document.getElementById('btnLimpiarBuscarExistente');
+        if (btnLimpiar) {
+            btnLimpiar.style.display = this.value.length > 0 ? 'block' : 'none';
+        }
+        
         timeout = setTimeout(() => buscarEstudianteExistente(this.value), 300);
     });
 
@@ -67,6 +74,10 @@ document.addEventListener('DOMContentLoaded', function () {
         if (e.key === 'Escape') {
             document.querySelectorAll('.modal-overlay.active').forEach(overlay => {
                 overlay.classList.remove('active');
+                if (overlay.id === 'modalAgregar' && typeof recargarTablaAlCerrarModal !== 'undefined' && recargarTablaAlCerrarModal) {
+                    cargarDatos();
+                    recargarTablaAlCerrarModal = false;
+                }
             });
         }
     });
@@ -362,16 +373,23 @@ function renderFilaEstudiante(tbody, est, rowClass = '', hasMenores = false, rep
     if (rowClass) tr.className = rowClass;
 
     const checked = seleccionados.includes(est.id);
-    const hasCert = est.certificado_codigo ? true : false;
+    const isAprobado = est.certificado_codigo ? true : false;
+    const isGenerado = isAprobado && est.certificado_archivo_pdf ? true : false;
 
-    let certStatus = '<span class="cert-status cert-none">Sin certificado</span>';
+    let certStatus = '<span class="cert-status cert-none">Pendiente</span>';
     let tooltip = '';
 
-    if (hasCert) {
-        certStatus = `<span class="cert-status cert-generated"><i class="fas fa-check-circle"></i> Generado</span>`;
+    if (isGenerado) {
+        certStatus = `<span class="cert-status cert-generated" style="background-color: #e8f5e9; color: #2ecc71; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold;"><i class="fas fa-check-double"></i> Generado</span>`;
         if (est.certificado_creado_at) {
             const date = new Date(est.certificado_creado_at);
-            tooltip = `Generado el ${date.toLocaleDateString()} a las ${date.toLocaleTimeString()}`;
+            tooltip = `Aprobado/Generado el ${date.toLocaleDateString()} a las ${date.toLocaleTimeString()}`;
+        }
+    } else if (isAprobado) {
+        certStatus = `<span class="cert-status cert-approved" style="background-color: #e3f2fd; color: #3498db; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold;"><i class="fas fa-thumbs-up"></i> Aprobado</span>`;
+        if (est.certificado_creado_at) {
+            const date = new Date(est.certificado_creado_at);
+            tooltip = `Aprobado el ${date.toLocaleDateString()} a las ${date.toLocaleTimeString()}`;
         }
     }
 
@@ -386,23 +404,34 @@ function renderFilaEstudiante(tbody, est, rowClass = '', hasMenores = false, rep
             <button class="btn-icon btn-danger" onclick="confirmarQuitar('${est.id}', '${est.nombre.replace(/'/g, "\\'")}', ${est.es_menor})" title="Quitar">
                 <i class="fas fa-user-times"></i>
             </button>
-            ${hasCert ? `
-            <button class="btn-icon btn-view" title="Ver Certificado" onclick="previsualizarCertificado('${est.certificado_codigo}')">
-                <i class="fas fa-eye"></i>
-            </button>
-            <button class="btn-icon btn-download" title="Descargar PDF" onclick="descargarCertificado('${est.certificado_codigo}', 'pdf')">
-                <i class="fas fa-file-pdf"></i>
-            </button>
-            <button class="btn-icon btn-secondary" title="Descargar Imagen" onclick="descargarCertificado('${est.certificado_codigo}', 'imagen')">
-                <i class="fas fa-image"></i>
+            ${isGenerado ? `
+            <div style="position: relative; display: inline-block;">
+                <button class="btn-icon btn-view" title="Opciones del Certificado" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'block' ? 'none' : 'block'; event.stopPropagation();">
+                    <i class="fas fa-ellipsis-v" style="padding: 0 5px;"></i>
+                </button>
+                <div class="dropdown-menu-cert" style="display: none; position: absolute; right: 0; bottom: 100%; background: white; border-radius: 8px; box-shadow: 0 -4px 15px rgba(0,0,0,0.15); z-index: 1000; min-width: 150px; margin-bottom: 5px; border: 1px solid #eee;">
+                    <a href="#" onclick="previsualizarCertificado('${est.certificado_codigo}'); event.preventDefault();" style="display: block; padding: 10px 15px; color: #2c3e50; text-decoration: none; border-bottom: 1px solid #f8f9fa;"><i class="fas fa-eye" style="width: 20px; color: #9b59b6;"></i> Visualizar</a>
+                    <a href="#" onclick="descargarCertificado('${est.certificado_codigo}', 'pdf'); event.preventDefault();" style="display: block; padding: 10px 15px; color: #2c3e50; text-decoration: none; border-bottom: 1px solid #f8f9fa;"><i class="fas fa-file-pdf" style="width: 20px; color: #e74c3c;"></i> Descargar PDF</a>
+                    <a href="#" onclick="descargarCertificado('${est.certificado_codigo}', 'imagen'); event.preventDefault();" style="display: block; padding: 10px 15px; color: #2c3e50; text-decoration: none;"><i class="fas fa-image" style="width: 20px; color: #3498db;"></i> Descargar Imagen</a>
+                </div>
+            </div>
+            ` : (isAprobado ? `
+            <button class="btn-icon btn-secondary" style="background-color: #f39c12; color: white;" title="Desaprobar" onclick="desaprobarEstudiante(${est.id}, '${est.nombre.replace(/'/g, "\\'")}')">
+                <i class="fas fa-undo"></i>
             </button>
             ` : `
-            <button class="btn-icon btn-certificate" title="Generar Certificado" onclick="abrirModalGenerar([${est.id}])">
-                <i class="fas fa-plus"></i>
+            <button class="btn-icon btn-certificate" title="Aprobar" onclick="aprobarEstudianteIndividual(this, ${est.id})">
+                <i class="fas fa-check"></i>
             </button>
-            `}
+            `)}
         </div>
     `;
+
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('.dropdown-menu-cert') && !e.target.closest('.btn-view')) {
+            document.querySelectorAll('.dropdown-menu-cert').forEach(el => el.style.display = 'none');
+        }
+    });
 
     tr.innerHTML = `
         <td class="checkbox-cell">
@@ -447,16 +476,23 @@ function renderFilaMenor(tbody, menor, repUniqueId = '') {
     }
 
     const checked = seleccionados.includes(menor.id);
-    const hasCert = menor.certificado_codigo ? true : false;
+    const isAprobado = menor.certificado_codigo ? true : false;
+    const isGenerado = isAprobado && menor.certificado_archivo_pdf ? true : false;
 
-    let certStatus = '<span class="cert-status cert-none">Sin certificado</span>';
+    let certStatus = '<span class="cert-status cert-none">Pendiente</span>';
     let tooltip = '';
 
-    if (hasCert) {
-        certStatus = `<span class="cert-status cert-generated"><i class="fas fa-check-circle"></i> Generado</span>`;
+    if (isGenerado) {
+        certStatus = `<span class="cert-status cert-generated" style="background-color: #e8f5e9; color: #2ecc71; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold;"><i class="fas fa-check-double"></i> Generado</span>`;
         if (menor.certificado_creado_at) {
             const date = new Date(menor.certificado_creado_at);
-            tooltip = `Generado el ${date.toLocaleDateString()} a las ${date.toLocaleTimeString()}`;
+            tooltip = `Aprobado/Generado el ${date.toLocaleDateString()} a las ${date.toLocaleTimeString()}`;
+        }
+    } else if (isAprobado) {
+        certStatus = `<span class="cert-status cert-approved" style="background-color: #e3f2fd; color: #3498db; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold;"><i class="fas fa-thumbs-up"></i> Aprobado</span>`;
+        if (menor.certificado_creado_at) {
+            const date = new Date(menor.certificado_creado_at);
+            tooltip = `Aprobado el ${date.toLocaleDateString()} a las ${date.toLocaleTimeString()}`;
         }
     }
 
@@ -471,21 +507,26 @@ function renderFilaMenor(tbody, menor, repUniqueId = '') {
             <button class="btn-icon btn-danger" onclick="confirmarQuitar('${menor.id}', '${menor.nombre.replace(/'/g, "\\'")}', 1)" title="Quitar">
                 <i class="fas fa-user-times"></i>
             </button>
-            ${hasCert ? `
-            <button class="btn-icon btn-view" title="Ver Certificado" onclick="previsualizarCertificado('${menor.certificado_codigo}')">
-                <i class="fas fa-eye"></i>
-            </button>
-            <button class="btn-icon btn-download" title="Descargar PDF" onclick="descargarCertificado('${menor.certificado_codigo}', 'pdf')">
-                <i class="fas fa-file-pdf"></i>
-            </button>
-            <button class="btn-icon btn-secondary" title="Descargar Imagen" onclick="descargarCertificado('${menor.certificado_codigo}', 'imagen')">
-                <i class="fas fa-image"></i>
+            ${isGenerado ? `
+            <div style="position: relative; display: inline-block;">
+                <button class="btn-icon btn-view" title="Opciones del Certificado" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'block' ? 'none' : 'block'; event.stopPropagation();">
+                    <i class="fas fa-ellipsis-v" style="padding: 0 5px;"></i>
+                </button>
+                <div class="dropdown-menu-cert" style="display: none; position: absolute; right: 0; bottom: 100%; background: white; border-radius: 8px; box-shadow: 0 -4px 15px rgba(0,0,0,0.15); z-index: 1000; min-width: 150px; margin-bottom: 5px; border: 1px solid #eee;">
+                    <a href="#" onclick="previsualizarCertificado('${menor.certificado_codigo}'); event.preventDefault();" style="display: block; padding: 10px 15px; color: #2c3e50; text-decoration: none; border-bottom: 1px solid #f8f9fa;"><i class="fas fa-eye" style="width: 20px; color: #9b59b6;"></i> Visualizar</a>
+                    <a href="#" onclick="descargarCertificado('${menor.certificado_codigo}', 'pdf'); event.preventDefault();" style="display: block; padding: 10px 15px; color: #2c3e50; text-decoration: none; border-bottom: 1px solid #f8f9fa;"><i class="fas fa-file-pdf" style="width: 20px; color: #e74c3c;"></i> Descargar PDF</a>
+                    <a href="#" onclick="descargarCertificado('${menor.certificado_codigo}', 'imagen'); event.preventDefault();" style="display: block; padding: 10px 15px; color: #2c3e50; text-decoration: none;"><i class="fas fa-image" style="width: 20px; color: #3498db;"></i> Descargar Imagen</a>
+                </div>
+            </div>
+            ` : (isAprobado ? `
+            <button class="btn-icon btn-secondary" style="background-color: #f39c12; color: white;" title="Desaprobar" onclick="desaprobarEstudiante(${menor.id}, '${menor.nombre.replace(/'/g, "\\'")}')">
+                <i class="fas fa-undo"></i>
             </button>
             ` : `
-            <button class="btn-icon btn-certificate" title="Generar Certificado" onclick="abrirModalGenerar([${menor.id}])">
-                <i class="fas fa-plus"></i>
+            <button class="btn-icon btn-certificate" title="Aprobar" onclick="aprobarEstudianteIndividual(this, ${menor.id})">
+                <i class="fas fa-check"></i>
             </button>
-            `}
+            `)}
         </div>
     `;
 
@@ -725,28 +766,20 @@ function actualizarContadorSeleccionados() {
     if (count > 0) {
         bulkActions.classList.add('active');
 
-        // Verificar estados para mostrar botones
-        // 1. Si alguno NO tiene certificado -> Mostrar Generar
-        // 2. Si alguno TIENE certificado -> Mostrar Regenerar y Descargar
+        // Verificar estados para mostrar botones pertinentes
+        let hayGenerado = false; // Solo true si TIENE el archivo físico PDF
 
-        let haySinCert = false;
-        let hayConCert = false;
-
-        // Buscar en la lista de estudiantes los seleccionados
         seleccionados.forEach(id => {
             const est = estudiantes.find(e => e.id == id);
-            if (est) {
-                if (est.certificado_codigo) hayConCert = true;
-                else haySinCert = true;
+            if (est && est.certificado_codigo && est.certificado_archivo_pdf) {
+                hayGenerado = true;
             }
         });
 
-        document.getElementById('btnGenerarSeleccionados').style.display = haySinCert ? 'inline-flex' : 'none';
-        document.getElementById('btnRegenerarSeleccionados').style.display = hayConCert ? 'inline-flex' : 'none';
-        document.getElementById('btnDescargarPdfSeleccionados').style.display = hayConCert ? 'inline-flex' : 'none';
-        document.getElementById('btnDescargarImgSeleccionados').style.display = hayConCert ? 'inline-flex' : 'none';
-        document.getElementById('btnDestacadosSeleccionados').style.display = 'inline-flex';
-        document.getElementById('btnQuitarDestacadosSeleccionados').style.display = 'inline-flex';
+        document.getElementById('btnGenerarSeleccionados').style.display = 'inline-flex';
+        document.getElementById('btnDescargarPdfSeleccionados').style.display = hayGenerado ? 'inline-flex' : 'none';
+        document.getElementById('btnDescargarImgSeleccionados').style.display = hayGenerado ? 'inline-flex' : 'none';
+        document.getElementById('btnToggleDestacados').style.display = 'inline-flex';
         document.getElementById('btnQuitarSeleccionados').style.display = 'inline-flex';
 
     } else {
@@ -761,12 +794,26 @@ function cancelarSeleccion() {
     renderPage();
 }
 
-async function establecerDestacadosSeleccionados() {
+async function toggleDestacadosSeleccionados() {
     if (seleccionados.length === 0) return;
 
+    // Determinar acción: si TODOS los seleccionados son destacados, entonces "Desmarcamos". 
+    // Si al menos UNO NO es destacado, entonces los "Marcamos" a todos.
+    let todosDestacados = true;
+    seleccionados.forEach(id => {
+        const est = estudiantes.find(e => e.id == id);
+        if (est && (est.es_destacado == 0 || est.es_destacado == null)) {
+            todosDestacados = false;
+        }
+    });
+
+    const action = todosDestacados ? 'quitar_destacados' : 'establecer_destacados';
+    const nuevoEstado = todosDestacados ? 0 : 1;
+
     const formData = new FormData();
-    formData.append('action', 'establecer_destacados');
+    formData.append('action', action);
     formData.append('ids', JSON.stringify(seleccionados));
+    formData.append('categoria_id', categoriaId);
 
     try {
         const response = await fetch('../api/categorias/estudiantes.php', {
@@ -776,47 +823,17 @@ async function establecerDestacadosSeleccionados() {
         const data = await response.json();
 
         if (data.success) {
-            showNotification(data.message || 'Estudiantes marcados como destacados', 'success');
+            const accionMsg = todosDestacados ? 'Se quitó el estado destacado' : 'Estudiantes marcados como destacados';
+            showNotification(data.message || accionMsg, 'success');
             // Actualizar datos locales
             seleccionados.forEach(id => {
                 const est = estudiantes.find(e => e.id == id);
-                if (est) est.es_destacado = 1;
+                if (est) est.es_destacado = nuevoEstado;
             });
             cancelarSeleccion();
             renderPage();
         } else {
-            showNotification(data.message || 'Error al establecer destacados', 'error');
-        }
-    } catch (error) {
-        console.error(error);
-        showNotification('Error de conexión', 'error');
-    }
-}
-
-async function quitarDestacadosSeleccionados() {
-    if (seleccionados.length === 0) return;
-
-    const formData = new FormData();
-    formData.append('action', 'quitar_destacados');
-    formData.append('ids', JSON.stringify(seleccionados));
-
-    try {
-        const response = await fetch('../api/categorias/estudiantes.php', {
-            method: 'POST',
-            body: formData
-        });
-        const data = await response.json();
-
-        if (data.success) {
-            showNotification(data.message || 'Se quitó el estado destacado', 'success');
-            seleccionados.forEach(id => {
-                const est = estudiantes.find(e => e.id == id);
-                if (est) est.es_destacado = 0;
-            });
-            cancelarSeleccion();
-            renderPage();
-        } else {
-            showNotification(data.message || 'Error al quitar destacados', 'error');
+            showNotification(data.message || 'Error al cambiar destacados', 'error');
         }
     } catch (error) {
         console.error(error);
@@ -855,7 +872,9 @@ function abrirModalAgregar() {
 
     // Limpiar búsqueda existente
     const buscar = document.getElementById('buscarExistente');
+    const btnLimpiar = document.getElementById('btnLimpiarBuscarExistente');
     if (buscar) buscar.value = '';
+    if (btnLimpiar) btnLimpiar.style.display = 'none';
     const resultados = document.getElementById('resultadosBusqueda');
     if (resultados) resultados.innerHTML = '';
 
@@ -865,6 +884,12 @@ function abrirModalAgregar() {
 function cerrarModal(event, id) {
     if (event && event.target !== event.currentTarget) return;
     document.getElementById(id).classList.remove('active');
+    
+    // Si cerramos el modalAgregar y se han matriculado alumnos, recargar la tabla
+    if (id === 'modalAgregar' && typeof recargarTablaAlCerrarModal !== 'undefined' && recargarTablaAlCerrarModal) {
+        cargarDatos();
+        recargarTablaAlCerrarModal = false;
+    }
 }
 
 // Toggle Menor de edad
@@ -1460,6 +1485,16 @@ function verificarEmailMenor(input) {
 }
 
 // Búsqueda existente
+function limpiarBuscadorExistente() {
+    const buscarInput = document.getElementById('buscarExistente');
+    if (buscarInput) {
+        buscarInput.value = '';
+        buscarInput.focus();
+        // Disparar evento input para que se oculte el botón y se borren los resultados
+        buscarInput.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+}
+
 async function buscarEstudianteExistente(query) {
     const resultadosDiv = document.getElementById('resultadosBusqueda');
     resultadosDiv.innerHTML = '';
@@ -1493,9 +1528,9 @@ async function buscarEstudianteExistente(query) {
                 if (est.ya_matriculado) {
                     action = '<span class="badge badge-warning">Ya matriculado</span>';
                 } else if (est.es_solo_representante == 1) {
-                    action = `<button type="button" class="btn btn-sm btn-outline" style="border-color: #3498db; color: #3498db;" onclick="seleccionarEstudianteExistente(${est.id}, '${est.nombre.replace(/'/g, "\\'")}', true)">Matricular</button>`;
+                    action = `<button type="button" id="btn-matricular-existente-${est.id}" class="btn btn-sm btn-outline" style="border-color: #3498db; color: #3498db;" onclick="seleccionarEstudianteExistente(${est.id}, '${est.nombre.replace(/'/g, "\\'")}', true)">Matricular</button>`;
                 } else {
-                    action = `<button type="button" class="btn btn-sm btn-outline" onclick="seleccionarEstudianteExistente(${est.id}, '${est.nombre.replace(/'/g, "\\'")}', false)">Seleccionar</button>`;
+                    action = `<button type="button" id="btn-matricular-existente-${est.id}" class="btn btn-sm btn-outline" onclick="seleccionarEstudianteExistente(${est.id}, '${est.nombre.replace(/'/g, "\\'")}', false)">Seleccionar</button>`;
                 }
 
                 div.innerHTML = info + action;
@@ -1510,11 +1545,18 @@ async function buscarEstudianteExistente(query) {
     }
 }
 
+let recargarTablaAlCerrarModal = false;
+
 function seleccionarEstudianteExistente(id, nombre, esRepresentante = false) {
-    matricularExistente(id, esRepresentante);
+    const btn = document.getElementById(`btn-matricular-existente-${id}`);
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+    }
+    matricularExistente(id, esRepresentante, btn);
 }
 
-async function matricularExistente(estudianteId, convertirRepresentante = false) {
+async function matricularExistente(estudianteId, convertirRepresentante = false, btn = null) {
     try {
         const formData = new FormData();
         formData.append('action', 'matricular'); // Acción correcta
@@ -1532,14 +1574,32 @@ async function matricularExistente(estudianteId, convertirRepresentante = false)
 
         if (data.success) {
             showNotification('Estudiante matriculado correctamente', 'success');
-            cerrarModal(null, 'modalAgregar');
-            cargarDatos();
+            recargarTablaAlCerrarModal = true;
+            
+            if (btn) {
+                btn.innerHTML = '<i class="fas fa-check"></i> Matriculado';
+                btn.classList.remove('btn-outline');
+                btn.style.backgroundColor = '#27ae60';
+                btn.style.borderColor = '#27ae60';
+                btn.style.color = 'white';
+            } else {
+                cerrarModal(null, 'modalAgregar');
+                cargarDatos();
+            }
         } else {
             showNotification(data.message || 'Error al matricular', 'error');
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = convertirRepresentante ? 'Matricular' : 'Seleccionar';
+            }
         }
     } catch (error) {
         console.error(error);
         showNotification('Error de conexión', 'error');
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = convertirRepresentante ? 'Matricular' : 'Seleccionar';
+        }
     }
 }
 
@@ -1859,6 +1919,7 @@ async function guardarEdicionEstudiante(event) {
     formData.append('celular', document.getElementById('edit_celular').value);
     formData.append('email', document.getElementById('edit_email').value);
     formData.append('es_destacado', document.getElementById('edit_destacado').checked ? 1 : 0);
+    formData.append('categoria_id', categoriaId);
 
     // Recopilar referencias editadas
     const referencias = [];
@@ -1943,146 +2004,734 @@ async function confirmarQuitarEstudiante() {
 }
 
 // --- GENERACIÓN DE CERTIFICADOS ---
-let idsParaGenerar = [];
-
 function abrirModalGenerar(ids) {
-    idsParaGenerar = ids;
     if (!ids || ids.length === 0) return;
+    
+    // Si son múltiples (o 1), abrir el modal de aprobación por lotes
+    abrirModalAprobarLote(ids);
+}
 
-    const count = ids.length;
-    document.getElementById('generarCount').textContent = count;
+// Nueva función para aprobación individual directa
+async function aprobarEstudianteIndividual(btnElement, estudianteId) {
+    if (!estudianteId) return;
+    
+    const originalHtml = btnElement.innerHTML;
+    btnElement.disabled = true;
+    btnElement.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
 
-    const lista = document.getElementById('listaEstudiantesGenerar');
+    const today = new Date().toISOString().split('T')[0];
+
+    try {
+        const payload = {
+            action: 'toggle_aprobacion_batch',
+            categoria_id: parseInt(categoriaId),
+            periodo_id: typeof periodoId !== 'undefined' ? parseInt(periodoId) : null,
+            grupo_id: typeof grupoId !== 'undefined' ? parseInt(grupoId) : (typeof categoriaData !== 'undefined' ? parseInt(categoriaData.grupo_id) : null),
+            estudiantes_ids: [parseInt(estudianteId)],
+            fecha: today
+        };
+
+        const response = await fetch('../api/certificados/generar.php', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) throw new Error('Error de red');
+
+        const result = await response.json();
+        
+        if (result.success && result.resumen && result.resumen.aprobados > 0) {
+            showNotification('Estudiante aprobado exitosamente', 'success');
+            cargarDatos();
+        } else {
+            showNotification(result.message || 'Error al aprobar el estudiante', 'error');
+            btnElement.disabled = false;
+            btnElement.innerHTML = originalHtml;
+        }
+    } catch (e) {
+        console.error("Fetch error:", e);
+        showNotification('Ocurrió un error al procesar la solicitud', 'error');
+        btnElement.disabled = false;
+        btnElement.innerHTML = originalHtml;
+    }
+}
+
+// Lógica de aprobación por lotes (Nuevo Modal)
+let idsParaAprobarLote = [];
+let seleccionadosModal = new Set();
+let filtroActualModal = 'todos';
+let currentPageModal = 1;
+let rowsPerPageModal = 10;
+let totalPagesModal = 1;
+let lastFilteredIdsModal = []; // Cache de IDs filtrados para paginación
+
+function abrirModalAprobarLote(ids) {
+    idsParaAprobarLote = [...ids];
+    seleccionadosModal.clear();
+    filtroActualModal = 'todos';
+    document.getElementById('searchInputAprobarLote').value = '';
+    
+    // Resetear UI del filtro
+    document.querySelectorAll('#dropdownFiltroModal a').forEach(a => a.classList.remove('active'));
+    document.querySelector('#dropdownFiltroModal a:nth-child(1)').classList.add('active');
+    document.getElementById('filtroTextoModal').textContent = 'Todos';
+    
+    const selectAllCheckbox = document.getElementById('selectAllModal');
+    if (selectAllCheckbox) {
+        selectAllCheckbox.checked = false;
+        selectAllCheckbox.indeterminate = false;
+    }
+    currentPageModal = 1;
+    updateBulkActionsBarModal();
+
+    filtrarListaAprobarLote();
+    document.getElementById('modalAprobarLote').classList.add('active');
+}
+
+function renderListaAprobarLote(filteredIds = null) {
+    const lista = document.getElementById('listaEstudiantesAprobarLote');
     lista.innerHTML = '';
+    
+    const idsToRender = filteredIds || idsParaAprobarLote;
+    
+    document.getElementById('aprobarLoteCount').textContent = idsToRender.length;
+    
+    lastFilteredIdsModal = idsToRender; // Guardar para paginación
 
-    // Mostrar nombres
-    ids.forEach(id => {
-        const est = estudiantes.find(e => e.id == id);
-        if (est) {
-            const div = document.createElement('div');
-            div.style.padding = '5px 0';
-            div.style.borderBottom = '1px solid #eee';
-            div.innerHTML = `<i class="fas fa-check" style="color: #27ae60; margin-right: 8px;"></i> ${est.nombre}`;
-            lista.appendChild(div);
+    // --- LÓGICA DE AGRUPACIÓN (Igual que evaluarDatosPaginacion) ---
+    const estudiantesEnLote = idsToRender.map(id => estudiantes.find(e => e.id == id)).filter(e => e);
+    const menoresPorRepModal = new Map();
+    const idsEnListaModal = new Set(idsToRender.map(id => parseInt(id)));
+
+    estudiantesEnLote.forEach(est => {
+        if (est.es_menor == 1 && est.representante_cedula) {
+            const repId = est.representante_id ? parseInt(est.representante_id) : null;
+            let key = null;
+            if (repId && idsEnListaModal.has(repId)) {
+                key = repId;
+            } else {
+                key = 'rep_' + est.representante_cedula;
+            }
+            if (!menoresPorRepModal.has(key)) {
+                menoresPorRepModal.set(key, []);
+            }
+            menoresPorRepModal.get(key).push(est);
         }
     });
 
-    // Cargar preview
-    cargarPreview(ids[0], 'generar'); // Usar el primero para preview
+    const procesadosModal = new Set();
+    const datosAgrupadosModal = [];
 
-    document.getElementById('modalGenerar').classList.add('active');
-}
+    estudiantesEnLote.forEach(est => {
+        if (est.es_menor == 1) return; 
 
-async function cargarPreview(estudianteId, modo) {
-    // modo: 'generar' o 'regenerar'
-    const prefix = modo; // IDs prefix
-
-    const imgId = prefix + 'PreviewImage';
-    const loadingId = prefix + 'PreviewLoading';
-    const containerId = prefix + 'PreviewContainer';
-
-    document.getElementById(loadingId).style.display = 'block';
-    document.getElementById(imgId).style.display = 'none';
-
-    // Si no hay plantilla configurada, mostrar alerta en modo generar
-    if (modo === 'generar') {
-        // Consultar API para verificar plantilla
-        // Por simplificación, intentamos generar el preview directamente
-    }
-
-    try {
-        const params = new URLSearchParams({
-            id: estudianteId,
-            categoria_id: categoriaId,
-            periodo_id: periodoId || '',
-            preview: 1,
-            t: new Date().getTime()
-        });
-
-        const url = `generar_certificado.php?${params}`;
-
-        const img = document.getElementById(imgId);
-        img.onload = function () {
-            document.getElementById(loadingId).style.display = 'none';
-            img.style.display = 'block';
+        const filaMayor = {
+            tipo: 'estudiante',
+            data: est,
+            menores: []
         };
-        img.onerror = function () {
-            document.getElementById(loadingId).innerHTML = '<p style="color:#e74c3c">Error al cargar preview. Verifique configuración de plantilla.</p>';
-            // Mostrar alerta de plantilla si es error
-            if (modo === 'generar') {
-                document.getElementById('generarPlantillaAlerta').style.display = 'block';
-                document.getElementById('linkConfigPlantilla').href = `grupos/detalle.php?id=${grupoId}&tab=plantilla`;
-                document.getElementById('btnConfirmarGenerar').disabled = true;
-                document.getElementById('btnConfirmarGenerar').style.opacity = '0.5';
+        const repId = parseInt(est.id);
+        if (menoresPorRepModal.has(repId)) {
+            filaMayor.menores = menoresPorRepModal.get(repId);
+            menoresPorRepModal.get(repId).forEach(m => procesadosModal.add(m.id));
+        }
+        datosAgrupadosModal.push(filaMayor);
+    });
+
+    estudiantesEnLote.forEach(est => {
+        if (est.es_menor == 1 && !procesadosModal.has(est.id)) {
+            const key = 'rep_' + est.representante_cedula;
+            const yaAgregado = datosAgrupadosModal.find(f => f.tipo === 'representante_virtual' && f.cedula === est.representante_cedula);
+            if (!yaAgregado && menoresPorRepModal.has(key)) {
+                const grupoMenores = menoresPorRepModal.get(key);
+                datosAgrupadosModal.push({
+                    tipo: 'representante_virtual',
+                    nombre: est.representante_nombre,
+                    cedula: est.representante_cedula,
+                    menores: grupoMenores
+                });
+                grupoMenores.forEach(m => procesadosModal.add(m.id));
+            } else if (!yaAgregado) {
+                datosAgrupadosModal.push({
+                    tipo: 'estudiante',
+                    data: est,
+                    menores: []
+                });
             }
-        };
-        img.src = url;
+        }
+    });
 
-    } catch (error) {
-        console.error(error);
+    // Ordenar alfabéticamente
+    datosAgrupadosModal.sort((a, b) => {
+        const nombreA = a.tipo === 'estudiante' ? a.data.nombre : a.nombre;
+        const nombreB = b.tipo === 'estudiante' ? b.data.nombre : b.nombre;
+        return nombreA.localeCompare(nombreB);
+    });
+    // --- FIN AGRUPACIÓN ---
+
+    // Calcular conteos extras basados en lo renderizado/filtrado
+    let countDestacados = 0;
+    let countMenores = 0;
+    let countRepresentantes = 0;
+    
+    idsToRender.forEach(id => {
+        const est = estudiantes.find(e => e.id == id);
+        if(est) {
+            if(est.es_destacado == 1) countDestacados++;
+            if(est.es_menor == 1) countMenores++;
+        }
+    });
+
+    datosAgrupadosModal.forEach(item => {
+        if(item.tipo === 'representante_virtual') {
+            countRepresentantes++;
+        } else if (item.tipo === 'estudiante' && item.menores && item.menores.length > 0) {
+            countRepresentantes++;
+        }
+    });
+
+    document.getElementById('aprobarLoteDestacados').textContent = countDestacados;
+    document.getElementById('aprobarLoteMenores').textContent = countMenores;
+    document.getElementById('aprobarLoteRepresentantes').textContent = countRepresentantes;
+
+    const totalItems = datosAgrupadosModal.length;
+    const footer = document.getElementById('paginationFooterModal');
+
+    if (totalItems === 0) {
+        if (footer) footer.style.display = 'none';
+        if (idsParaAprobarLote.length === 0) {
+            lista.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 20px; color: #7f8c8d;">No hay estudiantes seleccionados para aprobar</td></tr>';
+            document.getElementById('btnConfirmarAprobarLote').disabled = true;
+        } else {
+            lista.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 20px; color: #7f8c8d;">No hay coincidencias en la búsqueda</td></tr>';
+            document.getElementById('btnConfirmarAprobarLote').disabled = false;
+        }
+        return;
+    } else {
+        document.getElementById('btnConfirmarAprobarLote').disabled = false;
+    }
+
+    // Calcular paginación
+    let start = 0;
+    let end = totalItems;
+
+    if (rowsPerPageModal === -1) {
+        totalPagesModal = 1;
+        currentPageModal = 1;
+    } else {
+        totalPagesModal = Math.ceil(totalItems / rowsPerPageModal);
+        if (totalPagesModal < 1) totalPagesModal = 1;
+        if (currentPageModal > totalPagesModal) currentPageModal = totalPagesModal;
+        start = (currentPageModal - 1) * rowsPerPageModal;
+        end = Math.min(start + rowsPerPageModal, totalItems);
+    }
+
+    // Actualizar controles de paginación
+    if (footer) {
+        footer.style.display = totalItems > 0 ? 'flex' : 'none';
+        document.getElementById('pagStartModal').textContent = totalItems > 0 ? start + 1 : 0;
+        document.getElementById('pagEndModal').textContent = end;
+        document.getElementById('pagTotalModal').textContent = totalItems;
+        document.getElementById('totalPagesModal').textContent = totalPagesModal;
+        const pageInput = document.getElementById('pageInputModal');
+        if (pageInput) {
+            pageInput.value = currentPageModal;
+            pageInput.max = totalPagesModal;
+        }
+        document.getElementById('btnPageFirstModal').disabled = currentPageModal === 1;
+        document.getElementById('btnPagePrevModal').disabled = currentPageModal === 1;
+        document.getElementById('btnPageNextModal').disabled = currentPageModal === totalPagesModal;
+        document.getElementById('btnPageLastModal').disabled = currentPageModal === totalPagesModal;
+    }
+
+    const pageItems = datosAgrupadosModal.slice(start, end);
+    let rowIndex = start;
+    
+    // Función auxiliar para renderizar fila
+    const renderFila = (est, isMenor = false, isVirtual = false, repUniqueId = '') => {
+        const id = est.id || '';
+        const isChecked = id ? seleccionadosModal.has(String(id)) : false;
+        const tr = document.createElement('tr');
+        tr.style.borderBottom = '1px solid #eee';
+        
+        if (isVirtual) {
+            tr.className = 'representante-virtual';
+        } else if (isMenor) {
+            tr.className = `estudiante-menor ${repUniqueId ? 'menor-de-' + repUniqueId : ''}`;
+            tr.style.backgroundColor = '#f8f9fa';
+        } else if (isChecked) {
+            tr.style.backgroundColor = '#f0f4f8';
+        }
+
+        // Icono destacado y menores
+        let nombreHtml = '';
+        if (isVirtual) {
+            nombreHtml = `<i id="toggle-${repUniqueId}" class="fas fa-chevron-down" onclick="toggleMenoresModal('${repUniqueId}')" style="cursor: pointer; margin-right: 8px; color: #3498db; width: 15px; text-align: center; display: inline-block;"></i>`;
+            nombreHtml += `${est.nombre} <span class="badge badge-secondary" style="margin-left: 5px;">Representante</span>`;
+        } else {
+            const hasMenores = (est.menores && est.menores.length > 0);
+            if (hasMenores) {
+                nombreHtml = `<i id="toggle-${repUniqueId}" class="fas fa-chevron-down" onclick="toggleMenoresModal('${repUniqueId}')" style="cursor: pointer; margin-right: 8px; color: #3498db; width: 15px; text-align: center; display: inline-block;"></i>`;
+                nombreHtml += `${est.nombre} <span class="badge badge-secondary" style="margin-left: 5px;">Representante</span>`;
+            } else if (isMenor) {
+                nombreHtml = `<i class="fas fa-level-up-alt fa-rotate-90" style="color: #bdc3c7; margin-right: 8px;"></i>`;
+                nombreHtml += est.nombre;
+                nombreHtml += ' <span class="badge badge-info shadow-none" style="font-size: 10px; padding: 2px 6px; margin-left: 5px;">Menor</span>';
+            } else {
+                nombreHtml = '<span style="display:inline-block; width: 23px;"></span>' + est.nombre;
+            }
+
+            if (est.es_destacado == 1) {
+                nombreHtml += ' <i class="fas fa-star" style="color: #f1c40f; margin-left: 5px;" title="Estudiante destacado"></i>';
+            }
+        }
+
+        tr.innerHTML = `
+            <td style="padding: 10px;">
+                ${isVirtual ? '' : `<input type="checkbox" class="select-checkbox-modal" data-id="${id}" onchange="toggleSelectStudentModal('${id}')" ${isChecked ? 'checked' : ''} style="cursor: pointer;">`}
+            </td>
+            <td style="padding: 10px;">${isVirtual ? '' : ++rowIndex}</td>
+            <td style="padding: 10px; ${isMenor ? 'padding-left: 30px;' : ''} ${isVirtual ? 'color: #7f8c8d !important;' : ''}">${nombreHtml}</td>
+            <td style="padding: 10px;">${est.cedula || 'N/A'}</td>
+            <td style="padding: 10px; text-align: center; vertical-align: middle;">
+                ${isVirtual ? '' : `<button class="btn-icon btn-danger" onclick="quitarDeLoteAprobacion('${id}')" title="Quitar de esta lista" style="padding: 5px 8px; font-size: 12px; margin: 0 auto; display: inline-flex; align-items: center; justify-content: center;"><i class="fas fa-times"></i></button>`}
+            </td>
+        `;
+        lista.appendChild(tr);
+    };
+
+    pageItems.forEach((item) => {
+        if (item.tipo === 'estudiante') {
+            const est = item.data;
+            const hasMenores = item.menores && item.menores.length > 0;
+            const repUniqueId = 'modal-est-' + est.id;
+            
+            // Si el mayor es representante o es mayor normal
+            if (hasMenores) est.menores = item.menores;
+            
+            renderFila(est, false, false, repUniqueId);
+            
+            if (hasMenores) {
+                item.menores.forEach(menor => {
+                    renderFila(menor, true, false, repUniqueId);
+                });
+            }
+        } else if (item.tipo === 'representante_virtual') {
+            const repUniqueId = 'modal-virt-' + item.cedula;
+            // Renderizar virtual rep header
+            renderFila(item, false, true, repUniqueId);
+            
+            item.menores.forEach(menor => {
+                renderFila(menor, true, false, repUniqueId);
+            });
+        }
+    });
+
+    // Actualizar estado del checkbox "seleccionar todos"
+    const selectAllCheckbox = document.getElementById('selectAllModal');
+    if (selectAllCheckbox) {
+        // Encontrar todos los IDs físicos renderizados en la página actual
+        const currentIds = Array.from(document.querySelectorAll('.select-checkbox-modal')).map(cb => cb.getAttribute('data-id'));
+        const todosVisiblesSeleccionados = currentIds.length > 0 && currentIds.every(id => seleccionadosModal.has(String(id)));
+        const algunosVisiblesSeleccionados = currentIds.some(id => seleccionadosModal.has(String(id)));
+        
+        selectAllCheckbox.checked = todosVisiblesSeleccionados;
+        selectAllCheckbox.indeterminate = algunosVisiblesSeleccionados && !todosVisiblesSeleccionados;
     }
 }
 
-async function confirmarGeneracion() {
-    if (idsParaGenerar.length === 0) return;
+// Para colapsar menores en el modal
+function toggleMenoresModal(repId) {
+    const rows = document.querySelectorAll(`.menor-de-${repId}`);
+    const toggleEl = document.getElementById(`toggle-${repId}`);
+    let isHidden = false;
 
-    const btn = document.getElementById('btnConfirmarGenerar');
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generando...';
+    rows.forEach(row => {
+        if (row.style.display === 'none') {
+            row.style.display = 'table-row';
+            isHidden = false;
+        } else {
+            row.style.display = 'none';
+            isHidden = true;
+        }
+    });
 
-    let exito = 0;
-    let errores = 0;
-    const fecha = document.getElementById('fechaCertificado').value;
-
-    // Procesar en lotes o uno por uno
-    for (const id of idsParaGenerar) {
-        try {
-            const formData = new FormData();
-            formData.append('estudiante_id', id);
-            formData.append('categoria_id', categoriaId);
-            if (periodoId) formData.append('periodo_id', periodoId);
-            formData.append('fecha_emision', fecha);
-
-            const response = await fetch('generar_certificado.php', {
-                method: 'POST',
-                body: formData
-            });
-
-            const result = await response.json();
-            if (result.success) exito++;
-            else errores++;
-
-        } catch (e) {
-            errores++;
+    if (toggleEl) {
+        if (isHidden) {
+            toggleEl.classList.remove('fa-chevron-down');
+            toggleEl.classList.add('fa-chevron-right');
+        } else {
+            toggleEl.classList.remove('fa-chevron-right');
+            toggleEl.classList.add('fa-chevron-down');
         }
     }
+}
 
-    cerrarModal(null, 'modalGenerar');
+// --- Paginación del Modal ---
+function cambiarFilasPorPaginaModal(val) {
+    rowsPerPageModal = parseInt(val);
+    currentPageModal = 1;
+    renderListaAprobarLote(lastFilteredIdsModal);
+}
 
-    if (exito > 0) {
-        showNotification(`Se generaron ${exito} certificados correctamente`, 'success');
+function irPaginaModal(pag) {
+    if (pag === 'last') pag = totalPagesModal;
+    pag = parseInt(pag);
+    if (pag < 1) pag = 1;
+    if (pag > totalPagesModal) pag = totalPagesModal;
+    currentPageModal = pag;
+    renderListaAprobarLote(lastFilteredIdsModal);
+}
+
+function prevPaginaModal() {
+    irPaginaModal(currentPageModal - 1);
+}
+
+function nextPaginaModal() {
+    irPaginaModal(currentPageModal + 1);
+}
+
+function irPaginaManualModal(val) {
+    irPaginaModal(parseInt(val));
+}
+
+function toggleDropdownFiltroModal() {
+    const menu = document.getElementById('dropdownFiltroModal');
+    if (menu.style.display === 'none' || menu.style.display === '') {
+        menu.style.display = 'block';
+    } else {
+        menu.style.display = 'none';
+    }
+}
+
+// Cerrar el dropdown modal si se hace clic fuera
+document.addEventListener('click', function (e) {
+    if (!e.target.closest('#btnFiltroModal') && !e.target.closest('#dropdownFiltroModal')) {
+        const menu = document.getElementById('dropdownFiltroModal');
+        if (menu) menu.style.display = 'none';
+    }
+});
+
+function aplicarFiltroModal(tipo) {
+    filtroActualModal = tipo;
+    
+    document.querySelectorAll('#dropdownFiltroModal a').forEach(a => a.classList.remove('active'));
+    
+    let texto = 'Todos';
+    if (tipo === 'todos') {
+        document.querySelector('#dropdownFiltroModal a:nth-child(1)').classList.add('active');
+        texto = 'Todos';
+    } else if (tipo === 'representante') {
+        document.querySelector('#dropdownFiltroModal a:nth-child(2)').classList.add('active');
+        texto = 'Con Representante';
+    } else if (tipo === 'mayores') {
+        document.querySelector('#dropdownFiltroModal a:nth-child(3)').classList.add('active');
+        texto = 'Mayores de edad';
+    } else if (tipo === 'destacados') {
+        document.querySelector('#dropdownFiltroModal a:nth-child(4)').classList.add('active');
+        texto = 'Destacados';
+    }
+    
+    document.getElementById('filtroTextoModal').textContent = texto;
+    document.getElementById('dropdownFiltroModal').style.display = 'none';
+    
+    filtrarListaAprobarLote();
+}
+
+function filtrarListaAprobarLote() {
+    const term = document.getElementById('searchInputAprobarLote').value.toLowerCase().trim();
+    
+    // Obtener primero la lista base que podría ser filtrada por el dropdown
+    let baseFiltered = [...idsParaAprobarLote];
+    
+    if (filtroActualModal === 'representante') {
+        // Encontrar menores con representante_id y los representantes en la lista
+        const repIds = new Set();
+        estudiantes.forEach(e => {
+            if (e.es_menor == 1 && e.representante_id) {
+                repIds.add(String(e.representante_id));
+            }
+        });
+        
+        baseFiltered = baseFiltered.filter(id => {
+            const est = estudiantes.find(e => e.id == id);
+            if (!est) return false;
+            return (est.es_menor == 1 && est.representante_cedula) || repIds.has(String(id));
+        });
+    } else if (filtroActualModal === 'mayores') {
+        baseFiltered = baseFiltered.filter(id => {
+            const est = estudiantes.find(e => e.id == id);
+            return est && est.es_menor == 0;
+        });
+    } else if (filtroActualModal === 'destacados') {
+        baseFiltered = baseFiltered.filter(id => {
+            const est = estudiantes.find(e => e.id == id);
+            return est && est.es_destacado == 1;
+        });
+    }
+
+    // Luego aplicar el término de búsqueda
+    if (!term) {
+        renderListaAprobarLote(baseFiltered);
+        return;
+    }
+
+    const finalFiltered = baseFiltered.filter(id => {
+        const est = estudiantes.find(e => e.id == id);
+        if (!est) return false;
+        return (est.nombre && est.nombre.toLowerCase().includes(term)) || 
+               (est.cedula && est.cedula.includes(term));
+    });
+
+    renderListaAprobarLote(finalFiltered);
+}
+
+function toggleSelectAllModal(checkbox) {
+    const isChecked = checkbox.checked;
+    
+    // Solo seleccionar/deseleccionar los visibles (los que pasan el filtro)
+    const term = document.getElementById('searchInputAprobarLote').value.toLowerCase().trim();
+    
+    let baseFiltered = [...idsParaAprobarLote];
+    if (filtroActualModal === 'representante') {
+        const repIds = new Set();
+        estudiantes.forEach(e => {
+            if (e.es_menor == 1 && e.representante_id) {
+                repIds.add(String(e.representante_id));
+            }
+        });
+        baseFiltered = baseFiltered.filter(id => {
+            const est = estudiantes.find(e => e.id == id);
+            return est && ((est.es_menor == 1 && est.representante_cedula) || repIds.has(String(id)));
+        });
+    } else if (filtroActualModal === 'mayores') {
+        baseFiltered = baseFiltered.filter(id => {
+            const est = estudiantes.find(e => e.id == id);
+            return est && est.es_menor == 0;
+        });
+    } else if (filtroActualModal === 'destacados') {
+        baseFiltered = baseFiltered.filter(id => {
+            const est = estudiantes.find(e => e.id == id);
+            return est && est.es_destacado == 1;
+        });
+    }
+
+    let idsToToggle = baseFiltered;
+    if (term) {
+        idsToToggle = baseFiltered.filter(id => {
+            const est = estudiantes.find(e => e.id == id);
+            return est && ((est.nombre && est.nombre.toLowerCase().includes(term)) || (est.cedula && est.cedula.includes(term)));
+        });
+    }
+
+    if (isChecked) {
+        idsToToggle.forEach(id => seleccionadosModal.add(String(id)));
+    } else {
+        idsToToggle.forEach(id => seleccionadosModal.delete(String(id)));
+    }
+    
+    filtrarListaAprobarLote(); // Repintar
+    updateBulkActionsBarModal();
+}
+
+function toggleSelectStudentModal(id) {
+    id = String(id);
+    if (seleccionadosModal.has(id)) {
+        seleccionadosModal.delete(id);
+    } else {
+        seleccionadosModal.add(id);
+    }
+    
+    filtrarListaAprobarLote(); // Repintar
+    updateBulkActionsBarModal();
+}
+
+function updateBulkActionsBarModal() {
+    const bar = document.getElementById('bulkActionsModal');
+    const countText = document.getElementById('selectedCountModal');
+    const count = seleccionadosModal.size;
+
+    if (count > 0) {
+        bar.style.display = 'flex';
+        countText.textContent = count;
+    } else {
+        bar.style.display = 'none';
+    }
+}
+
+function quitarSeleccionadosDeLoteModal() {
+    if (seleccionadosModal.size === 0) return;
+    
+    // Filtrar idsParaAprobarLote manteniendo los que no están en seleccionadosModal
+    idsParaAprobarLote = idsParaAprobarLote.filter(id => !seleccionadosModal.has(String(id)));
+    
+    // Limpiar selección
+    seleccionadosModal.clear();
+    updateBulkActionsBarModal();
+    
+    // Resetear checkbox global
+    const selectAllCheckbox = document.getElementById('selectAllModal');
+    if (selectAllCheckbox) {
+        selectAllCheckbox.checked = false;
+        selectAllCheckbox.indeterminate = false;
+    }
+    
+    // Repintar lista con los filtros actuales
+    filtrarListaAprobarLote();
+}
+
+function quitarDeLoteAprobacion(id) {
+    idsParaAprobarLote = idsParaAprobarLote.filter(item => String(item) !== String(id));
+    seleccionadosModal.delete(String(id));
+    updateBulkActionsBarModal();
+    filtrarListaAprobarLote(); // use the filter render instead of the direct one so input holds
+}
+
+let estudianteADesaprobarId = null;
+
+function desaprobarEstudiante(estudianteId, nombre) {
+    estudianteADesaprobarId = estudianteId;
+    document.getElementById('confirmarDesaprobarNombre').textContent = nombre;
+    document.getElementById('btnConfirmarDesaprobar').onclick = function() {
+        procesarDesaprobar(estudianteId);
+    };
+    
+    // Abrir modal
+    const modal = document.getElementById('modalConfirmarDesaprobar');
+    if (modal) {
+        modal.classList.add('active');
+    }
+}
+
+async function procesarDesaprobar(estudianteId) {
+    const btnConfirm = document.getElementById('btnConfirmarDesaprobar');
+    const originalText = btnConfirm.innerHTML;
+    btnConfirm.disabled = true;
+    btnConfirm.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Procesando...';
+
+    try {
+        const payload = new FormData();
+        payload.append('action', 'desaprobar');
+        payload.append('estudiante_id', estudianteId);
+        payload.append('categoria_id', categoriaId);
+        if (typeof grupoId !== 'undefined') {
+            payload.append('grupo_id', grupoId);
+        } else if (typeof categoriaData !== 'undefined') {
+            payload.append('grupo_id', categoriaData.grupo_id);
+        }
+        if (typeof periodoId !== 'undefined' && periodoId !== null) {
+            payload.append('periodo_id', periodoId);
+        }
+
+        const response = await fetch('../api/certificados/generar.php', {
+            method: 'POST',
+            body: payload
+        });
+
+        const result = await response.json();
+        
+        cerrarModal(null, 'modalConfirmarDesaprobar');
+        
+        if (result.success) {
+            showNotification('Se ha deshecho la aprobación exitosamente.', 'success');
+            cargarDatos();
+        } else {
+            showNotification(result.message || 'Error al desaprobar.', 'error');
+        }
+    } catch (e) {
+        console.error("Error al desaprobar:", e);
+        showNotification('Ocurrió un error al procesar la solicitud.', 'error');
+        cerrarModal(null, 'modalConfirmarDesaprobar');
+    } finally {
+        btnConfirm.disabled = false;
+        btnConfirm.innerHTML = originalText;
+    }
+}
+
+async function confirmarAprobacionLote() {
+    if (idsParaAprobarLote.length === 0) return;
+
+    const btn = document.getElementById('btnConfirmarAprobarLote');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Procesando...';
+
+    let aprobados = 0;
+    let desaprobados = 0;
+    let errores = 0;
+    
+    const today = new Date().toISOString().split('T')[0];
+
+    try {
+        const payload = {
+            action: 'toggle_aprobacion_batch',
+            categoria_id: parseInt(categoriaId),
+            periodo_id: typeof periodoId !== 'undefined' ? parseInt(periodoId) : null,
+            grupo_id: typeof grupoId !== 'undefined' ? parseInt(grupoId) : (typeof categoriaData !== 'undefined' ? parseInt(categoriaData.grupo_id) : null),
+            estudiantes_ids: Array.from(idsParaAprobarLote).map(id => parseInt(id)),
+            fecha: today
+        };
+
+        const response = await fetch('../api/certificados/generar.php', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+            const errText = await response.text();
+            console.error("HTTP Error Info:", response.status, errText);
+            throw new Error(`HTTP Error ${response.status}: ${errText}`);
+        }
+
+        const result = await response.json();
+        console.log("Result API:", result);
+        
+        if (result.success && result.resumen) {
+            aprobados = result.resumen.aprobados || 0;
+            desaprobados = result.resumen.desaprobados || 0;
+            errores = result.resumen.errores || 0;
+        } else {
+            errores = idsParaAprobarLote.length;
+        }
+
+    } catch (e) {
+        console.error("Fetch error:", e);
+        errores = idsParaAprobarLote.length;
+    }
+
+    cerrarModal(null, 'modalAprobarLote');
+
+    if (aprobados > 0 || desaprobados > 0) {
+        let msjs = [];
+        if (aprobados > 0) msjs.push(`${aprobados} aprobados`);
+        if (desaprobados > 0) msjs.push(`${desaprobados} desaprobados`);
+        showNotification(`Éxito: ${msjs.join(' y ')}.`, 'success');
         if (errores > 0) showNotification(`Hubo ${errores} errores`, 'warning');
         cargarDatos();
-        // Limpiar selección
         seleccionados = [];
         actualizarContadorSeleccionados();
-    } else {
-        showNotification('No se pudieron generar los certificados', 'error');
+    } else if (errores > 0) {
+        showNotification('No se pudo procesar la solicitud', 'error');
     }
 
     btn.disabled = false;
-    btn.innerHTML = '<i class="fas fa-certificate"></i> Generar Certificados';
+    btn.innerHTML = '<i class="fas fa-check-double"></i> Aprobar / Desaprobar';
 }
 
 function generarCertificadosSeleccionados() {
-    abrirModalGenerar(seleccionados);
+    abrirModalAprobarLote(seleccionados);
 }
 
 function generarTodosCertificados() {
     // Filtrar los que NO tienen certificado
     const sinCertificado = estudiantes.filter(e => !e.certificado_codigo).map(e => e.id);
     if (sinCertificado.length > 0) {
-        abrirModalGenerar(sinCertificado);
+        abrirModalAprobarLote(sinCertificado);
     } else {
         showNotification('Todos los estudiantes ya tienen certificado', 'info');
     }

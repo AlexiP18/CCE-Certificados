@@ -236,16 +236,33 @@ if (!function_exists('generarNombrePeriodo')) {
                                 <?php if (count($categorias_por_periodo[$periodo['id']] ?? []) > 0): ?>
                                     <?php foreach ($categorias_por_periodo[$periodo['id']] as $categoria): ?>
                                     <div class="categoria-row">
-                                        <div class="categoria-icon" style="background: linear-gradient(135deg, <?= htmlspecialchars($categoria['color']) ?>cc, <?= htmlspecialchars($categoria['color']) ?>);"><?= htmlspecialchars($categoria['icono']) ?></div>
+                                        <?php $catColor = $categoria['color'] ?? '#3498db'; ?>
+                                        <div class="categoria-icon" style="background: linear-gradient(135deg, <?= htmlspecialchars($catColor) ?>cc, <?= htmlspecialchars($catColor) ?>);"><?= htmlspecialchars($categoria['icono'] ?? '📁') ?></div>
                                         <div class="categoria-info">
                                             <h3><?= htmlspecialchars($categoria['nombre']) ?></h3>
                                             <p class="categoria-descripcion"><?= htmlspecialchars($categoria['descripcion']) ?: 'Sin descripción' ?></p>
+                                            <p class="categoria-instructor">
+                                                <i class="fas fa-chalkboard-teacher"></i>
+                                                <?php if (!empty($categoria['instructor_nombre'])): ?>
+                                                    <?= htmlspecialchars($categoria['instructor_nombre']) ?>
+                                                    <?php if (!empty($categoria['instructor_cedula'])): ?>
+                                                        | CI: <?= htmlspecialchars($categoria['instructor_cedula']) ?>
+                                                    <?php endif; ?>
+                                                <?php else: ?>
+                                                    Sin instructor asignado
+                                                <?php endif; ?>
+                                            </p>
                                         </div>
                                         <div class="categoria-stats">
                                             <div class="stat-item">
                                                 <i class="fas fa-users"></i>
                                                 <span class="stat-number"><?= $categoria['total_estudiantes'] ?></span>
                                                 <span>Est.</span>
+                                            </div>
+                                            <div class="stat-item">
+                                                <i class="fas fa-check-circle"></i>
+                                                <span class="stat-number"><?= $categoria['total_aprobados'] ?></span>
+                                                <span>Aprobados</span>
                                             </div>
                                             <div class="stat-item">
                                                 <i class="fas fa-certificate"></i>
@@ -477,6 +494,33 @@ if (!function_exists('generarNombrePeriodo')) {
                                 <textarea id="descripcion" name="descripcion" placeholder="Opcional: Describe de qué trata esta categoría..." maxlength="200"
                                     oninput="updateCharCounter(this, 'categoriaCharCounter')"
                                     style="width: 100%; padding: 12px 15px; border: 2px solid #e9ecef; border-radius: 10px; font-size: 15px; transition: border-color 0.3s; min-height: 80px; resize: vertical; font-family: inherit;"></textarea>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="instructor_search" style="font-weight: 600; color: #2c3e50; font-size: 14px; margin-bottom: 8px; display: block;">
+                                    <i class="fas fa-chalkboard-teacher"></i> Instructor a Cargo
+                                </label>
+                                <input type="hidden" id="instructor_id" name="instructor_id" value="">
+                                <div style="display: flex; gap: 8px; align-items: center;">
+                                    <input type="text" id="instructor_search" list="instructoresList" autocomplete="off"
+                                        placeholder="Buscar por nombre o cédula"
+                                        style="flex: 1; padding: 12px 15px; border: 2px solid #e9ecef; border-radius: 10px; font-size: 15px; transition: border-color 0.3s;">
+                                    <button type="button" onclick="clearInstructorSearch()"
+                                        style="padding: 10px 12px; border: 2px solid #e9ecef; background: #fff; border-radius: 10px; cursor: pointer; color: #7f8c8d; font-size: 13px; font-weight: 600; white-space: nowrap;"
+                                        title="Quitar instructor asignado">
+                                        Limpiar
+                                    </button>
+                                </div>
+                                <div id="instructorSuggestions"
+                                     style="display: none; margin-top: 6px; border: 1px solid #e9ecef; border-radius: 10px; background: #fff; max-height: 220px; overflow-y: auto; box-shadow: 0 6px 18px rgba(0,0,0,0.08);"></div>
+                                <datalist id="instructoresList">
+                                    <?php foreach ($instructores as $instructor): ?>
+                                    <?php $cedulaInst = trim((string)($instructor['cedula'] ?? '')); ?>
+                                    <?php $labelInst = $instructor['nombre_completo'] . ($cedulaInst !== '' ? ' | CI: ' . $cedulaInst : ''); ?>
+                                    <option value="<?= htmlspecialchars($labelInst) ?>" data-id="<?= (int)$instructor['id'] ?>"></option>
+                                    <?php endforeach; ?>
+                                </datalist>
+                                <small style="display: block; margin-top: 6px; color: #7f8c8d; font-size: 12px;">Escribe nombre o cédula y selecciona una opción. Deja vacío para sin asignar.</small>
                             </div>
                             
                             <div class="form-group">
@@ -725,6 +769,13 @@ if (!function_exists('generarNombrePeriodo')) {
         const GRUPO_ICONO = '<?= $grupo['icono'] ?>';
         const GRUPO_DESCRIPCION = '<?= addslashes($grupo['descripcion']) ?>';
         const GRUPO_PERIODOS = <?= json_encode(array_values($periodos ?? [])) ?>;
+        const INSTRUCTORES_CATEGORIA = <?= json_encode(array_values(array_map(function ($i) {
+            return [
+                'id' => (int)$i['id'],
+                'nombre_completo' => (string)$i['nombre_completo'],
+                'cedula' => (string)($i['cedula'] ?? '')
+            ];
+        }, $instructores ?? []))) ?>;
         const ANIO_ACTUAL = <?= $anio_seleccionado ?>;
         const CURRENT_DATE = '<?= date('Y-m-d') ?>';
     </script>

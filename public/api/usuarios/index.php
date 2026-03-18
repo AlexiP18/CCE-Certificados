@@ -29,6 +29,91 @@ if (strpos($contentType, 'application/json') !== false) {
 
 $action = $input['action'] ?? $_GET['action'] ?? '';
 
+function guardarArchivoUsuario(array $file, array $extPermitidas, string $prefijo): string {
+    if (($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+        throw new Exception('Error al subir archivo');
+    }
+
+    $extension = strtolower(pathinfo($file['name'] ?? '', PATHINFO_EXTENSION));
+    if (!in_array($extension, $extPermitidas, true)) {
+        throw new Exception('Formato de archivo no permitido');
+    }
+
+    if (($file['size'] ?? 0) > 5 * 1024 * 1024) {
+        throw new Exception('El archivo excede el límite de 5MB');
+    }
+
+    $baseDir = dirname(dirname(dirname(__DIR__))) . '/uploads/usuarios/';
+    if (!is_dir($baseDir) && !mkdir($baseDir, 0755, true)) {
+        throw new Exception('No se pudo crear directorio de subida');
+    }
+
+    $nombre = $prefijo . '_' . date('Ymd_His') . '_' . bin2hex(random_bytes(4)) . '.' . $extension;
+    $destino = $baseDir . $nombre;
+
+    if (!move_uploaded_file($file['tmp_name'], $destino)) {
+        throw new Exception('No se pudo guardar el archivo');
+    }
+
+    return 'usuarios/' . $nombre;
+}
+
+function strLength(string $value): int {
+    return function_exists('mb_strlen') ? mb_strlen($value, 'UTF-8') : strlen($value);
+}
+
+function validarLongitudCampo(string $valor, int $maximo, string $campo): void {
+    if (strLength($valor) > $maximo) {
+        throw new Exception("El campo {$campo} supera la longitud permitida");
+    }
+}
+
+function esCedulaEcuatorianaValida(string $cedula): bool {
+    if (!preg_match('/^\d{10}$/', $cedula)) {
+        return false;
+    }
+
+    $provincia = intval(substr($cedula, 0, 2));
+    $tercerDigito = intval($cedula[2]);
+    if ($provincia < 1 || $provincia > 24 || $tercerDigito > 5) {
+        return false;
+    }
+
+    $coeficientes = [2, 1, 2, 1, 2, 1, 2, 1, 2];
+    $suma = 0;
+    for ($i = 0; $i < 9; $i++) {
+        $valor = intval($cedula[$i]) * $coeficientes[$i];
+        if ($valor >= 10) {
+            $valor -= 9;
+        }
+        $suma += $valor;
+    }
+
+    $digitoVerificador = (10 - ($suma % 10)) % 10;
+    return $digitoVerificador === intval($cedula[9]);
+}
+
+function esPasswordSegura(string $password): bool {
+    return preg_match('/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^\w\s]).{8,128}$/', $password) === 1;
+}
+
+function esUrlHttpValida(string $url): bool {
+    if (!filter_var($url, FILTER_VALIDATE_URL)) {
+        return false;
+    }
+
+    $scheme = strtolower(parse_url($url, PHP_URL_SCHEME) ?? '');
+    return in_array($scheme, ['http', 'https'], true);
+}
+
+function extraerTagDireccion(string $direccion, string $tag): string {
+    $pattern = '/\[' . preg_quote($tag, '/') . ':([^\]]*)\]/i';
+    if (preg_match($pattern, $direccion, $matches)) {
+        return trim($matches[1]);
+    }
+    return '';
+}
+
 try {
     switch ($action) {
         // ==================== LISTAR USUARIOS ====================
@@ -133,6 +218,7 @@ try {
             $cedula = trim($input['cedula'] ?? '');
             $telefono = trim($input['telefono'] ?? '');
             $direccion = trim($input['direccion'] ?? '');
+            $foto = trim($input['foto'] ?? '');
             $es_superadmin = isset($input['es_superadmin']) ? intval($input['es_superadmin']) : 0;
             
             // Validaciones
@@ -143,6 +229,17 @@ try {
             if (strlen($username) < 3) {
                 throw new Exception('El nombre de usuario debe tener al menos 3 caracteres');
             }
+
+            validarLongitudCampo($username, 50, 'usuario');
+            validarLongitudCampo($email, 255, 'email');
+            validarLongitudCampo($nombre_completo, 255, 'nombre completo');
+            validarLongitudCampo($direccion, 900, 'dirección');
+            validarLongitudCampo($telefono, 10, 'celular');
+
+            $codigoPostal = extraerTagDireccion($direccion, 'CP');
+            $mapsUrl = extraerTagDireccion($direccion, 'MAPS');
+            validarLongitudCampo($codigoPostal, 6, 'código postal');
+            validarLongitudCampo($mapsUrl, 255, 'enlace de mapa');
             
             // Verificar rol y límites
             $stmt = $pdo->prepare("SELECT nombre FROM roles WHERE id = ?");
@@ -166,9 +263,25 @@ try {
             if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
                 throw new Exception('Email inválido');
             }
+
+            if (!empty($cedula) && !esCedulaEcuatorianaValida($cedula)) {
+                throw new Exception('La cédula debe tener 10 dígitos y ser ecuatoriana válida');
+            }
+
+            if (!empty($telefono) && !preg_match('/^09\d{8}$/', $telefono)) {
+                throw new Exception('El celular debe tener 10 dígitos y comenzar con 09');
+            }
+
+            if (!empty($codigoPostal) && !preg_match('/^\d{1,6}$/', $codigoPostal)) {
+                throw new Exception('El código postal solo puede contener hasta 6 dígitos');
+            }
+
+            if (!empty($mapsUrl) && !esUrlHttpValida($mapsUrl)) {
+                throw new Exception('El enlace de mapa debe ser una URL válida con http o https');
+            }
             
-            if (strlen($password) < 6) {
-                throw new Exception('La contraseña debe tener al menos 6 caracteres');
+            if (!esPasswordSegura($password)) {
+                throw new Exception('La contraseña debe tener mínimo 8 caracteres, incluir mayúscula, minúscula, número y símbolo');
             }
             
             // Verificar que el username no exista
@@ -184,14 +297,18 @@ try {
             if ($stmt->fetch()) {
                 throw new Exception('El email ya está registrado');
             }
+
+            if (isset($_FILES['foto_file']) && ($_FILES['foto_file']['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_OK) {
+                $foto = guardarArchivoUsuario($_FILES['foto_file'], ['jpg', 'jpeg', 'png', 'webp'], 'foto_usuario');
+            }
             
             // Crear usuario
             $password_hash = password_hash($password, PASSWORD_DEFAULT);
             $stmt = $pdo->prepare("
-                INSERT INTO usuarios (username, email, nombre_completo, password_hash, rol_id, activo, cedula, telefono, direccion, es_superadmin)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO usuarios (username, email, nombre_completo, password_hash, rol_id, activo, cedula, telefono, direccion, foto, es_superadmin)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ");
-            $stmt->execute([$username, $email, $nombre_completo, $password_hash, $rol_id, $activo, $cedula ?: null, $telefono ?: null, $direccion ?: null, $es_superadmin]);
+            $stmt->execute([$username, $email, $nombre_completo, $password_hash, $rol_id, $activo, $cedula ?: null, $telefono ?: null, $direccion ?: null, $foto ?: null, $es_superadmin]);
             $nuevo_id = $pdo->lastInsertId();
             
             // Si es instructor, crear perfil extendido
@@ -224,7 +341,12 @@ try {
             $cedula = trim($input['cedula'] ?? '');
             $telefono = trim($input['telefono'] ?? '');
             $direccion = trim($input['direccion'] ?? '');
+            $foto = trim($input['foto'] ?? '');
             $es_superadmin = isset($input['es_superadmin']) ? intval($input['es_superadmin']) : 0;
+
+            if (isset($_FILES['foto_file']) && ($_FILES['foto_file']['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_OK) {
+                $foto = guardarArchivoUsuario($_FILES['foto_file'], ['jpg', 'jpeg', 'png', 'webp'], 'foto_usuario');
+            }
             
             if (!$id) {
                 throw new Exception('ID requerido');
@@ -234,10 +356,45 @@ try {
             if (empty($username) || empty($email) || empty($nombre_completo) || !$rol_id) {
                 throw new Exception('Todos los campos son requeridos');
             }
+
+            if (strlen($username) < 3) {
+                throw new Exception('El nombre de usuario debe tener al menos 3 caracteres');
+            }
+
+            validarLongitudCampo($username, 50, 'usuario');
+            validarLongitudCampo($email, 255, 'email');
+            validarLongitudCampo($nombre_completo, 255, 'nombre completo');
+            validarLongitudCampo($direccion, 900, 'dirección');
+            validarLongitudCampo($telefono, 10, 'celular');
+
+            $codigoPostal = extraerTagDireccion($direccion, 'CP');
+            $mapsUrl = extraerTagDireccion($direccion, 'MAPS');
+            validarLongitudCampo($codigoPostal, 6, 'código postal');
+            validarLongitudCampo($mapsUrl, 255, 'enlace de mapa');
+
+            if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                throw new Exception('Email inválido');
+            }
+
+            if (!empty($cedula) && !esCedulaEcuatorianaValida($cedula)) {
+                throw new Exception('La cédula debe tener 10 dígitos y ser ecuatoriana válida');
+            }
+
+            if (!empty($telefono) && !preg_match('/^09\d{8}$/', $telefono)) {
+                throw new Exception('El celular debe tener 10 dígitos y comenzar con 09');
+            }
+
+            if (!empty($codigoPostal) && !preg_match('/^\d{1,6}$/', $codigoPostal)) {
+                throw new Exception('El código postal solo puede contener hasta 6 dígitos');
+            }
+
+            if (!empty($mapsUrl) && !esUrlHttpValida($mapsUrl)) {
+                throw new Exception('El enlace de mapa debe ser una URL válida con http o https');
+            }
             
             // Verificar que el usuario exista y obtener rol actual
             $stmt = $pdo->prepare("
-                SELECT u.id, u.es_superadmin, r.nombre as rol_nombre 
+                SELECT u.id, u.es_superadmin, u.foto, r.nombre as rol_nombre 
                 FROM usuarios u 
                 INNER JOIN roles r ON u.rol_id = r.id 
                 WHERE u.id = ?
@@ -247,6 +404,11 @@ try {
             
             if (!$usuarioActual) {
                 throw new Exception('Usuario no encontrado');
+            }
+
+            // Conservar foto actual si no se envía una nueva
+            if ($foto === '' || $foto === null) {
+                $foto = $usuarioActual['foto'] ?? null;
             }
             
             // Verificar nuevo rol
@@ -295,27 +457,27 @@ try {
             
             // Actualizar usuario
             if (!empty($password)) {
-                if (strlen($password) < 6) {
-                    throw new Exception('La contraseña debe tener al menos 6 caracteres');
+                if (!esPasswordSegura($password)) {
+                    throw new Exception('La contraseña debe tener mínimo 8 caracteres, incluir mayúscula, minúscula, número y símbolo');
                 }
                 $password_hash = password_hash($password, PASSWORD_DEFAULT);
                 $stmt = $pdo->prepare("
                     UPDATE usuarios 
                     SET username = ?, email = ?, nombre_completo = ?, password_hash = ?, rol_id = ?, activo = ?,
-                        cedula = ?, telefono = ?, direccion = ?, es_superadmin = ?
+                        cedula = ?, telefono = ?, direccion = ?, foto = ?, es_superadmin = ?
                     WHERE id = ?
                 ");
                 $stmt->execute([$username, $email, $nombre_completo, $password_hash, $rol_id, $activo, 
-                               $cedula ?: null, $telefono ?: null, $direccion ?: null, $es_superadmin, $id]);
+                               $cedula ?: null, $telefono ?: null, $direccion ?: null, $foto ?: null, $es_superadmin, $id]);
             } else {
                 $stmt = $pdo->prepare("
                     UPDATE usuarios 
                     SET username = ?, email = ?, nombre_completo = ?, rol_id = ?, activo = ?,
-                        cedula = ?, telefono = ?, direccion = ?, es_superadmin = ?
+                        cedula = ?, telefono = ?, direccion = ?, foto = ?, es_superadmin = ?
                     WHERE id = ?
                 ");
                 $stmt->execute([$username, $email, $nombre_completo, $rol_id, $activo,
-                               $cedula ?: null, $telefono ?: null, $direccion ?: null, $es_superadmin, $id]);
+                               $cedula ?: null, $telefono ?: null, $direccion ?: null, $foto ?: null, $es_superadmin, $id]);
             }
             
             Auth::logActivity($_SESSION['usuario_id'], 'actualizar_usuario', "Usuario actualizado: $username", ['usuario_id' => $id]);
@@ -423,6 +585,54 @@ try {
             $certificaciones = $input['certificaciones'] ?? null;
             $experiencia_anios = intval($input['experiencia_anios'] ?? 0) ?: null;
             $biografia = trim($input['biografia'] ?? '');
+
+            validarLongitudCampo($especialidad, 255, 'especialidad');
+            validarLongitudCampo($titulo_academico, 255, 'título académico');
+            validarLongitudCampo($institucion_titulo, 255, 'institución');
+            validarLongitudCampo($biografia, 2000, 'trayectoria profesional');
+
+            if (!is_null($anio_titulo)) {
+                $anioActual = intval(date('Y')) + 1;
+                if ($anio_titulo < 1950 || $anio_titulo > $anioActual) {
+                    throw new Exception('El año de titulación no es válido');
+                }
+            }
+
+            if (!is_null($experiencia_anios) && ($experiencia_anios < 0 || $experiencia_anios > 80)) {
+                throw new Exception('Los años de experiencia deben estar entre 0 y 80');
+            }
+
+            if (is_string($certificaciones)) {
+                $decoded = json_decode($certificaciones, true);
+                if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                    $certificaciones = $decoded;
+                }
+            }
+
+            $certList = [];
+            if (is_array($certificaciones)) {
+                $certList = array_values(array_filter(array_map('trim', $certificaciones)));
+            } elseif (is_string($certificaciones) && trim($certificaciones) !== '') {
+                $certList = [trim($certificaciones)];
+            }
+
+            if (count($certList) > 100) {
+                throw new Exception('Se excedió el número máximo de certificaciones');
+            }
+
+            $totalCertTexto = 0;
+            foreach ($certList as $certItem) {
+                validarLongitudCampo($certItem, 255, 'certificación');
+                $totalCertTexto += strLength($certItem);
+            }
+            if ($totalCertTexto > 2000) {
+                throw new Exception('El texto total de certificaciones excede el límite permitido');
+            }
+
+            if (isset($_FILES['certificado_titulo_file']) && ($_FILES['certificado_titulo_file']['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_OK) {
+                $rutaCert = guardarArchivoUsuario($_FILES['certificado_titulo_file'], ['pdf', 'jpg', 'jpeg', 'png', 'webp'], 'cert_titulo');
+                $certList[] = 'Archivo aval: ' . $rutaCert;
+            }
             
             // Actualizar o insertar perfil
             $stmt = $pdo->prepare("
@@ -444,7 +654,7 @@ try {
                 $titulo_academico ?: null, 
                 $institucion_titulo ?: null, 
                 $anio_titulo,
-                is_array($certificaciones) ? json_encode($certificaciones) : $certificaciones,
+                !empty($certList) ? json_encode($certList) : null,
                 $experiencia_anios,
                 $biografia ?: null
             ]);

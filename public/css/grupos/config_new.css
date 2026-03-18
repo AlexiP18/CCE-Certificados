@@ -170,7 +170,7 @@
    ========================================= */
 .config-workspace {
     display: grid;
-    grid-template-columns: 1fr 380px;
+    grid-template-columns: 2fr 380px;
     gap: 20px;
     align-items: start;
 }
@@ -188,10 +188,11 @@
 
 .variables-toolbar {
     display: flex;
-    gap: 15px;
+    gap: 25px;
     flex-wrap: wrap;
     margin-bottom: 15px;
     align-items: center;
+    justify-content: center;
     padding: 10px;
     background: var(--bg-light);
     border-radius: 6px;
@@ -257,11 +258,14 @@
 }
 
 .sidebar-tab {
-    flex: 1;
-    text-align: center;
-    padding: 12px 10px;
+    flex: 0 0 calc(33.333% - 1px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 10px 8px;
     cursor: pointer;
-    font-size: 0.9rem;
+    font-size: 0.85rem;
     font-weight: 500;
     color: var(--text-muted);
     transition: all 0.2s;
@@ -303,8 +307,14 @@
     display: flex;
     align-items: center;
     cursor: pointer;
-    gap: 6px;
+    gap: 8px;
     user-select: none;
+}
+
+.toggle-icon {
+    color: var(--primary-color);
+    font-size: 16px;
+    min-width: 16px;
 }
 
 .toggle-switch input {
@@ -476,16 +486,20 @@
 .icon-selector-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    gap: 8px;
+    gap: 10px;
 }
 
 .sticker-option {
     cursor: pointer;
     border: 2px solid transparent;
-    border-radius: 6px;
-    padding: 5px;
+    border-radius: 8px;
+    padding: 8px 5px;
     text-align: center;
     transition: all 0.2s;
+    background: var(--bg-light);
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .sticker-option input[type="radio"] {
@@ -493,18 +507,19 @@
 }
 
 .sticker-option img {
-    max-width: 40px;
-    max-height: 40px;
+    width: 52px;
+    height: 52px;
+    object-fit: contain;
 }
 
 .sticker-option:hover {
     border-color: var(--border-color);
-    background: var(--bg-light);
+    background: #e9f2fb;
 }
 
 .sticker-option:has(input[type="radio"]:checked) {
     border-color: var(--primary-color);
-    background: rgba(52, 152, 219, 0.1);
+    background: rgba(52, 152, 219, 0.15);
 }
 
 /* Helpers */
@@ -632,6 +647,85 @@ small {
 .btn-outline:hover {
     background: var(--bg-light);
     border-color: #adb5bd;
+}
+
+/* =========================================
+   Action Buttons (Previsualizar / Guardar)
+   ========================================= */
+.sidebar-actions-outside {
+    display: flex;
+    gap: 12px;
+}
+
+.action-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 13px 16px;
+    font-size: 14px;
+    font-weight: 600;
+    border-radius: 10px;
+    border: none;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    letter-spacing: 0.3px;
+    position: relative;
+    overflow: hidden;
+}
+
+.action-btn i {
+    font-size: 15px;
+    transition: transform 0.25s ease;
+}
+
+.action-btn:hover i {
+    transform: scale(1.2);
+}
+
+.action-btn--preview {
+    background: #f0f7ff;
+    color: #1a6eb5;
+    border: 2px solid #b8d9f8;
+    box-shadow: 0 2px 6px rgba(26, 110, 181, 0.1);
+}
+
+.action-btn--preview:hover {
+    background: #daeeff;
+    border-color: #1a6eb5;
+    box-shadow: 0 4px 12px rgba(26, 110, 181, 0.2);
+    transform: translateY(-1px);
+}
+
+.action-btn--preview:active {
+    transform: translateY(0);
+    box-shadow: 0 1px 4px rgba(26, 110, 181, 0.15);
+}
+
+.action-btn--save {
+    background: linear-gradient(135deg, #27ae60, #1e8449);
+    color: white;
+    border: 2px solid transparent;
+    box-shadow: 0 2px 8px rgba(39, 174, 96, 0.3);
+}
+
+.action-btn--save:hover {
+    background: linear-gradient(135deg, #2ecc71, #27ae60);
+    box-shadow: 0 4px 14px rgba(39, 174, 96, 0.4);
+    transform: translateY(-1px);
+}
+
+.action-btn--save:active {
+    transform: translateY(0);
+    box-shadow: 0 1px 4px rgba(39, 174, 96, 0.25);
+}
+
+.action-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none !important;
+    box-shadow: none !important;
 }
 
 .btn-icon {

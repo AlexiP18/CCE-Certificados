@@ -3,18 +3,39 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gestión de Estudiantes</title>
+    <title>Gestión de Estudiantes - <?= htmlspecialchars($siteConfig['site_name']) ?></title>
+    <?php if (!empty($siteConfig['favicon_url'])): ?>
+    <link rel="icon" type="image/x-icon" href="<?= htmlspecialchars($siteConfig['favicon_url']) ?>">
+    <?php endif; ?>
     <link href="https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="<?= $cssPath ?>/estudiantes/index.css">
+    <style>
+        :root {
+            --site-primary: <?= htmlspecialchars($siteConfig['primary_color']) ?>;
+            --site-secondary: <?= htmlspecialchars($siteConfig['secondary_color']) ?>;
+        }
+
+        .nav-logo-image {
+            width: 34px;
+            height: 34px;
+            object-fit: contain;
+            border-radius: 8px;
+            background: #fff;
+            padding: 2px;
+        }
+    </style>
 </head>
 <body>
 
     <!-- MENÚ DE NAVEGACIÓN FIJO -->
     <nav class="top-nav">
         <div class="nav-logo">
+            <?php if (!empty($siteConfig['logo_nav_url'])): ?>
+            <img src="<?= htmlspecialchars($siteConfig['logo_nav_url']) ?>" alt="Logo" class="nav-logo-image" onerror="this.style.display='none'">
+            <?php endif; ?>
             <i class="fas fa-graduation-cap"></i>
-            <span>CCE Certificados</span>
+            <span><?= htmlspecialchars($siteConfig['site_name']) ?></span>
         </div>
         
         <ul class="nav-menu">
@@ -32,6 +53,11 @@
             <li>
                 <a href="<?= $basePath ?>/grupos/config.php" class="nav-link">
                     <i class="fas fa-cog"></i> Configuración
+                </a>
+            </li>
+            <li>
+                <a href="<?= $basePath ?>/configuracion/index.php" class="nav-link">
+                    <i class="fas fa-sliders-h"></i> Sitio
                 </a>
             </li>
             <?php endif; ?>

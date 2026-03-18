@@ -331,7 +331,7 @@ function buildSidebarTabs() {
         // Tab
         const t = document.createElement('div');
         t.className = `sidebar-tab ${State.ui.activeTab === tab.id ? 'active' : ''}`;
-        t.innerHTML = `<i class="fas ${tab.icon}"></i><br>${tab.label}`;
+        t.innerHTML = `<i class="fas ${tab.icon}"></i> ${tab.label}`;
         t.onclick = () => switchSidebarTab(tab.id);
         tabsContainer.appendChild(t);
 
@@ -358,6 +358,16 @@ function switchSidebarTab(tabId) {
     Array.from(document.getElementById('sidebarPanels').children).forEach(p => {
         p.classList.toggle('active', p.id === `panel-${tabId}`);
     });
+
+    if (tabId === 'destacado') {
+        renderDestacadoIconGrid();
+    }
+    if (tabId === 'firma') {
+        renderFirmaPreview();
+    }
+    if (tabId === 'fecha') {
+        updateFechaFormatLabels();
+    }
 }
 
 // Llenar datos a la Sidebar
@@ -366,6 +376,7 @@ function renderSidebar() {
     document.querySelectorAll('.font-selector').forEach(sel => {
         if (sel.options.length === 0) fillFontSelector(sel);
     });
+    updateFechaFormatLabels();
 
     // Inputs Data Binding (Value to UI)
     document.querySelectorAll('[data-bind]').forEach(el => {
@@ -397,7 +408,9 @@ function renderSidebar() {
 
     // Destacado Icon Grid
     renderDestacadoIconGrid();
-    toggleDestacadoCondition();
+
+    // Firma Preview
+    renderFirmaPreview();
 }
 
 function fillFontSelector(sel) {
@@ -533,9 +546,34 @@ function toggleDestacadoCondition() {
     renderMarkers();
 }
 
+function renderFirmaPreview() {
+    const holder = document.getElementById('firmaPreviewHolder');
+    if (!holder) return;
+
+    const saved = State.config.firma_imagen;
+    if (saved) {
+        let uri = saved;
+        if (!uri.startsWith('data:')) uri = State.basePath + uri;
+        holder.innerHTML = `<img src="${uri}" style="max-height:80px; margin-top:10px; border:1px solid #ccc; border-radius:4px; display:block;">`;
+        holder.style.display = 'block';
+    } else {
+        holder.innerHTML = '';
+        holder.style.display = 'none';
+    }
+}
+
 function renderDestacadoIconGrid() {
     const grid = document.querySelector('.icon-selector-grid');
-    if (!grid || grid.innerHTML.trim() !== '') return;
+    if (!grid) return;
+    if (grid.querySelectorAll('.sticker-option').length > 0) {
+        // Solo actualizar selección si ya está construido
+        grid.querySelectorAll('input[type="radio"]').forEach(input => {
+            input.checked = input.value === State.config.destacado_icono;
+        });
+        return;
+    }
+
+    grid.innerHTML = '';
 
     const stickers = ['estrella', 'medalla', 'trofeo', 'corona', 'laurel', 'sello', 'insignia', 'cinta', 'lazo', 'lazo-insignia', 'capitan', 'rango'];
 
@@ -724,17 +762,17 @@ function renderMarkers() {
         }
 
         if (v.id === 'firma') {
-            // Un icono de firma (fa-signature) suele ser alargado, asignemos su tamaño físico a la altura natural de la fuente
-            m.style.width = 'auto'; // Dejar que el contenido defina el ancho para iconos
             m.style.display = 'flex';
             m.style.alignItems = 'center';
             m.style.justifyContent = 'center';
 
-            // Si hay imagen, forzamos la proporción elegida
             const saved = State.config.firma_imagen;
             if (saved) {
                 m.style.width = `${State.config.tamanio_firma * s}px`;
-                m.style.height = `${State.config.tamanio_firma * 0.5 * s}px`; // Aspect ratio 2:1
+                m.style.height = 'auto'; // Altura determinada por ratio real de la imagen
+                m.style.overflow = 'visible';
+            } else {
+                m.style.width = 'auto';
             }
         }
 
@@ -784,9 +822,48 @@ function formatRazonText() {
     return t || 'Escribe texto predeterminado...';
 }
 
-function formatFechaText() {
-    // Simple mock frontend date formatter.
-    return "24 de Noviembre de 2023";
+/**
+ * Replica la lógica de formatearFecha() de Certificate.php en el frontend:
+ * 1. Escapa palabras literales " de " / " del " igual que el backend.
+ * 2. Sustituye tokens PHP (d, j, m, n, Y, F) en un solo pase regex.
+ * 3. Restaura las palabras literales escapadas.
+ */
+function phpDateFormat(fmt, date) {
+    const mesesEs = [
+        'Enero','Febrero','Marzo','Abril','Mayo','Junio',
+        'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'
+    ];
+    date = date || new Date();
+    const d  = date.getDate();
+    const m  = date.getMonth();
+    const Y  = date.getFullYear();
+    const pad2 = n => String(n).padStart(2, '0');
+
+    // Paso 1: pre-escapar palabras literales con placeholders opacos
+    let f = fmt
+        .replace(/ del /g, '\x02')
+        .replace(/ de /g,  '\x01');
+
+    // Paso 2: sustituir tokens en un solo pase
+    const tokens = { d: pad2(d), j: String(d), m: pad2(m + 1), n: String(m + 1), Y: String(Y), F: mesesEs[m] };
+    f = f.replace(/[djmnYF]/g, tok => tokens[tok] !== undefined ? tokens[tok] : tok);
+
+    // Paso 3: restaurar los literales
+    f = f.replace(/\x01/g, ' de ').replace(/\x02/g, ' del ');
+
+    return f;
+}
+
+function formatFechaText(fmt) {
+    return phpDateFormat(fmt || State.config.formato_fecha);
+}
+
+function updateFechaFormatLabels() {
+    const sel = document.querySelector('[data-bind="formato_fecha"]');
+    if (!sel) return;
+    Array.from(sel.options).forEach(opt => {
+        opt.textContent = phpDateFormat(opt.value);
+    });
 }
 
 function getFirmaHtml(s) {
@@ -794,25 +871,15 @@ function getFirmaHtml(s) {
     if (saved) {
         let uri = saved;
         if (!uri.startsWith('data:')) uri = State.basePath + uri;
-        return `<img src="${uri}" style="width:100%; height:100%; object-fit:contain;">`;
+        return `<img src="${uri}" style="width:100%; height:auto; display:block; object-fit:contain;">`;
     }
     // Ícono default cuando no hay imagen guardada
     return `<i class="fas fa-signature" style="font-size:${State.config.tamanio_firma * 0.5 * s}px; line-height:1; display:block; color:#333;"></i>`;
 }
 
 function getDestacadoHtml(s) {
-    if (State.config.destacado_tipo === 'icono') {
-        const ic = State.config.destacado_icono || 'estrella';
-        return `<img src="${State.assetsPath}/stickers/${ic}.png" style="width:100%; height:100%; object-fit:contain;">`;
-    } else {
-        const saved = State.config.destacado_imagen;
-        if (saved) {
-            let uri = saved;
-            if (!uri.startsWith('data:')) uri = State.basePath + uri;
-            return `<img src="${uri}" style="width:100%; height:100%; object-fit:contain;">`;
-        }
-    }
-    return `<i class="fas fa-image" style="font-size:${State.config.destacado_tamanio * s}px; color:#ccc; line-height:1; display:block;"></i>`;
+    const ic = State.config.destacado_icono || 'estrella';
+    return `<img src="${State.assetsPath}/stickers/${ic}.png" style="width:100%; height:100%; object-fit:contain;">`;
 }
 
 // ==========================================

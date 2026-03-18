@@ -245,7 +245,7 @@ try {
             
             // 1. Obtener todas las categorías del grupo (Agrupadas por nombre para evitar duplicados en la vista)
             $stmt = $pdo->prepare("
-                SELECT MIN(id) as id, nombre, MAX(icono) as icono, MAX(color) as color 
+                SELECT MIN(id) as id, nombre, MAX(icono) as icono 
                 FROM categorias 
                 WHERE grupo_id = ? AND activo = 1 
                 GROUP BY nombre 

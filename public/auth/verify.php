@@ -4,6 +4,7 @@
  * Permite a cualquier usuario verificar la autenticidad de un certificado
  */
 require_once '../../vendor/autoload.php';
+require_once '../../includes/SiteSettings.php';
 require_once '../../config/database.php';
 
 use CCE\Certificate;
@@ -12,6 +13,7 @@ use CCE\Certificate;
 $basePath = '..';
 $cssPath = '../css';
 $jsPath = '../js';
+$siteConfig = SiteSettings::toViewModel(SiteSettings::get($pdo), $basePath);
 
 // Lógica de búsqueda
 $codigo = $_GET['code'] ?? $_POST['code'] ?? '';

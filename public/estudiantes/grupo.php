@@ -25,7 +25,7 @@ if (!$grupo) {
 }
 
 // Obtener categorías del grupo
-$stmt = $pdo->prepare("SELECT id, nombre, icono, color FROM categorias WHERE grupo_id = ? AND activo = 1 ORDER BY nombre");
+$stmt = $pdo->prepare("SELECT id, nombre, icono FROM categorias WHERE grupo_id = ? AND activo = 1 ORDER BY nombre");
 $stmt->execute([$grupo_id]);
 $categorias = $stmt->fetchAll(PDO::FETCH_ASSOC);
 

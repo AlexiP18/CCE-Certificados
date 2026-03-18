@@ -1,5 +1,6 @@
 <?php
 require_once '../../includes/Auth.php';
+require_once '../../includes/SiteSettings.php';
 require_once '../../config/database.php';
 
 // Verificar autenticación
@@ -31,11 +32,11 @@ if ($esInstructor) {
         $stmt = $pdo->prepare("
             SELECT g.*, 
                    COUNT(DISTINCT c.id) as total_categorias,
-                   COUNT(DISTINCT cert.id) as total_certificados
+                   COUNT(DISTINCT ce.id) as total_estudiantes
                    $periodosSelect
             FROM grupos g
             LEFT JOIN categorias c ON g.id = c.grupo_id AND c.activo = 1
-            LEFT JOIN certificados cert ON g.id = cert.grupo_id
+            LEFT JOIN categoria_estudiantes ce ON c.id = ce.categoria_id AND ce.estado = 'activo'
             $periodosJoin
             WHERE g.activo = 1 AND g.id IN ($placeholders)
             GROUP BY g.id
@@ -50,11 +51,11 @@ if ($esInstructor) {
     $stmt = $pdo->query("
         SELECT g.*, 
                COUNT(DISTINCT c.id) as total_categorias,
-               COUNT(DISTINCT cert.id) as total_certificados
+               COUNT(DISTINCT ce.id) as total_estudiantes
                $periodosSelect
         FROM grupos g
         LEFT JOIN categorias c ON g.id = c.grupo_id AND c.activo = 1
-        LEFT JOIN certificados cert ON g.id = cert.grupo_id
+        LEFT JOIN categoria_estudiantes ce ON c.id = ce.categoria_id AND ce.estado = 'activo'
         $periodosJoin
         WHERE g.activo = 1
         GROUP BY g.id
@@ -105,6 +106,8 @@ if (strpos($basePath, '/public') !== false) {
     $cssPath = $basePath . '/css'; // Ajustar según estructura si rewrite oculta public
     $jsPath = $basePath . '/js';
 }
+
+$siteConfig = SiteSettings::toViewModel(SiteSettings::get($pdo), $basePath);
 
 // Renderizar la vista
 require '../../app/Views/dashboard/index.php';

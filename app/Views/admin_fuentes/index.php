@@ -3,17 +3,43 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?= $pageTitle ?> - Sistema de Certificados</title>
+    <title><?= $pageTitle ?> - <?= htmlspecialchars($siteConfig['site_name']) ?></title>
+    <?php if (!empty($siteConfig['favicon_url'])): ?>
+    <link rel="icon" type="image/x-icon" href="<?= htmlspecialchars($siteConfig['favicon_url']) ?>">
+    <?php endif; ?>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
     <link rel="stylesheet" href="<?= $basePath ?>/css/style.css">
     <link rel="stylesheet" href="<?= $cssPath ?>/admin_fuentes/index.css">
+    <style>
+        :root {
+            --site-primary: <?= htmlspecialchars($siteConfig['primary_color']) ?>;
+            --site-secondary: <?= htmlspecialchars($siteConfig['secondary_color']) ?>;
+        }
+
+        .top-nav .nav-link.active,
+        .btn-primary-gradient {
+            background: linear-gradient(135deg, var(--site-primary), var(--site-secondary)) !important;
+        }
+
+        .nav-logo-image {
+            width: 34px;
+            height: 34px;
+            object-fit: contain;
+            border-radius: 8px;
+            background: #fff;
+            padding: 2px;
+        }
+    </style>
 </head>
 <body>
     <!-- Navegación Superior -->
     <nav class="top-nav">
         <div class="nav-logo">
+            <?php if (!empty($siteConfig['logo_nav_url'])): ?>
+            <img src="<?= htmlspecialchars($siteConfig['logo_nav_url']) ?>" alt="Logo" class="nav-logo-image" onerror="this.style.display='none'">
+            <?php endif; ?>
             <i class="fas fa-graduation-cap"></i>
-            <span>CCE Certificados</span>
+            <span><?= htmlspecialchars($siteConfig['site_name']) ?></span>
         </div>
         <ul class="nav-menu">
             <li><a href="<?= $basePath ?>/dashboard/index.php" class="nav-link"><i class="fas fa-home"></i> Inicio</a></li>
@@ -22,6 +48,9 @@
             <li><a href="<?= $basePath ?>/auth/verify.php" class="nav-link"><i class="fas fa-search"></i> Verificar</a></li>
             <?php if (puede('usuarios', 'ver')): ?>
             <li><a href="<?= $basePath ?>/usuarios/index.php" class="nav-link"><i class="fas fa-user-cog"></i> Usuarios</a></li>
+            <?php endif; ?>
+            <?php if (esAdmin()): ?>
+            <li><a href="<?= $basePath ?>/configuracion/index.php" class="nav-link"><i class="fas fa-sliders-h"></i> Configuracion</a></li>
             <?php endif; ?>
             <li class="nav-user">
                 <a href="<?= $basePath ?>/perfil/dashboard/index.php" class="nav-link" title="Mi Perfil"><i class="fas fa-user-circle"></i> <?= htmlspecialchars($usuario['nombre_completo']) ?></a>
