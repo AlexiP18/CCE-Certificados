@@ -56,6 +56,14 @@ switch ($action) {
             exit;
         }
         
+        // Validar límite máximo de 5 plantillas personalizadas
+        $stmtLimit = $conn->prepare("SELECT COUNT(*) FROM grupo_plantillas WHERE grupo_id = ? AND archivo IS NOT NULL AND archivo != ''");
+        $stmtLimit->execute([$grupo_id]);
+        if ($stmtLimit->fetchColumn() >= 5) {
+            echo json_encode(['success' => false, 'message' => 'Se ha alcanzado el límite máximo de 5 plantillas guardadas.']);
+            exit;
+        }
+        
         $file = $_FILES['plantilla'];
         $allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
         
@@ -114,33 +122,7 @@ switch ($action) {
             echo json_encode(['success' => false, 'message' => $e->getMessage()]);
         }
         break;
-        
-    case 'add_default':
-        // Agrega una nueva instancia de la plantilla por defecto (sistema)
-        try {
-            // Desactivar plantillas previas
-            $stmt = $conn->prepare("UPDATE grupo_plantillas SET es_activa = 0 WHERE grupo_id = ?");
-            $stmt->execute([$grupo_id]);
-            
-            // Obtener el máximo orden actual
-            $stmt = $conn->prepare("SELECT MAX(orden) as max_orden FROM grupo_plantillas WHERE grupo_id = ?");
-            $stmt->execute([$grupo_id]);
-            $result = $stmt->fetch(PDO::FETCH_ASSOC);
-            $nuevoOrden = ($result['max_orden'] ?? -1) + 1;
-            
-            // Insertar plantilla (archivo vacío hace que el UI use default_template.png)
-            $stmt = $conn->prepare("
-                INSERT INTO grupo_plantillas (grupo_id, nombre, archivo, orden, es_activa) 
-                VALUES (?, 'Plantilla del Sistema', '', ?, 1)
-            ");
-            $stmt->execute([$grupo_id, $nuevoOrden]);
-            
-            echo json_encode(['success' => true, 'message' => 'Plantilla por defecto agregada y activada']);
-        } catch (Exception $e) {
-            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
-        }
-        break;
-        
+
     case 'set_active':
         // Establecer una plantilla como activa
         $plantilla_id = $_POST['plantilla_id'] ?? null;
@@ -158,17 +140,6 @@ switch ($action) {
             // Activar la plantilla seleccionada
             $stmt = $conn->prepare("UPDATE grupo_plantillas SET es_activa = 1 WHERE id = ? AND grupo_id = ?");
             $stmt->execute([$plantilla_id, $grupo_id]);
-            
-            // Obtener el nombre del archivo para actualizar también en la tabla grupos
-            $stmt = $conn->prepare("SELECT archivo FROM grupo_plantillas WHERE id = ?");
-            $stmt->execute([$plantilla_id]);
-            $plantilla = $stmt->fetch(PDO::FETCH_ASSOC);
-            
-            if ($plantilla) {
-                // Actualizar la plantilla activa en la tabla grupos
-                $stmt = $conn->prepare("UPDATE grupos SET plantilla = ? WHERE id = ?");
-                $stmt->execute([$plantilla['archivo'], $grupo_id]);
-            }
             
             echo json_encode(['success' => true, 'message' => 'Plantilla activada correctamente']);
         } catch (Exception $e) {
@@ -205,13 +176,6 @@ switch ($action) {
             if (file_exists($filepath)) {
                 unlink($filepath);
             }
-            
-            // Si era la plantilla activa, limpiar en grupos
-            if ($plantilla['es_activa']) {
-                $stmt = $conn->prepare("UPDATE grupos SET plantilla = NULL WHERE id = ?");
-                $stmt->execute([$grupo_id]);
-            }
-            
             echo json_encode(['success' => true, 'message' => 'Plantilla eliminada correctamente']);
         } catch (Exception $e) {
             echo json_encode(['success' => false, 'message' => $e->getMessage()]);
@@ -254,7 +218,7 @@ switch ($action) {
             // Si piden explícitamente el sistema, no auto-resolver la activa
             if ($plantilla_id === 'system') {
                 $plantilla_id = null; // Lo volvemos nulo para que el bloque de abajo reciba config vacia
-            } 
+            }
             // Si no se especifica ID (carga inicial), buscar si hay una activa por defecto
             else if (!$plantilla_id) {
                 // Determinar la plantilla activa
@@ -262,6 +226,16 @@ switch ($action) {
                     if ($p['es_activa']) {
                         $plantilla_id = $p['id'];
                         break;
+                    }
+                }
+                
+                // Si no hay plantilla activa pero sí hay plantillas subidas válidas, auto-seleccionar la primera
+                if (!$plantilla_id && count($response['plantillas']) > 0) {
+                    foreach ($response['plantillas'] as $p) {
+                        if (!empty($p['archivo']) && trim($p['archivo']) !== '') {
+                            $plantilla_id = $p['id'];
+                            break;
+                        }
                     }
                 }
             }
@@ -352,28 +326,18 @@ switch ($action) {
         // Guardar configuración de una plantilla específica
         $plantilla_id = $_POST['plantilla_id'] ?? null;
         
-        $isSystem = empty($plantilla_id) || $plantilla_id === 'system';
+        if (empty($plantilla_id) || $plantilla_id === 'system') {
+            echo json_encode(['success' => false, 'message' => 'Por favor sube una plantilla antes de guardar configuraciones.']);
+            exit;
+        }
         
         try {
-            if ($isSystem) {
-                // El sistema ya no almacena configuraciones visuales en `grupos`.
-                // Si la vista envía requests sin plantilla (o 'system'), creamos una en `grupo_plantillas` al vuelo.
-                $stmt = $conn->prepare("UPDATE grupo_plantillas SET es_activa = 0 WHERE grupo_id = ?");
-                $stmt->execute([$grupo_id]);
-                
-                $stmt = $conn->prepare("SELECT MAX(orden) as max_orden FROM grupo_plantillas WHERE grupo_id = ?");
-                $stmt->execute([$grupo_id]);
-                $result = $stmt->fetch(PDO::FETCH_ASSOC);
-                $nuevoOrden = ($result['max_orden'] ?? -1) + 1;
-                
-                $stmt = $conn->prepare("
-                    INSERT INTO grupo_plantillas (grupo_id, nombre, archivo, orden, es_activa) 
-                    VALUES (?, 'Plantilla Principal', '', ?, 1)
-                ");
-                $stmt->execute([$grupo_id, $nuevoOrden]);
-                $plantilla_id = $conn->lastInsertId();
-                $isSystem = false; // Tratamos esta nueva plantilla como cualquier otra.
-            }
+            // Activar esta plantilla y desactivar el resto
+            $stmt = $conn->prepare("UPDATE grupo_plantillas SET es_activa = 0 WHERE grupo_id = ?");
+            $stmt->execute([$grupo_id]);
+            
+            $stmt = $conn->prepare("UPDATE grupo_plantillas SET es_activa = 1 WHERE id = ? AND grupo_id = ?");
+            $stmt->execute([$plantilla_id, $grupo_id]);
 
             // Migración: agregar columna firma_imagen si no existe
             try { $conn->exec("ALTER TABLE grupo_plantillas ADD COLUMN firma_imagen VARCHAR(255) DEFAULT NULL"); } catch(Exception $e){}
@@ -498,7 +462,7 @@ switch ($action) {
             
             $stmt->execute($binds);
             
-            echo json_encode(['success' => true, 'message' => 'Configuración guardada correctamente']);
+            echo json_encode(['success' => true, 'message' => 'Configuración guardada correctamente', 'plantilla_id' => $plantilla_id]);
         } catch (Exception $e) {
             echo json_encode(['success' => false, 'message' => $e->getMessage()]);
         }

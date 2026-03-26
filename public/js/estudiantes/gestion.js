@@ -123,13 +123,24 @@ async function cargarEstudiantes() {
         if (periodoId) params.append('periodo_id', periodoId);
 
         const response = await fetch(`../api/categorias/estudiantes.php?${params}`);
-        const data = await response.json();
+        const responseText = await response.text();
+        let data = null;
 
-        if (data.success) {
+        try {
+            data = responseText ? JSON.parse(responseText) : null;
+        } catch (parseError) {
+            throw new Error(`Respuesta invalida del servidor (HTTP ${response.status})`);
+        }
+
+        if (!response.ok) {
+            throw new Error(data?.message || `Error del servidor (HTTP ${response.status})`);
+        }
+
+        if (data && data.success) {
             estudiantes = data.estudiantes || [];
             renderEstudiantes(estudiantes);
         } else {
-            throw new Error(data.message);
+            throw new Error((data && data.message) ? data.message : 'No se pudo cargar la lista de estudiantes');
         }
     } catch (error) {
         console.error(error);

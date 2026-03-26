@@ -24,6 +24,36 @@ $usuario = Auth::user();
 
 $pdo = getConnection();
 
+/**
+ * Normaliza el valor de archivo_imagen a una URL pública en /uploads.
+ * Acepta formatos guardados como "cert_xxx.png" o "uploads/cert_xxx.png".
+ */
+function buildUploadsPublicUrl($archivoImagen) {
+    if (empty($archivoImagen)) return null;
+    $archivoImagen = trim((string)$archivoImagen);
+    if ($archivoImagen === '') return null;
+
+    if (strpos($archivoImagen, 'uploads/') === 0) {
+        $archivoImagen = substr($archivoImagen, strlen('uploads/'));
+    }
+
+    return '/CCE-Certificados/uploads/' . ltrim($archivoImagen, '/');
+}
+
+/**
+ * Compatibilidad: en esquemas nuevos existe aprobacion explicita.
+ * Si las columnas no existen aun, este update se ignora sin romper flujo.
+ */
+function marcarCertificadoAprobado(PDO $pdo, $certificadoId): void {
+    if (!$certificadoId) return;
+    try {
+        $stmt = $pdo->prepare("UPDATE certificados SET aprobado = 1, requiere_aprobacion = 0, fecha_aprobacion = NOW() WHERE id = ?");
+        $stmt->execute([$certificadoId]);
+    } catch (Throwable $e) {
+        // No-op para mantener compatibilidad con instalaciones sin columnas de aprobacion.
+    }
+}
+
 // Inicializar $data
 $data = [];
 
@@ -69,7 +99,9 @@ try {
                 'categoria_id' => $categoria_id,
                 'plantilla_global' => null,
                 'plantilla_grupo' => null,
-                'plantilla_categoria' => null
+                'plantilla_categoria' => null,
+                'snapshot_grupo' => null,
+                'snapshot_categoria' => null
             ];
             
             // Verificar plantilla global (Table removed - Skipping global check)
@@ -85,6 +117,26 @@ try {
                 $stmt = $pdo->prepare("SELECT id, archivo, es_activa FROM grupo_plantillas WHERE grupo_id = ?");
                 $stmt->execute([$grupo_id]);
                 $resultado['todas_plantillas_grupo'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+                // Último certificado generado en el grupo (snapshot)
+                $stmt = $pdo->prepare("
+                    SELECT codigo, archivo_imagen, fecha_creacion
+                    FROM certificados
+                    WHERE grupo_id = ?
+                      AND archivo_imagen IS NOT NULL
+                      AND archivo_imagen <> ''
+                    ORDER BY id DESC
+                    LIMIT 1
+                ");
+                $stmt->execute([$grupo_id]);
+                $snapGrupo = $stmt->fetch(PDO::FETCH_ASSOC);
+                if ($snapGrupo) {
+                    $resultado['snapshot_grupo'] = [
+                        'codigo' => $snapGrupo['codigo'] ?? null,
+                        'fecha_creacion' => $snapGrupo['fecha_creacion'] ?? null,
+                        'url' => buildUploadsPublicUrl($snapGrupo['archivo_imagen'] ?? null)
+                    ];
+                }
             }
             
             // Verificar plantilla de categoría
@@ -92,6 +144,41 @@ try {
                 $stmt = $pdo->prepare("SELECT id, archivo, es_activa FROM categoria_plantillas WHERE categoria_id = ? AND es_activa = 1 LIMIT 1");
                 $stmt->execute([$categoria_id]);
                 $resultado['plantilla_categoria'] = $stmt->fetch(PDO::FETCH_ASSOC);
+
+                // Último certificado generado de la categoría (snapshot)
+                if ($grupo_id) {
+                    $stmt = $pdo->prepare("
+                        SELECT codigo, archivo_imagen, fecha_creacion
+                        FROM certificados
+                        WHERE grupo_id = ?
+                          AND categoria_id = ?
+                          AND archivo_imagen IS NOT NULL
+                          AND archivo_imagen <> ''
+                        ORDER BY id DESC
+                        LIMIT 1
+                    ");
+                    $stmt->execute([$grupo_id, $categoria_id]);
+                } else {
+                    $stmt = $pdo->prepare("
+                        SELECT codigo, archivo_imagen, fecha_creacion
+                        FROM certificados
+                        WHERE categoria_id = ?
+                          AND archivo_imagen IS NOT NULL
+                          AND archivo_imagen <> ''
+                        ORDER BY id DESC
+                        LIMIT 1
+                    ");
+                    $stmt->execute([$categoria_id]);
+                }
+
+                $snapCategoria = $stmt->fetch(PDO::FETCH_ASSOC);
+                if ($snapCategoria) {
+                    $resultado['snapshot_categoria'] = [
+                        'codigo' => $snapCategoria['codigo'] ?? null,
+                        'fecha_creacion' => $snapCategoria['fecha_creacion'] ?? null,
+                        'url' => buildUploadsPublicUrl($snapCategoria['archivo_imagen'] ?? null)
+                    ];
+                }
             }
             
             echo json_encode([
@@ -264,6 +351,7 @@ try {
                             $fechasGeneracion,
                             $estadoCertificado
                         ]);
+                        marcarCertificadoAprobado($pdo, $pdo->lastInsertId());
                         $aprobados++;
                     }
                 } catch (Exception $e) {
@@ -446,6 +534,7 @@ try {
                             $fechasGeneracion,
                             $estadoCertificado
                         ]);
+                        marcarCertificadoAprobado($pdo, $pdo->lastInsertId());
                         
                         $resultados[] = [
                             'estudiante_id' => $estudiante['id'],

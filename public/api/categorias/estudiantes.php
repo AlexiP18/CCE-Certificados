@@ -9,7 +9,10 @@ error_reporting(E_ALL);
 
 require_once dirname(dirname(dirname(__DIR__))) . '/includes/Auth.php';
 require_once dirname(dirname(dirname(__DIR__))) . '/config/database.php';
-require_once dirname(dirname(dirname(__DIR__))) . '/vendor/autoload.php';
+$vendorAutoload = dirname(dirname(dirname(__DIR__))) . '/vendor/autoload.php';
+if (file_exists($vendorAutoload)) {
+    require_once $vendorAutoload;
+}
 
 // Verificar autenticación
 Auth::requireAuth();
@@ -162,6 +165,10 @@ header('Content-Type: application/json');
 
 $pdo = getConnection();
 
+// Compatibilidad con instalaciones donde la columna es_destacado aun no existe.
+$stmtCol = $pdo->query("SHOW COLUMNS FROM categoria_estudiantes LIKE 'es_destacado'");
+$tiene_columna_es_destacado = $stmtCol && $stmtCol->fetch(PDO::FETCH_ASSOC);
+
 // Manejar GET requests
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $action = $_GET['action'] ?? '';
@@ -182,10 +189,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             $stmtCat->execute([$categoria_id]);
             $catInfo = $stmtCat->fetch(PDO::FETCH_ASSOC);
             $grupo_id = $catInfo ? $catInfo['grupo_id'] : 0;
-            
-            $sql = "
+
+            try {
+                $esDestacadoSelect = $tiene_columna_es_destacado ? 'ce.es_destacado' : '0 AS es_destacado';
+
+                $sql = "
                       SELECT ce.id as matricula_id, ce.estudiante_id, ce.fecha_matricula, ce.estado, ce.notas, ce.periodo_id,
-                      e.id, e.nombre, e.cedula, e.celular, e.email, e.fecha_nacimiento, ce.es_destacado,
+                      e.id, e.nombre, e.cedula, e.celular, e.email, e.fecha_nacimiento, {$esDestacadoSelect},
                       e.es_menor, 
                       rep.nombre as representante_nombre, rep.cedula as representante_cedula,
                       rep.celular as representante_celular, rep.email as representante_email, rep.fecha_nacimiento as representante_fecha_nacimiento,
@@ -216,12 +226,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             $stmt = $pdo->prepare($sql);
             $stmt->execute($params);
             $estudiantes = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            
-            echo json_encode([
-                'success' => true,
-                'estudiantes' => $estudiantes,
-                'total' => count($estudiantes)
-            ]);
+
+                echo json_encode([
+                    'success' => true,
+                    'estudiantes' => $estudiantes,
+                    'total' => count($estudiantes)
+                ]);
+            } catch (PDOException $e) {
+                error_log('Error listar_matriculados: ' . $e->getMessage());
+                http_response_code(500);
+                echo json_encode([
+                    'success' => false,
+                    'message' => 'No se pudo cargar la lista de estudiantes matriculados.'
+                ]);
+            }
             break;
 
         case 'obtener_estudiante':
@@ -876,7 +894,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ]);
 
                 // Actualizar es_destacado en categoria_estudiantes (per-categoría)
-                if ($categoria_id) {
+                if ($categoria_id && $tiene_columna_es_destacado) {
                     $stmtDest = $pdo->prepare("UPDATE categoria_estudiantes SET es_destacado = ? WHERE estudiante_id = ? AND categoria_id = ?");
                     $stmtDest->execute([$es_destacado, $id, $categoria_id]);
                 }
@@ -928,6 +946,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 exit;
             }
 
+            if (!$tiene_columna_es_destacado) {
+                echo json_encode(['success' => false, 'message' => 'La columna es_destacado no existe en categoria_estudiantes. Ejecute la migración correspondiente.']);
+                exit;
+            }
+
             try {
                 $placeholders = implode(',', array_fill(0, count($ids), '?'));
                 $params = $ids;
@@ -953,6 +976,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $categoria_id = $_POST['categoria_id'] ?? 0;
             if (!is_array($ids) || empty($ids)) {
                 echo json_encode(['success' => false, 'message' => 'IDs requeridos']);
+                exit;
+            }
+
+            if (!$tiene_columna_es_destacado) {
+                echo json_encode(['success' => false, 'message' => 'La columna es_destacado no existe en categoria_estudiantes. Ejecute la migración correspondiente.']);
                 exit;
             }
 
@@ -1476,6 +1504,10 @@ function leerArchivoEstudiantes($filepath, $ext) {
             fclose($handle);
         }
     } else {
+        if (!class_exists('PhpOffice\\PhpSpreadsheet\\IOFactory')) {
+            throw new Exception('Para importar archivos Excel (.xlsx/.xls) instale dependencias con Composer: composer install');
+        }
+
         $spreadsheet = IOFactory::load($filepath);
         $worksheet = $spreadsheet->getActiveSheet();
         $highestRow = $worksheet->getHighestRow();

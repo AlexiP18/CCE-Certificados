@@ -59,10 +59,13 @@
 
         <!-- Template Selector Ribbon -->
         <div class="template-selector-ribbon">
-            <div class="ribbon-header">
+            <div class="ribbon-header" style="margin-bottom: 5px;">
                 <h3><i class="fas fa-images"></i> Plantillas Disponibles</h3>
                 <span class="badge" id="templateCounter">Cargando...</span>
             </div>
+            <p style="font-size: 0.85rem; color: #6c757d; margin-top: 0; margin-bottom: 12px;">
+                <i class="fas fa-info-circle" style="color: #17a2b8;"></i> <strong>Resolución recomendada: 1600 x 1131 píxeles</strong> (Formato horizontal A4). Usa este tamaño para que todo encaje perfecto.
+            </p>
             <div class="ribbon-slider-wrapper">
                 <button class="slider-btn" id="sliderPrevBtn"><i class="fas fa-chevron-left"></i></button>
                 <div class="ribbon-slider" id="templateSliderContainer">
@@ -72,7 +75,6 @@
                 
                 <div class="ribbon-actions">
                     <button class="btn btn-icon" id="btnUploadTemplate" title="Subir nueva plantilla separada"><i class="fas fa-upload"></i></button>
-                    <button class="btn btn-icon btn-system" id="btnRestoreSystem" title="Restaurar plantilla predeterminada del sistema"><i class="fas fa-undo"></i></button>
                     <input type="file" id="uploadTemplateInput" accept="image/*" style="display: none;">
                 </div>
             </div>
@@ -91,11 +93,18 @@
                     <label class="toggle-switch" title="Destacado"><i class="fas fa-star toggle-icon"></i><input type="checkbox" id="toggle_destacado" value="destacado"> <span class="slider round"></span></label>
                 </div>
 
-                <div class="canvas-wrapper" id="canvasWrapper">
-                    <img id="templateBaseImage" src="<?= $assetsPath ?>/templates/default_template.png" alt="Template Base" draggable="false">
+                <div class="canvas-wrapper" id="canvasWrapper" style="display: none; background: #fff; position: relative;">
+                    <img id="templateBaseImage" src="" alt="Template Base" draggable="false" style="display: block; width: 100%; height: auto;">
                     
                     <!-- Dynamic Markers Wrapper -->
                     <div id="markersLayer"></div>
+                </div>
+
+                <!-- Empty State para cuando no hay plantillas subidas -->
+                <div class="empty-state-canvas" id="canvasEmptyState" style="display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 400px; background: #f8f9fa; border: 2px dashed #dee2e6; border-radius: 8px; margin: 20px 0;">
+                    <i class="fas fa-images" style="font-size: 3rem; color: #adb5bd; margin-bottom: 15px;"></i>
+                    <h3 style="color: #495057; margin-bottom: 10px;">Aún no tienes plantillas</h3>
+                    <p style="color: #6c757d; margin-bottom: 20px; text-align: center; max-width: 400px;">Para comenzar a diseñar el certificado, sube una imagen base para tu plantilla usando el botón de la parte superior derecha.</p>
                 </div>
                 
                 <div class="canvas-footer">
@@ -119,7 +128,7 @@
                 <div class="preview-notice" style="margin-bottom: 15px; padding: 12px; background: #fff3cd; border: 1px solid #ffc107; border-radius: 8px; display: flex; align-items: center; gap: 10px;">
                     <i class="fas fa-exclamation-triangle" style="color: #856404; font-size: 18px;"></i>
                     <p style="margin: 0; color: #856404; font-size: 13px; line-height: 1.4;">
-                        <strong>Importante:</strong> Mantente al pendiente de la previsualización. El posicionamiento y tamaño entre el lienzo y la previsualización pueden variar.
+                        <strong>Importante:</strong> La previsualización se genera como captura del lienzo (plantilla + variables) para mantener el mismo posicionamiento visual.
                     </p>
                 </div>
 
@@ -301,6 +310,7 @@
     
     <!-- Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
     <script src="<?= $jsPath ?>/grupos/config_new.js?v=<?= time() ?>"></script>
 </body>
 </html>

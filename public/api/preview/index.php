@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * API para generar vista previa de certificado
  * Soporta preview para grupos y categorías
@@ -20,8 +20,6 @@ require_once dirname(dirname(dirname(__DIR__))) . '/config/database.php';
 Auth::requireAuth();
 
 use Intervention\Image\ImageManagerStatic as Image;
-use chillerlan\QRCode\QRCode;
-use chillerlan\QRCode\QROptions;
 
 // Configurar driver GD
 Image::configure(['driver' => 'gd']);
@@ -56,6 +54,90 @@ function resolveAssetPath($relativePath) {
         }
     }
     return null;
+}
+
+/**
+ * Sobrescribe configuración base con la configuración de plantilla activa.
+ * Esto mantiene consistencia con generación real desde grupo_plantillas/categoria_plantillas.
+ */
+function applyTemplateOverrides(array $certConfig, ?array $templateConfig): array {
+    if (!$templateConfig) return $certConfig;
+
+    $fields = [
+        'posicion_nombre_x', 'posicion_nombre_y',
+        'posicion_razon_x', 'posicion_razon_y',
+        'posicion_fecha_x', 'posicion_fecha_y',
+        'posicion_qr_x', 'posicion_qr_y',
+        'posicion_firma_x', 'posicion_firma_y',
+        'fuente_nombre', 'fuente_razon', 'fuente_fecha',
+        'formato_nombre',
+        'tamanio_fuente', 'tamanio_razon', 'tamanio_fecha',
+        'tamanio_qr', 'tamanio_firma',
+        'color_texto', 'color_razon', 'color_fecha',
+        'razon_defecto', 'formato_fecha', 'variables_habilitadas',
+        'ancho_razon', 'lineas_razon', 'alineacion_razon',
+        'firma_imagen', 'firma_nombre', 'firma_cargo',
+        'destacado_habilitado', 'destacado_tipo', 'destacado_icono',
+        'destacado_imagen', 'destacado_posicion_x', 'destacado_posicion_y',
+        'destacado_tamanio'
+    ];
+
+    foreach ($fields as $field) {
+        if (array_key_exists($field, $templateConfig) && $templateConfig[$field] !== null && $templateConfig[$field] !== '') {
+            $certConfig[$field] = $templateConfig[$field];
+        }
+    }
+
+    // Alias esperados por frontend/API
+    if (isset($certConfig['destacado_posicion_x'])) {
+        $certConfig['posicion_destacado_x'] = $certConfig['destacado_posicion_x'];
+    }
+    if (isset($certConfig['destacado_posicion_y'])) {
+        $certConfig['posicion_destacado_y'] = $certConfig['destacado_posicion_y'];
+    }
+
+    return $certConfig;
+}
+
+/**
+ * Soporta variables_habilitadas como JSON array, JSON object o CSV legacy.
+ */
+function parseVariablesHabilitadasPreview($raw): array {
+    $defaults = ['nombre', 'razon', 'fecha', 'qr', 'firma'];
+
+    if (is_array($raw)) {
+        $vals = array_values(array_filter(array_map('trim', $raw), function($v) {
+            return $v !== '';
+        }));
+        return !empty($vals) ? array_values(array_unique($vals)) : $defaults;
+    }
+
+    if ($raw === null) return $defaults;
+    $str = trim((string)$raw);
+    if ($str === '' || strtolower($str) === 'null') return $defaults;
+
+    $decoded = json_decode($str, true);
+    if (is_array($decoded)) {
+        $vals = [];
+        foreach ($decoded as $k => $v) {
+            if (is_string($v) && trim($v) !== '') {
+                $vals[] = trim($v);
+                continue;
+            }
+            if (is_string($k) && ($v === true || $v === 1 || $v === '1')) {
+                $vals[] = trim($k);
+            }
+        }
+        if (!empty($vals)) {
+            return array_values(array_unique($vals));
+        }
+    }
+
+    $csv = str_replace(['[', ']', '"', "'"], '', $str);
+    $parts = array_values(array_filter(array_map('trim', explode(',', $csv)), function($v) {
+        return $v !== '';
+    }));
+    return !empty($parts) ? array_values(array_unique($parts)) : $defaults;
 }
 
 /**
@@ -222,12 +304,12 @@ function drawJustifiedText($img, $lines, $x, $y, $maxWidth, $fontPath, $fontSize
             $drawAlign = 'right';
         }
         
-        // Pass CSS px directly — Intervention's getPointSize() converts internally
+        // Convert CSS px to GD pt (matches Certificate.php)
         $img->text($line, (int)$drawX, (int)$currentY, function($font) use ($fontPath, $fontSize, $color, $drawAlign) {
             if ($fontPath && file_exists($fontPath)) {
                 $font->file($fontPath);
             }
-            $font->size($fontSize);
+            $font->size($fontSize * 0.75);
             $font->color($color);
             $font->align($drawAlign);
             $font->valign('top');
@@ -301,6 +383,7 @@ try {
         
         // Determinar si usar configuración propia de la categoría o del grupo
         $usarConfigPropia = $cat['usar_plantilla_propia'] == 1;
+        $plantillaConfigActiva = null;
         
         // Determinar plantilla a usar
         $plantillaIdPost = $_POST['plantilla_id'] ?? null;
@@ -308,16 +391,17 @@ try {
         if ($usarConfigPropia) {
             // Buscar plantilla especificada o activa en categoria_plantillas
             if ($plantillaIdPost && $plantillaIdPost !== 'null' && $plantillaIdPost !== 'system') {
-                $stmtPlantilla = $pdo->prepare("SELECT archivo FROM categoria_plantillas WHERE id = ? LIMIT 1");
+                $stmtPlantilla = $pdo->prepare("SELECT * FROM categoria_plantillas WHERE id = ? LIMIT 1");
                 $stmtPlantilla->execute([intval($plantillaIdPost)]);
             } else {
-                $stmtPlantilla = $pdo->prepare("SELECT archivo FROM categoria_plantillas WHERE categoria_id = ? AND es_activa = 1 LIMIT 1");
+                $stmtPlantilla = $pdo->prepare("SELECT * FROM categoria_plantillas WHERE categoria_id = ? AND es_activa = 1 LIMIT 1");
                 $stmtPlantilla->execute([$id]);
             }
             $plantillaActiva = $stmtPlantilla->fetch(PDO::FETCH_ASSOC);
             
             if ($plantillaActiva) {
                 $plantillaPath = resolveAssetPath('uploads/categorias/' . $id . '/' . $plantillaActiva['archivo']);
+                $plantillaConfigActiva = $plantillaActiva;
             } elseif (!empty($cat['plantilla_archivo'])) {
                 // Fallback a la plantilla antigua de categoría si existe
                 $plantillaPath = resolveAssetPath('assets/templates/' . $cat['plantilla_archivo']);
@@ -328,26 +412,17 @@ try {
         if (empty($plantillaPath) || !file_exists($plantillaPath)) {
             // Buscar plantilla especificada o activa del grupo
             if ($plantillaIdPost && $plantillaIdPost !== 'null' && $plantillaIdPost !== 'system') {
-                $stmtGrupoPlantilla = $pdo->prepare("SELECT archivo, alineacion_razon, destacado_habilitado, destacado_tipo, destacado_icono, destacado_imagen, destacado_posicion_x, destacado_posicion_y, destacado_tamanio FROM grupo_plantillas WHERE id = ? LIMIT 1");
+                $stmtGrupoPlantilla = $pdo->prepare("SELECT * FROM grupo_plantillas WHERE id = ? LIMIT 1");
                 $stmtGrupoPlantilla->execute([intval($plantillaIdPost)]);
             } else {
-                $stmtGrupoPlantilla = $pdo->prepare("SELECT archivo, alineacion_razon, destacado_habilitado, destacado_tipo, destacado_icono, destacado_imagen, destacado_posicion_x, destacado_posicion_y, destacado_tamanio FROM grupo_plantillas WHERE grupo_id = ? AND es_activa = 1 LIMIT 1");
+                $stmtGrupoPlantilla = $pdo->prepare("SELECT * FROM grupo_plantillas WHERE grupo_id = ? AND es_activa = 1 LIMIT 1");
                 $stmtGrupoPlantilla->execute([$cat['grupo_id']]);
             }
             $grupoPlantillaActiva = $stmtGrupoPlantilla->fetch(PDO::FETCH_ASSOC);
             
             if ($grupoPlantillaActiva) {
                 $plantillaPath = resolveAssetPath('uploads/grupos/' . $cat['grupo_id'] . '/' . $grupoPlantillaActiva['archivo']);
-                // Guardar configuración de destacado y lineas_razon
-                $destacadoConfig = [
-                    'destacado_habilitado' => $grupoPlantillaActiva['destacado_habilitado'] ?? 0,
-                    'destacado_tipo' => $grupoPlantillaActiva['destacado_tipo'] ?? 'icono',
-                    'destacado_icono' => $grupoPlantillaActiva['destacado_icono'] ?? 'estrella',
-                    'destacado_imagen' => $grupoPlantillaActiva['destacado_imagen'] ?? null,
-                    'destacado_posicion_x' => $grupoPlantillaActiva['destacado_posicion_x'] ?? 50,
-                    'destacado_posicion_y' => $grupoPlantillaActiva['destacado_posicion_y'] ?? 50,
-                    'destacado_tamanio' => $grupoPlantillaActiva['destacado_tamanio'] ?? 100
-                ];
+                $plantillaConfigActiva = $grupoPlantillaActiva;
             } elseif (!empty($cat['grupo_plantilla'])) {
                 // Fallback a la plantilla antigua del grupo
                 $plantillaPath = resolveAssetPath('assets/templates/' . $cat['grupo_plantilla']);
@@ -454,11 +529,9 @@ try {
                 'destacado_imagen' => $cat['grupo_destacado_imagen'] ?? null
             ];
         }
-        
-        // Agregar configuración de destacado si está disponible
-        if (isset($destacadoConfig)) {
-            $certConfig = array_merge($certConfig, $destacadoConfig);
-        }
+
+        // Priorizar configuración de la plantilla activa (nuevo sistema de plantillas)
+        $certConfig = applyTemplateOverrides($certConfig, $plantillaConfigActiva);
         
         // Si use_form_data está activo, sobrescribir con valores del formulario
         if ($useFormData) {
@@ -509,11 +582,11 @@ try {
         $plantillaActiva = null;
         
         if ($plantillaIdPost && $plantillaIdPost !== 'null' && $plantillaIdPost !== 'system') {
-            $stmtPlantilla = $pdo->prepare("SELECT archivo, alineacion_razon FROM grupo_plantillas WHERE id = ? LIMIT 1");
+            $stmtPlantilla = $pdo->prepare("SELECT * FROM grupo_plantillas WHERE id = ? LIMIT 1");
             $stmtPlantilla->execute([intval($plantillaIdPost)]);
             $plantillaActiva = $stmtPlantilla->fetch(PDO::FETCH_ASSOC);
         } else {
-            $stmtPlantilla = $pdo->prepare("SELECT archivo, alineacion_razon FROM grupo_plantillas WHERE grupo_id = ? AND es_activa = 1 LIMIT 1");
+            $stmtPlantilla = $pdo->prepare("SELECT * FROM grupo_plantillas WHERE grupo_id = ? AND es_activa = 1 LIMIT 1");
             $stmtPlantilla->execute([$id]);
             $plantillaActiva = $stmtPlantilla->fetch(PDO::FETCH_ASSOC);
         }
@@ -572,6 +645,9 @@ try {
             'destacado_imagen' => $grupo['destacado_imagen'] ?? null,
             'destacado_habilitado' => $grupo['destacado_habilitado'] ?? 0
         ];
+
+        // Priorizar configuración de plantilla activa del grupo
+        $certConfig = applyTemplateOverrides($certConfig, $plantillaActiva);
         
         // Si use_form_data está activo, sobrescribir con valores del formulario (para grupos)
         if ($useFormData) {
@@ -666,8 +742,8 @@ try {
     $TARGET_HEIGHT = 1131;
     $img->resize($TARGET_WIDTH, $TARGET_HEIGHT);
     
-    // Variables habilitadas
-    $variablesHabilitadas = json_decode($certConfig['variables_habilitadas'], true) ?: ['nombre', 'qr', 'firma'];
+    // Variables habilitadas (soporta JSON array/object y CSV legacy)
+    $variablesHabilitadas = parseVariablesHabilitadasPreview($certConfig['variables_habilitadas'] ?? null);
     
     // Obtener datos del primer estudiante del grupo (si existe)
     // Aplicar formato según configuración al nombre por defecto
@@ -868,10 +944,10 @@ try {
         try {
             // Check if we can use TrueType font
             if (function_exists('imagettftext') && !empty($fontPath) && file_exists($fontPath)) {
-                // Pass CSS px directly — Intervention's getPointSize() converts internally
+                // Convert CSS px to GD pt (matches Certificate.php)
                 $img->text($text, $x, $y, function($font) use ($fontPath, $size, $color, $align) {
                     $font->file($fontPath);
-                    $font->size($size);
+                    $font->size($size * 0.75);
                     $font->color($color);
                     $font->align($align);
                     $font->valign('top');
@@ -1031,44 +1107,30 @@ try {
         );
     }
     
-    // Agregar QR real
+    // Agregar marcador QR para previsualización (no QR real por estudiante)
     if (in_array('qr', $variablesHabilitadas)) {
-        $qrSize = (int)$certConfig['tamanio_qr'];
+        $qrSize = max(48, (int)$certConfig['tamanio_qr']);
         $qrX = (int)$certConfig['posicion_qr_x'];
         $qrY = (int)$certConfig['posicion_qr_y'];
-        
-        $options = new QROptions([
-            'outputType' => QRCode::OUTPUT_IMAGE_PNG,
-            'eccLevel' => QRCode::ECC_M,
-            'scale' => 10,
-            'imageBase64' => false,
-        ]);
-        
-        $qrcode = new QRCode($options);
-        // Usar public/uploads (dirname(dirname(__DIR__)) . '/public/uploads/')
-        // Pero uploads esta en root segun otro codigo?
-        // En config.php: uploadsDir = $publicAssetsDir . 'templates/' (assets/templates)
-        // PERO aqui usamos una carpeta temp para preview QR.
-        // Usemos public/uploads para consistencia si existe, o uploads en root.
-        // El codigo anterior usaba dirname(dirname(dirname(__DIR__))) . '/uploads/'; (ROOT/uploads)
-        $uploadsDir = dirname(dirname(dirname(__DIR__))) . '/uploads/';
-        if (!is_dir($uploadsDir)) {
-            mkdir($uploadsDir, 0755, true);
-        }
-        $qrTempPath = $uploadsDir . 'preview_qr_' . time() . '.png';
-        $qrcode->render('https://ejemplo.com/verify?code=' . $codigoEjemplo, $qrTempPath);
-        
-        if (file_exists($qrTempPath)) {
-            try {
-                $qrImg = Image::make($qrTempPath);
-                $qrImg->resize($qrSize, $qrSize);
-                // Coordenadas = top-left del cuadro (igual que el lienzo frontend)
-                $img->insert($qrImg, 'top-left', $qrX, $qrY);
-            } catch (Exception $e) {
-                error_log("Error al insertar QR en preview: " . $e->getMessage());
+
+        $img->rectangle(
+            $qrX,
+            $qrY,
+            $qrX + $qrSize,
+            $qrY + $qrSize,
+            function($draw) {
+                $draw->background('rgba(30, 64, 175, 0.10)');
+                $draw->border(2, '#1e40af');
             }
-            @unlink($qrTempPath);
-        }
+        );
+
+        $labelSize = max(14, min(28, (int)round($qrSize * 0.22)));
+        $img->text('QR', $qrX + ($qrSize / 2), $qrY + ($qrSize / 2), function($font) use ($labelSize) {
+            $font->size($labelSize);
+            $font->color('#1e40af');
+            $font->align('center');
+            $font->valign('middle');
+        });
     }
     
     // Agregar FIRMA (firmaPath ya fue resuelto arriba)
@@ -1185,7 +1247,7 @@ try {
 
     $response = [
         'success' => true,
-        'preview_url' => '/cce-certificados/uploads/' . $previewFilename,
+        'preview_url' => '/CCE-Certificados/uploads/' . $previewFilename,
         'config' => $certConfig
     ];
     

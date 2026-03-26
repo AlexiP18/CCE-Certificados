@@ -101,12 +101,10 @@ function initFontSelectors() {
 
 function updateCanvasScale() {
     const canvas = document.getElementById('canvas');
-    if (canvas.naturalWidth > 0) {
-        imageRealWidth = canvas.naturalWidth;
-        imageRealHeight = canvas.naturalHeight;
-    }
+    // Always use fixed 1600x1131 reference — matches PHP backend exactly
+    imageRealWidth = 1600;
+    imageRealHeight = 1131;
     canvasScale = canvas.offsetWidth / imageRealWidth;
-    // console.log(`Canvas scale: ${canvasScale}, Real dimensions: ${imageRealWidth}x${imageRealHeight}`);
 }
 
 function initDragDrop() {
@@ -366,7 +364,7 @@ function updateMarkerSizes() {
     }
 
     if (nombreMarker) {
-        const fontSize = Math.max(10, tamanioFuente * canvasScale * 0.8);
+        const fontSize = Math.max(10, tamanioFuente * canvasScale);
         nombreMarker.style.fontSize = fontSize + 'px';
     }
 
@@ -382,8 +380,15 @@ function updateMarkerSizes() {
     }
 
     if (fechaMarker) {
-        const fontSize = Math.max(8, tamanioFecha * canvasScale * 0.8);
+        const fontSize = Math.max(8, tamanioFecha * canvasScale);
         fechaMarker.style.fontSize = fontSize + 'px';
+
+        // Update fecha marker text with current format
+        const formatoFecha = document.getElementById('formato_fecha')?.value || 'd de F de Y';
+        const fechaMarkerText = document.getElementById('fechaMarkerText');
+        if (fechaMarkerText) {
+            fechaMarkerText.textContent = formatearFechaJS(formatoFecha);
+        }
     }
 
     if (destacadoMarker) {
@@ -873,3 +878,95 @@ document.getElementById('configForm').addEventListener('submit', async e => {
         alert('Error al guardar');
     }
 });
+
+// =====================================================
+// PREVIEW & RESET
+// =====================================================
+
+/**
+ * Formatear fecha en JS (replica lógica de Certificate.php)
+ */
+function formatearFechaJS(formato) {
+    const now = new Date();
+    const meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+    const mesesAbrev = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+
+    let result = formato;
+    result = result.replace(/d/g, String(now.getDate()).padStart(2, '0'));
+    result = result.replace(/F/g, meses[now.getMonth()]);
+    result = result.replace(/M/g, mesesAbrev[now.getMonth()]);
+    result = result.replace(/Y/g, now.getFullYear());
+    result = result.replace(/m/g, String(now.getMonth() + 1).padStart(2, '0'));
+    return result;
+}
+
+function previewCertificate() {
+    const modal = document.getElementById('previewModal');
+    const body = document.getElementById('previewBody');
+
+    modal.style.display = 'flex';
+    body.innerHTML = '<div style="text-align:center;padding:50px;"><i class="fas fa-spinner fa-spin fa-3x"></i><p>Generando previsualización...</p></div>';
+
+    const formData = new FormData(document.getElementById('configForm'));
+    formData.set('tipo', 'categoria');
+    formData.set('id', categoriaId);
+    formData.set('use_form_data', '1');
+    formData.set('plantilla_id', activeTemplateId || 'system');
+
+    // Variables habilitadas
+    const vars = [];
+    document.querySelectorAll('.checkbox-item input:checked').forEach(cb => vars.push(cb.value));
+    formData.set('variables_habilitadas', JSON.stringify(vars));
+
+    const timestamp = Date.now();
+    fetch(`${basePath}api/preview/index.php?v=${timestamp}`, {
+        method: 'POST',
+        body: formData
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success && data.preview_url) {
+            body.innerHTML = `<img src="${data.preview_url}?v=${Date.now()}" style="width:100%;height:auto;border-radius:4px;box-shadow:0 4px 12px rgba(0,0,0,0.2);">`;
+        } else {
+            throw new Error(data.message || 'Error en respuesta');
+        }
+    })
+    .catch(err => {
+        console.error(err);
+        body.innerHTML = `<div style="text-align:center;padding:50px;color:red;"><i class="fas fa-exclamation-triangle fa-3x"></i><p>Error al generar la previsualización.</p><p>${err.message || 'Intente nuevamente.'}</p></div>`;
+    });
+}
+
+function closePreviewModal() {
+    document.getElementById('previewModal').style.display = 'none';
+}
+
+function resetDefaults() {
+    if (!confirm('¿Restaurar valores por defecto? Se perderán los cambios no guardados.')) return;
+
+    const defaults = {
+        posicion_nombre_x: 400, posicion_nombre_y: 300,
+        posicion_razon_x: 400, posicion_razon_y: 360,
+        posicion_fecha_x: 400, posicion_fecha_y: 420,
+        posicion_qr_x: 920, posicion_qr_y: 419,
+        posicion_firma_x: 800, posicion_firma_y: 850,
+        posicion_destacado_x: 50, posicion_destacado_y: 50,
+        tamanio_fuente: 50, tamanio_razon: 24, tamanio_fecha: 20,
+        tamanio_qr: 200, tamanio_firma: 200, tamanio_destacado: 100,
+        ancho_razon: 600, ancho_razon_input: 600,
+        color_texto: '#000000', color_texto_hex: '#000000',
+        color_razon: '#333333', color_razon_hex: '#333333',
+        color_fecha: '#333333', color_fecha_hex: '#333333'
+    };
+
+    Object.entries(defaults).forEach(([id, val]) => {
+        const el = document.getElementById(id);
+        if (el) el.value = val;
+    });
+
+    setFormatoNombre('mayusculas');
+    setAlineacionRazon('justified');
+    updateMarkerPositions();
+    updateMarkersVisibility();
+    updateRazonMarkerText();
+}

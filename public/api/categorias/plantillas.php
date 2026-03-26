@@ -36,7 +36,7 @@ if (!$categoria_id) {
 // Obtener información del grupo padre para heredar configuración
 function getGrupoInfo($conn, $categoria_id) {
     $stmt = $conn->prepare("
-        SELECT g.id as grupo_id, g.plantilla, g.firma_imagen, g.firma_nombre, g.firma_cargo,
+        SELECT g.id as grupo_id, g.nombre as grupo_nombre, g.firma_imagen,
                gp.archivo as plantilla_activa_grupo,
                gp.posicion_nombre_x, gp.posicion_nombre_y,
                gp.posicion_razon_x, gp.posicion_razon_y,
@@ -50,6 +50,7 @@ function getGrupoInfo($conn, $categoria_id) {
                gp.razon_defecto, gp.formato_fecha, gp.variables_habilitadas,
                gp.ancho_razon,
                gp.formato_nombre, gp.alineacion_razon,
+               gp.firma_imagen as gp_firma_imagen,
                gp.destacado_posicion_x, gp.destacado_posicion_y,
                gp.destacado_tamanio, gp.destacado_tipo, gp.destacado_icono, gp.destacado_imagen
         FROM categorias c
@@ -121,10 +122,10 @@ switch ($action) {
             exit;
         }
         
-        // Crear directorio si no existe
-        $uploadDir = '../uploads/categorias/' . $categoria_id . '/';
+        // Crear directorio si no existe (ruta absoluta desde la raíz de public/)
+        $uploadDir = dirname(dirname(__DIR__)) . '/uploads/categorias/' . $categoria_id . '/';
         if (!is_dir($uploadDir)) {
-            mkdir($uploadDir, 0755, true);
+            mkdir($uploadDir, 0775, true);
         }
         
         // Generar nombre único
@@ -322,7 +323,7 @@ switch ($action) {
             $stmt->execute([$plantilla_id, $categoria_id]);
             
             // Eliminar archivo físico
-            $filepath = '../uploads/categorias/' . $categoria_id . '/' . $plantilla['archivo'];
+            $filepath = dirname(dirname(__DIR__)) . '/uploads/categorias/' . $categoria_id . '/' . $plantilla['archivo'];
             if (file_exists($filepath)) {
                 unlink($filepath);
             }
@@ -382,7 +383,6 @@ switch ($action) {
                     tamanio_fuente, tamanio_razon, tamanio_fecha,
                     tamanio_qr, tamanio_firma,
                     color_texto, color_razon, color_fecha,
-                    razon_defecto, formato_fecha, variables_habilitadas,
                     razon_defecto, formato_fecha, variables_habilitadas,
                     ancho_razon, firma_imagen, firma_nombre, firma_cargo,
                     formato_nombre, alineacion_razon,
@@ -496,7 +496,11 @@ switch ($action) {
                 $categoria_id
             ]);
             
-            echo json_encode(['success' => true, 'message' => 'Configuración guardada correctamente']);
+            // Also mark this template as active
+            $conn->prepare("UPDATE categoria_plantillas SET es_activa = 0 WHERE categoria_id = ?")->execute([$categoria_id]);
+            $conn->prepare("UPDATE categoria_plantillas SET es_activa = 1 WHERE id = ? AND categoria_id = ?")->execute([$plantilla_id, $categoria_id]);
+
+            echo json_encode(['success' => true, 'message' => 'Configuración guardada correctamente', 'plantilla_id' => $plantilla_id]);
         } catch (Exception $e) {
             echo json_encode(['success' => false, 'message' => $e->getMessage()]);
         }
@@ -525,9 +529,9 @@ switch ($action) {
         }
         
         // Crear directorio si no existe
-        $uploadDir = '../uploads/categorias/' . $categoria_id . '/firmas/';
+        $uploadDir = dirname(dirname(__DIR__)) . '/uploads/categorias/' . $categoria_id . '/firmas/';
         if (!is_dir($uploadDir)) {
-            mkdir($uploadDir, 0755, true);
+            mkdir($uploadDir, 0775, true);
         }
         
         // Generar nombre único
@@ -552,14 +556,15 @@ switch ($action) {
                 }
             }
             
-            // Actualizar en BD
+            // Actualizar en BD con ruta relativa (para que el frontend pueda mostrarla)
+            $relativePath = 'uploads/categorias/' . $categoria_id . '/firmas/' . $filename;
             $stmt = $conn->prepare("UPDATE categoria_plantillas SET firma_imagen = ? WHERE id = ? AND categoria_id = ?");
-            $stmt->execute([$filename, $plantilla_id, $categoria_id]);
+            $stmt->execute([$relativePath, $plantilla_id, $categoria_id]);
             
             echo json_encode([
                 'success' => true,
                 'message' => 'Firma subida correctamente',
-                'firma_imagen' => $filename
+                'firma_imagen' => $relativePath
             ]);
         } catch (Exception $e) {
             unlink($filepath);

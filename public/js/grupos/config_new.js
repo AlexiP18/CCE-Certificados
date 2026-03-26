@@ -149,9 +149,6 @@ function bindUIEvents() {
 
     const uploadTemplateInput = document.getElementById('uploadTemplateInput');
     if (uploadTemplateInput) uploadTemplateInput.addEventListener('change', uploadTemplate);
-
-    const btnRestoreSystem = document.getElementById('btnRestoreSystem');
-    if (btnRestoreSystem) btnRestoreSystem.addEventListener('click', restoreSystemTemplate);
 }
 
 // ==========================================
@@ -162,8 +159,6 @@ async function fetchConfig() {
         let url = `${State.basePath}api/grupos/plantillas.php?action=get_config&grupo_id=${State.grupoId}`;
         if (State.currentTemplateId) {
             url += `&plantilla_id=${State.currentTemplateId}`;
-        } else {
-            url += `&plantilla_id=system`;
         }
 
         const response = await fetch(url);
@@ -247,6 +242,7 @@ function renderAll() {
     renderRibbon();
     renderToggles();
     renderSidebar();
+    renderSidebarTabVisibility();
     renderTemplateImage();
     renderMarkers();
     updateContextValues();
@@ -259,21 +255,12 @@ function renderRibbon() {
 
     container.innerHTML = '';
 
-    document.getElementById('templateCounter').textContent = `${State.templates.length}/6`;
+    const customTemplates = State.templates.filter(tpl => tpl.archivo && tpl.archivo.trim() !== '');
 
-    // Plantilla de Sistema
-    const sysThumb = document.createElement('div');
-    const isSysActive = !State.currentTemplateId;
-    sysThumb.className = `template-thumb ${isSysActive ? 'active' : ''}`;
-    sysThumb.innerHTML = `
-        <img src="${State.assetsPath}/templates/default_template.png" style="width:100%; height:100%; object-fit:cover; border-radius:4px;">
-        <div style="position:absolute; bottom:0; left:0; right:0; background:rgba(0,0,0,0.7); color:white; font-size:10px; text-align:center; padding:2px; border-bottom-left-radius: 4px; border-bottom-right-radius: 4px;">Sistema</div>
-    `;
-    sysThumb.onclick = () => selectTemplate(null);
-    container.appendChild(sysThumb);
+    document.getElementById('templateCounter').textContent = `${customTemplates.length}/5`;
 
     // Plantillas Subidas
-    State.templates.forEach(tpl => {
+    customTemplates.forEach(tpl => {
         const thumb = document.createElement('div');
         const isActive = State.currentTemplateId == tpl.id;
         thumb.className = `template-thumb ${isActive ? 'active' : ''}`;
@@ -287,6 +274,35 @@ function renderRibbon() {
         thumb.onclick = () => selectTemplate(tpl.id);
         container.appendChild(thumb);
     });
+
+    // Slots Vacíos hasta 5
+    const MAX_TEMPLATES = 5;
+    const emptySlotsCount = MAX_TEMPLATES - customTemplates.length;
+    
+    for (let i = 0; i < emptySlotsCount; i++) {
+        const emptySlot = document.createElement('div');
+        emptySlot.className = 'template-thumb-empty';
+        emptySlot.innerHTML = `
+            <i class="fas fa-image" style="font-size: 24px; opacity: 0.3; margin-bottom: 5px;"></i>
+            <span style="opacity: 0.6;">Vacío</span>
+        `;
+        container.appendChild(emptySlot);
+    }
+
+    // Activar o desactivar botón de subir nueva plantilla
+    const btnUpload = document.getElementById('btnUploadTemplate');
+    if (btnUpload) {
+        btnUpload.disabled = emptySlotsCount <= 0;
+        if (emptySlotsCount <= 0) {
+            btnUpload.style.opacity = '0.5';
+            btnUpload.style.cursor = 'not-allowed';
+            btnUpload.title = 'Límite de 5 plantillas alcanzado';
+        } else {
+            btnUpload.style.opacity = '1';
+            btnUpload.style.cursor = 'pointer';
+            btnUpload.title = 'Subir nueva plantilla separada';
+        }
+    }
 }
 
 // Renderizar switches superiores
@@ -305,6 +321,7 @@ function renderToggles() {
                     State.config.variables_habilitadas = State.config.variables_habilitadas.filter(item => item !== v);
                 }
                 renderMarkersVisibility();
+                renderSidebarTabVisibility();
             };
         }
     });
@@ -368,6 +385,29 @@ function switchSidebarTab(tabId) {
     if (tabId === 'fecha') {
         updateFechaFormatLabels();
     }
+}
+
+function renderSidebarTabVisibility() {
+    const tabsContainer = document.getElementById('sidebarTabs');
+    if (!tabsContainer) return;
+    
+    const tabs = Array.from(tabsContainer.children);
+    const varNames = ['nombre', 'razon', 'fecha', 'qr', 'firma', 'destacado'];
+
+    tabs.forEach((t, idx) => {
+        const id = varNames[idx];
+        const isEnabled = State.config.variables_habilitadas.includes(id);
+        
+        // Mantener la pestaña visible, pero indicando visualmente si está bloqueada
+        t.style.opacity = isEnabled ? '1' : '0.5';
+        
+        // Bloquear el panel de configuración respectivo
+        const panel = document.getElementById(`panel-${id}`);
+        if (panel) {
+            panel.style.opacity = isEnabled ? '1' : '0.5';
+            panel.style.pointerEvents = isEnabled ? 'auto' : 'none';
+        }
+    });
 }
 
 // Llenar datos a la Sidebar
@@ -603,14 +643,32 @@ function renderDestacadoIconGrid() {
 }
 
 function renderTemplateImage() {
-    const imgEl = document.getElementById('templateBaseImage');
+    const customTemplates = State.templates.filter(tpl => tpl.archivo && tpl.archivo.trim() !== '');
 
-    let path = `${State.assetsPath}/templates/default_template.png`; // Fallback puro
+    if (customTemplates.length === 0) {
+        document.getElementById('canvasWrapper').style.display = 'none';
+        document.getElementById('canvasEmptyState').style.display = 'flex';
+        document.getElementById('btnSaveConfig').disabled = true;
+        document.getElementById('btnPreview').disabled = true;
+        return; // Sale temprano sin cargar imagen
+    } else {
+        document.getElementById('canvasWrapper').style.display = 'block';
+        document.getElementById('canvasEmptyState').style.display = 'none';
+        document.getElementById('btnSaveConfig').disabled = false;
+        document.getElementById('btnPreview').disabled = false;
 
-    if (State.currentTemplateId) {
-        const tpl = State.templates.find(t => t.id == State.currentTemplateId);
-        if (tpl) path = `${State.basePath}uploads/grupos/${State.grupoId}/${tpl.archivo}`;
+        // Auto-seleccionar la primera plantilla si no hay ninguna activa o si la activa era la del sistema fantasma
+        if (!State.currentTemplateId || !customTemplates.find(t => t.id == State.currentTemplateId)) {
+            State.currentTemplateId = customTemplates[0].id;
+        }
     }
+
+    const imgEl = document.getElementById('templateBaseImage');
+    const tpl = customTemplates.find(t => t.id == State.currentTemplateId);
+    
+    if (!tpl) return;
+    
+    const path = `${State.basePath}uploads/grupos/${State.grupoId}/${tpl.archivo}`;
 
     imgEl.src = path;
 
@@ -624,16 +682,16 @@ function renderTemplateImage() {
         // Recalcular escala canvas VS real
         const canvasWrapper = document.getElementById('canvasWrapper');
         if (canvasWrapper) {
-            State.ui.canvasScale = canvasWrapper.getBoundingClientRect().width / State.ui.imageRealWidth;
+            syncCanvasScaleAndLayer();
 
             // Observador de redimensión: recalcula escala al hacer zoom o resize
             if (State.ui.resizeObserver) {
                 State.ui.resizeObserver.disconnect();
             }
             State.ui.resizeObserver = new ResizeObserver(() => {
-                const newScale = canvasWrapper.getBoundingClientRect().width / State.ui.imageRealWidth;
-                if (Math.abs(newScale - State.ui.canvasScale) > 0.001) {
-                    State.ui.canvasScale = newScale;
+                const previousScale = State.ui.canvasScale;
+                syncCanvasScaleAndLayer();
+                if (Math.abs(State.ui.canvasScale - previousScale) > 0.001) {
                     renderMarkers();
                 }
             });
@@ -643,14 +701,29 @@ function renderTemplateImage() {
     };
 }
 
+function syncCanvasScaleAndLayer() {
+    const canvasWrapper = document.getElementById('canvasWrapper');
+    const layer = document.getElementById('markersLayer');
+    if (!canvasWrapper || !layer || !State.ui.imageRealWidth || !State.ui.imageRealHeight) return;
+
+    // clientWidth evita incluir el borde del wrapper y alinea exactamente capa e imagen.
+    const wrapperWidth = canvasWrapper.clientWidth;
+    State.ui.canvasScale = wrapperWidth > 0 ? (wrapperWidth / State.ui.imageRealWidth) : 1;
+
+    // La capa siempre vive en coordenadas maestras 1600x1131.
+    layer.style.width = `${State.ui.imageRealWidth}px`;
+    layer.style.height = `${State.ui.imageRealHeight}px`;
+    layer.style.transformOrigin = 'top left';
+    layer.style.transform = `scale(${State.ui.canvasScale})`;
+}
+
 
 // Renderizar los marcadores en el lienzo
 function renderMarkers() {
     const layer = document.getElementById('markersLayer');
     if (!layer) return;
     layer.innerHTML = '';
-
-    const s = State.ui.canvasScale;
+    syncCanvasScaleAndLayer();
 
     // --- AUTO CENTERING LOGIC ---
     // Si la configuracion es nueva (-1), calculamos el centro exacto en base al tamaño REAL de esta imagen especifica
@@ -716,9 +789,9 @@ function renderMarkers() {
         { id: 'nombre', html: `<span class="marker-label"><i class="fas fa-user"></i></span>${formatText(State.mockData.nombre, State.config.formato_nombre)}` },
         { id: 'razon', html: `<span class="marker-label"><i class="fas fa-file-alt"></i></span><span class="razon-text">${formatRazonText()}</span>` },
         { id: 'fecha', html: `<span class="marker-label"><i class="fas fa-calendar"></i></span><span>${formatFechaText()}</span>` },
-        { id: 'qr', html: `<span class="marker-label"><i class="fas fa-qrcode"></i></span><i class="fas fa-qrcode" style="font-size:${State.config.tamanio_qr * s}px; line-height:1; display:block;"></i>` },
-        { id: 'firma', html: `<span class="marker-label"><i class="fas fa-signature"></i></span>${getFirmaHtml(s)}` },
-        { id: 'destacado', html: `<span class="marker-label"><i class="fas fa-star"></i></span>${getDestacadoHtml(s)}` }
+        { id: 'qr', html: `<span class="marker-label"><i class="fas fa-qrcode"></i></span><i class="fas fa-qrcode" style="font-size:${State.config.tamanio_qr}px; line-height:1; display:block;"></i>` },
+        { id: 'firma', html: `<span class="marker-label"><i class="fas fa-signature"></i></span>${getFirmaHtml()}` },
+        { id: 'destacado', html: `<span class="marker-label"><i class="fas fa-star"></i></span>${getDestacadoHtml()}` }
     ];
 
     vars.forEach(v => {
@@ -730,22 +803,22 @@ function renderMarkers() {
         m.setAttribute('data-id', v.id);
 
         // Base Pos
-        m.style.left = `${State.config[`posicion_${v.id}_x`] * s}px`;
-        m.style.top = `${State.config[`posicion_${v.id}_y`] * s}px`;
+        m.style.left = `${State.config[`posicion_${v.id}_x`]}px`;
+        m.style.top = `${State.config[`posicion_${v.id}_y`]}px`;
 
         // Modificaciones Estilos Especificos (Fuente, Tamaño, Color, Ancho)
         if (v.id === 'nombre' || v.id === 'razon' || v.id === 'fecha') {
             const fontReq = State.config[`fuente_${v.id}`];
             m.style.fontFamily = `"${State.fontMap[fontReq] || 'sans-serif'}", sans-serif`;
 
-            const pxSize = State.config[`tamanio_${v.id === 'nombre' ? 'fuente' : v.id}`] * s;
+            const pxSize = State.config[`tamanio_${v.id === 'nombre' ? 'fuente' : v.id}`];
             m.style.fontSize = `${pxSize}px`;
 
             m.style.color = State.config[`color_${v.id === 'nombre' ? 'texto' : v.id}`];
         }
 
         if (v.id === 'razon') {
-            m.style.width = `${State.config.ancho_razon * s}px`;
+            m.style.width = `${State.config.ancho_razon}px`;
             m.style.textAlign = State.config.alineacion_razon;
             m.style.lineHeight = '1.3';
 
@@ -754,8 +827,8 @@ function renderMarkers() {
         }
 
         if (v.id === 'qr') {
-            m.style.width = `${State.config.tamanio_qr * s}px`;
-            m.style.height = `${State.config.tamanio_qr * s}px`;
+            m.style.width = `${State.config.tamanio_qr}px`;
+            m.style.height = `${State.config.tamanio_qr}px`;
             m.style.display = 'flex';
             m.style.alignItems = 'center';
             m.style.justifyContent = 'center';
@@ -768,7 +841,7 @@ function renderMarkers() {
 
             const saved = State.config.firma_imagen;
             if (saved) {
-                m.style.width = `${State.config.tamanio_firma * s}px`;
+                m.style.width = `${State.config.tamanio_firma}px`;
                 m.style.height = 'auto'; // Altura determinada por ratio real de la imagen
                 m.style.overflow = 'visible';
             } else {
@@ -777,8 +850,8 @@ function renderMarkers() {
         }
 
         if (v.id === 'destacado') {
-            m.style.width = `${State.config.destacado_tamanio * s}px`;
-            m.style.height = `${State.config.destacado_tamanio * s}px`;
+            m.style.width = `${State.config.destacado_tamanio}px`;
+            m.style.height = `${State.config.destacado_tamanio}px`;
             m.style.display = 'flex';
             m.style.alignItems = 'center';
             m.style.justifyContent = 'center';
@@ -791,8 +864,7 @@ function renderMarkers() {
     // Attach fallback handlers for firma images that may 404
     layer.querySelectorAll('.type-firma img').forEach(img => {
         img.addEventListener('error', function () {
-            const s = State.ui.canvasScale;
-            const iconSize = State.config.tamanio_firma * 0.5 * s;
+            const iconSize = State.config.tamanio_firma * 0.5;
             this.outerHTML = '<i class="fas fa-signature" style="font-size:' + iconSize + 'px; line-height:1; display:block; color:#333;"></i>';
         });
     });
@@ -866,7 +938,7 @@ function updateFechaFormatLabels() {
     });
 }
 
-function getFirmaHtml(s) {
+function getFirmaHtml() {
     const saved = State.config.firma_imagen;
     if (saved) {
         let uri = saved;
@@ -874,10 +946,10 @@ function getFirmaHtml(s) {
         return `<img src="${uri}" style="width:100%; height:auto; display:block; object-fit:contain;">`;
     }
     // Ícono default cuando no hay imagen guardada
-    return `<i class="fas fa-signature" style="font-size:${State.config.tamanio_firma * 0.5 * s}px; line-height:1; display:block; color:#333;"></i>`;
+    return `<i class="fas fa-signature" style="font-size:${State.config.tamanio_firma * 0.5}px; line-height:1; display:block; color:#333;"></i>`;
 }
 
-function getDestacadoHtml(s) {
+function getDestacadoHtml() {
     const ic = State.config.destacado_icono || 'estrella';
     return `<img src="${State.assetsPath}/stickers/${ic}.png" style="width:100%; height:100%; object-fit:contain;">`;
 }
@@ -903,8 +975,8 @@ function initInteractJS() {
                 State.config[`posicion_${id}_y`] += event.dy / s;
 
                 // Actualizar UI Style
-                target.style.left = `${State.config[`posicion_${id}_x`] * s}px`;
-                target.style.top = `${State.config[`posicion_${id}_y`] * s}px`;
+                target.style.left = `${State.config[`posicion_${id}_x`]}px`;
+                target.style.top = `${State.config[`posicion_${id}_y`]}px`;
 
                 updateContextValues();
             },
@@ -937,7 +1009,7 @@ function initInteractJS() {
                 State.config.ancho_razon = Math.round(newWidthVal);
 
                 // Update UI visually
-                target.style.width = event.rect.width + 'px';
+                target.style.width = `${State.config.ancho_razon}px`;
 
                 // Update Sidebar slider
                 const input = document.querySelector('[data-bind="ancho_razon"]');
@@ -1007,6 +1079,10 @@ async function saveConfig() {
         const data = await res.json();
 
         if (data.success) {
+            if (data.plantilla_id) {
+                State.currentTemplateId = data.plantilla_id;
+            }
+
             // Limpiar colas de subida
             State.pendingFiles.firma = null;
             State.pendingFiles.destacado = null;
@@ -1016,7 +1092,7 @@ async function saveConfig() {
 
             notifySuccess('Configuración guardada correctamente');
         } else {
-            notifyError(data.error || 'Error al guardar');
+            notifyError(data.message || data.error || 'Error al guardar');
         }
     } catch (e) {
         console.error(e);
@@ -1030,6 +1106,12 @@ async function saveConfig() {
 async function uploadTemplate(e) {
     const file = e.target.files[0];
     if (!file) return;
+
+    const customTemplates = State.templates.filter(tpl => tpl.archivo && tpl.archivo.trim() !== '');
+    if (customTemplates.length >= 5) {
+        notifyError('Límite alcanzado: Ya tienes 5 plantillas guardadas.');
+        return;
+    }
 
     // Quick validate
     if (!file.type.match('image.*')) {
@@ -1053,7 +1135,7 @@ async function uploadTemplate(e) {
             await fetchConfig();
             notifySuccess('Plantilla subida y seleccionada con éxito');
         } else {
-            notifyError(data.error || 'Error al subir plantilla');
+            notifyError(data.message || data.error || 'Error al subir plantilla');
         }
     } catch (err) {
         console.error(err);
@@ -1110,13 +1192,55 @@ function restoreSystemTemplate() {
     selectTemplate(null);
 }
 
-function previewCertificate() {
+function guardarSnapshotPreviewGrupo(dataUrl) {
+    if (!dataUrl) return;
+
+    try {
+        const plantillaId = State.currentTemplateId || 'system';
+        const payload = {
+            grupo_id: Number(State.grupoId) || null,
+            plantilla_id: plantillaId,
+            snapshot_data_url: dataUrl,
+            generado_en: new Date().toISOString()
+        };
+
+        localStorage.setItem(`cce_snapshot_grupo_${State.grupoId}_${plantillaId}`, JSON.stringify(payload));
+        localStorage.setItem(`cce_snapshot_grupo_${State.grupoId}_last`, JSON.stringify(payload));
+    } catch (e) {
+        console.warn('No se pudo guardar snapshot de preview en localStorage:', e);
+    }
+}
+
+async function previewCertificate() {
     const modal = document.getElementById('previewModal');
     const container = document.getElementById('previewContainer');
 
     modal.classList.add('active');
     container.innerHTML = `<div style="text-align:center; padding:50px;"><i class="fas fa-spinner fa-spin fa-3x"></i><p>Generando previsualización...</p></div>`;
 
+    // Modo 1 (preferido): captura exacta del lienzo (plantilla + capa de variables)
+    // Esto evita diferencias visuales entre lo que se acomoda y lo que se previsualiza.
+    try {
+        const canvasWrapper = document.getElementById('canvasWrapper');
+        if (window.html2canvas && canvasWrapper && canvasWrapper.style.display !== 'none') {
+            const capture = await window.html2canvas(canvasWrapper, {
+                backgroundColor: '#ffffff',
+                useCORS: true,
+                allowTaint: true,
+                scale: 2,
+                logging: false
+            });
+
+            const previewDataUrl = capture.toDataURL('image/png');
+            guardarSnapshotPreviewGrupo(previewDataUrl);
+            container.innerHTML = `<img src="${previewDataUrl}" style="width:100%; height:auto; border-radius:4px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);">`;
+            return;
+        }
+    } catch (captureErr) {
+        console.warn('Fallback a preview backend por error en captura del lienzo:', captureErr);
+    }
+
+    // Modo 2 (fallback): render backend tradicional
     const timestamp = Date.now();
     const formData = new FormData();
     formData.append('tipo', 'grupo');

@@ -123,8 +123,8 @@
                     <i class="fas fa-check-circle"></i> 0 seleccionados
                 </span>
                 <div class="actions-group">
-                    <button type="button" id="btnRegenerarCerts" onclick="regenerarCertificadosSeleccionados()" class="btn-bulk" style="background: white; color: var(--color-grupo); border:none; border-radius:8px; padding:10px 15px; cursor:pointer; font-weight:600; display:flex; align-items:center; gap:5px;">
-                        <i class="fas fa-sync-alt"></i> Regenerar Certificados
+                    <button type="button" id="btnGenerarLote" onclick="abrirModalGeneracionLote()" class="btn-bulk" style="background: white; color: var(--color-grupo); border:none; border-radius:8px; padding:10px 15px; cursor:pointer; font-weight:600; display:flex; align-items:center; gap:5px;">
+                        <i class="fas fa-certificate"></i> Generar Certificados
                     </button>
                     <button type="button" id="btnCancelarSeleccion" onclick="deseleccionarTodos()" class="btn-bulk" style="background: rgba(255,255,255,0.3); color: white; border:none; border-radius:8px; padding:10px 15px; cursor:pointer; font-weight:600; display:flex; align-items:center; gap:5px;">
                         <i class="fas fa-times"></i> Cancelar
@@ -137,6 +137,16 @@
                     <i class="fas fa-list"></i> Listado de Estudiantes
                     <span class="count-badge" id="countBadge">0 estudiantes</span>
                 </h3>
+                <div class="table-header-actions">
+                    <div class="estado-toggle-wrap" title="Filtrar por estado de certificados">
+                        <span class="estado-label estado-label-left active" id="estadoLabelAprobados">Aprobados</span>
+                        <label class="estado-switch" for="filterModoEstado">
+                            <input type="checkbox" id="filterModoEstado" onchange="actualizarModoFiltro(); filtrarEstudiantes()">
+                            <span class="estado-slider"></span>
+                        </label>
+                        <span class="estado-label estado-label-right" id="estadoLabelCertificados">Certificados</span>
+                    </div>
+                </div>
             </div>
             
             <div class="table-wrapper table-scroll-wrapper">
@@ -152,11 +162,11 @@
                             </th>
                             <th class="sticky-col sticky-left-2" style="background: #f8f9fa;">Estudiante</th>
                             <th>Cédula</th>
-                            <th>Fecha Matriculación</th>
-                            <th>Categoría</th>
                             <th>Fecha Nac</th>
+                            <th style="min-width: 260px;">Contacto</th>
+                            <th style="min-width: 380px;">Categoría</th>
+                            <th style="min-width: 230px;">Fec. Matricula</th>
                             <th>Historial</th>
-                            <th>Contacto</th>
                             <th class="sticky-col sticky-right" style="text-align: right; background: #f8f9fa;">Acciones</th>
                         </tr>
                     </thead>
@@ -199,6 +209,151 @@
                         <button class="btn-page" id="btnPageNext" onclick="nextPagina()" title="Siguiente"><i class="fas fa-angle-right"></i></button>
                         <button class="btn-page" id="btnPageLast" onclick="irPagina('last')" title="Última"><i class="fas fa-angle-double-right"></i></button>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Generación por Lote -->
+    <div id="modalGeneracionLote" class="modal" onclick="cerrarModal(event, 'modalGeneracionLote')">
+        <div class="modal-content modal-lg" onclick="event.stopPropagation()" style="max-width: 1100px; width: 95%; max-height: 90vh; padding: 0; overflow: hidden; display: flex; flex-direction: column;">
+            <div class="modal-header" style="background-color: var(--color-grupo); color: white;">
+                <h3 style="margin:0;"><i class="fas fa-certificate"></i> Generación de Certificados por Lote</h3>
+                <button class="modal-close" onclick="cerrarModal(null, 'modalGeneracionLote')">&times;</button>
+            </div>
+
+            <div class="modal-body" style="padding: 25px; overflow-y: auto; overflow-x: auto; flex: 1;">
+                <div class="gen-lote-tabs-container" style="margin-bottom: 20px;">
+                    <div class="gen-lote-tabs" style="display: flex; gap: 10px; border-bottom: 2px solid #e5e7eb; padding-bottom: 4px;">
+                        <button class="gen-lote-tab active" onclick="switchGenLoteTab('gen-lote-tab-lista', this)" style="background: none; border: none; padding: 10px 15px; font-weight: 600; cursor: pointer; color: var(--color-grupo); border-bottom: 3px solid var(--color-grupo); font-size: 15px;">
+                            <i class="fas fa-list"></i> Estudiantes y Categorías
+                        </button>
+                        <button class="gen-lote-tab" onclick="switchGenLoteTab('gen-lote-tab-preview', this)" style="background: none; border: none; padding: 10px 15px; font-weight: 600; cursor: pointer; color: #6b7280; border-bottom: 3px solid transparent; font-size: 15px; transition: all 0.2s;">
+                            <i class="fas fa-image"></i> Previsualización de Plantillas
+                        </button>
+                    </div>
+                </div>
+                <div class="gen-lote-tab-content active" id="gen-lote-tab-lista">
+                    <div class="gen-lote-lista">
+                        <div class="gen-lote-head">
+                            <div>
+                                <strong>Estudiantes y categorías listos para generar</strong>
+                                <p class="gen-muted" id="genLoteResumenText">Cargando...</p>
+                            </div>
+                        </div>
+
+                        <div id="genLoteListTabsContainer"></div>
+
+                        <div class="bulk-actions" id="bulkActionsGenLote" style="display:none; padding: 12px 15px; background: #e8f0fe; border-radius: 8px; margin: 12px 14px 8px; align-items: center; justify-content: space-between; border: 1px solid #c2dbfe;">
+                            <div class="bulk-info" style="color: #1967d2; font-weight: 500;">
+                                <i class="fas fa-check-circle" style="margin-right: 5px;"></i>
+                                <span><span id="selectedCountGenLote">0</span> filas marcadas</span>
+                            </div>
+                            <div class="bulk-buttons">
+                                <button class="btn-bulk btn-bulk-cancel" onclick="quitarSeleccionadosGeneracionLote()" style="background: #e74c3c; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-size: 13px;">
+                                    <i class="fas fa-user-times"></i> Quitar del lote
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="gen-lote-tools" style="display: flex; gap: 10px; margin: 0 14px 12px;">
+                            <div class="search-input-wrapper" style="border: 1px solid #ccc; border-radius: 8px; overflow: hidden; display: flex; align-items: center; padding: 0 10px; background: white; flex: 1;">
+                                <i class="fas fa-search" style="color: #7f8c8d;"></i>
+                                <input type="text" id="searchInputGenLote" placeholder="Buscar por nombre o cédula..." style="border: none; padding: 10px; width: 100%; outline: none;" oninput="filtrarGeneracionLote()">
+                            </div>
+
+                            <div class="filter-group-gen-lote" style="width: 200px;">
+                                <select id="filterPeriodoGenLote" onchange="generacionLotePeriodoFiltro = this.value; currentPageGenLote = 1; renderGeneracionLoteTabla();" style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 8px; outline: none; background: white; font-family: inherit; color: #475569; appearance: auto;">
+                                    <option value="">Todos los períodos</option>
+                                </select>
+                            </div>
+
+                            <div class="dropdown-filter" style="position: relative;">
+                                <button class="btn btn-outline" onclick="toggleDropdownFiltroGenLote()" id="btnFiltroGenLote">
+                                    <i class="fas fa-filter"></i> <span id="filtroTextoGenLote">Todos</span> <i class="fas fa-caret-down" style="margin-left: 5px;"></i>
+                                </button>
+                                <div class="dropdown-filter-menu" id="dropdownFiltroGenLote" style="display: none; position: absolute; top: calc(100% + 5px); right: 0; left: auto; background: white; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-radius: 8px; border: 1px solid #eee; min-width: 200px; z-index: 1000; overflow: hidden;">
+                                    <a onclick="aplicarFiltroGeneracionLote('todos')" class="active" style="display: block; padding: 12px 15px; color: #2c3e50; text-decoration: none; border-bottom: 1px solid #eee; cursor: pointer;"><i class="fas fa-users" style="width: 20px; color: #3498db;"></i> Todos</a>
+                                    <a onclick="aplicarFiltroGeneracionLote('representante')" style="display: block; padding: 12px 15px; color: #2c3e50; text-decoration: none; border-bottom: 1px solid #eee; cursor: pointer;"><i class="fas fa-users" style="width: 20px; color: #2ecc71;"></i> Con Representante</a>
+                                    <a onclick="aplicarFiltroGeneracionLote('mayores')" style="display: block; padding: 12px 15px; color: #2c3e50; text-decoration: none; border-bottom: 1px solid #eee; cursor: pointer;"><i class="fas fa-user-graduate" style="width: 20px; color: #9b59b6;"></i> Mayores de edad</a>
+                                    <a onclick="aplicarFiltroGeneracionLote('destacados')" style="display: block; padding: 12px 15px; color: #2c3e50; text-decoration: none; cursor: pointer;"><i class="fas fa-star" style="width: 20px; color: #f1c40f;"></i> Destacados</a>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="gen-lote-table-wrap" style="overflow-x: visible;">
+                            <table class="gen-lote-table data-table" style="width: 100%; border-collapse: collapse;">
+                                <thead style="position: sticky; top: 0; z-index: 10;">
+                                    <tr style="background-color: #f8f9fa; border-bottom: 2px solid #dee2e6;">
+                                        <th style="padding: 12px; text-align: left; width: 42px;"><input type="checkbox" id="genLoteSelectAll" onchange="toggleGeneracionLoteAll(this.checked)" style="cursor: pointer;"></th>
+                                        <th style="padding: 12px; text-align: left; width: 56px;">N°</th>
+                                        <th style="padding: 12px; text-align: left;">Nombre</th>
+                                        <th style="padding: 12px; text-align: left;">Cédula</th>
+                                        <th style="padding: 12px; text-align: left; width: 180px;">Períodos</th>
+                                        <th style="padding: 12px; text-align:center; width: 120px;">Acción</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="genLoteBody">
+                                    <tr>
+                                        <td colspan="6" class="gen-empty">Sin datos</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="pagination-footer" id="paginationFooterGenLote" style="display: none; flex-wrap: nowrap !important; white-space: nowrap !important; justify-content: space-between; align-items: center; padding: 10px 14px 6px; min-width: 760px;">
+                            <div class="pagination-info" style="white-space: nowrap !important; flex-shrink: 0; margin-right: 15px;">
+                                Mostrando <span id="pagStartGenLote">0</span> - <span id="pagEndGenLote">0</span> de <span id="pagTotalGenLote">0</span> registros
+                            </div>
+                            <div class="pagination-controls" style="flex-wrap: nowrap !important; white-space: nowrap !important; flex-shrink: 0; display: flex; align-items: center; gap: 15px;">
+                                <div style="display: flex; align-items: center; gap: 5px;">
+                                    <label style="margin: 0;">Filas por página:</label>
+                                    <select id="rowsPerPageGenLote" onchange="cambiarFilasPorPaginaGeneracionLote(this.value)">
+                                        <option value="10" selected>10</option>
+                                        <option value="25">25</option>
+                                        <option value="50">50</option>
+                                        <option value="100">100</option>
+                                        <option value="-1">Todas</option>
+                                    </select>
+                                </div>
+
+                                <div class="pagination-buttons">
+                                    <button class="btn-page" id="btnPageFirstGenLote" onclick="irPaginaGeneracionLote(1)" title="Primera"><i class="fas fa-angle-double-left"></i></button>
+                                    <button class="btn-page" id="btnPagePrevGenLote" onclick="prevPaginaGeneracionLote()" title="Anterior"><i class="fas fa-angle-left"></i></button>
+
+                                    <span class="pagination-current">
+                                        Página <input type="number" id="pageInputGenLote" value="1" min="1" onchange="irPaginaManualGeneracionLote(this.value)"> de <span id="totalPagesGenLote">1</span>
+                                    </span>
+
+                                    <button class="btn-page" id="btnPageNextGenLote" onclick="nextPaginaGeneracionLote()" title="Siguiente"><i class="fas fa-angle-right"></i></button>
+                                    <button class="btn-page" id="btnPageLastGenLote" onclick="irPaginaGeneracionLote('last')" title="Última"><i class="fas fa-angle-double-right"></i></button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="gen-lote-tab-content" id="gen-lote-tab-preview" style="display: none;">
+                    <div class="gen-lote-preview">
+                        <div id="genLotePreviewPlantillas" class="gen-preview-list"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer" style="padding: 15px 25px; border-top: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; background: #fff;">
+                <div style="font-weight: bold; color: var(--color-grupo); display: flex; align-items: center; gap: 15px; font-size: 14px;">
+                    <div>Total a generar: <span id="genLoteCount" style="font-size: 16px;">0</span></div>
+                    <div style="color: #f39c12;" title="Seleccionados Destacados"><i class="fas fa-star"></i> <span id="genLoteDestacados">0</span></div>
+                    <div style="color: #9b59b6;" title="Seleccionados Menores de Edad"><i class="fas fa-child"></i> <span id="genLoteMenores">0</span></div>
+                    <div style="color: #3498db;" title="Seleccionados Con Representante"><i class="fas fa-user-tie"></i> <span id="genLoteRepresentantes">0</span></div>
+                </div>
+                <div style="display:flex; gap:10px;">
+                    <button type="button" class="btn btn-secondary" style="padding: 12px 24px;" onclick="cerrarModal(null, 'modalGeneracionLote')">
+                        <i class="fas fa-times"></i> Cancelar
+                    </button>
+                    <button type="button" id="btnConfirmGeneracionLote" class="btn" style="background: linear-gradient(135deg, var(--color-grupo), var(--color-grupo)); color: white; padding: 12px 24px; font-weight: 600;" onclick="confirmarGeneracionLote()">
+                        <i class="fas fa-cogs"></i> Generar Certificados
+                    </button>
                 </div>
             </div>
         </div>
@@ -350,7 +505,7 @@
     <!-- Modal Historial de Auditoria (Nuevo) -->
     <div id="modalHistorial" class="modal" onclick="cerrarModal(event, 'modalHistorial')">
         <div class="modal-content modal-lg" onclick="event.stopPropagation()" style="background: white; border-radius: 12px; width: 90%; max-width: 800px; padding: 0; overflow: hidden; display: flex; flex-direction: column; max-height: 90vh;">
-            <div class="modal-header" style="background: linear-gradient(135deg, var(--color-grupo), var(--color-grupo)dd); padding: 20px 25px; margin: 0; flex-shrink: 0; display: flex; justify-content: space-between; align-items: center;">
+            <div class="modal-header" style="background-color: var(--color-grupo); padding: 20px 25px; margin: 0; flex-shrink: 0; display: flex; justify-content: space-between; align-items: center;">
                 <h3 style="color: white; margin: 0;"><i class="fas fa-history"></i> Historial de Cambios</h3>
                 <button class="modal-close" onclick="cerrarModal(null, 'modalHistorial')" style="background: rgba(255,255,255,0.2); color: white; border: none; width: 32px; height: 32px; border-radius: 50%; cursor: pointer;">×</button>
             </div>

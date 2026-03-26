@@ -547,7 +547,31 @@ try {
                     c.nombre as categoria_nombre,
                     c.icono as categoria_icono,
                     p.nombre as periodo_nombre,
-                    p.fecha_inicio as periodo_fecha_inicio
+                    p.fecha_inicio as periodo_fecha_inicio,
+                    (
+                        SELECT MAX(
+                            CASE
+                                WHEN IFNULL(cert_apr.aprobado, 0) = 1 OR cert_apr.id IS NOT NULL THEN 1
+                                ELSE 0
+                            END
+                        )
+                        FROM certificados cert_apr
+                        WHERE cert_apr.estudiante_id = e.id
+                          AND cert_apr.categoria_id = ce.categoria_id
+                          AND cert_apr.periodo_id <=> ce.periodo_id
+                    ) as cert_aprobado,
+                    (
+                        SELECT MAX(
+                            CASE
+                                WHEN cert_gen.archivo_pdf IS NOT NULL OR cert_gen.archivo_imagen IS NOT NULL THEN 1
+                                ELSE 0
+                            END
+                        )
+                        FROM certificados cert_gen
+                        WHERE cert_gen.estudiante_id = e.id
+                          AND cert_gen.categoria_id = ce.categoria_id
+                          AND cert_gen.periodo_id <=> ce.periodo_id
+                    ) as cert_generado
                 FROM estudiantes e
                 LEFT JOIN estudiantes rep ON e.representante_id = rep.id
                 INNER JOIN categoria_estudiantes ce ON e.id = ce.estudiante_id
@@ -600,7 +624,9 @@ try {
                     'fecha_inicio' => $row['periodo_fecha_inicio'],
                     'periodo_id' => $row['periodo_id'],
                     'estado' => $row['estado'],
-                    'es_destacado' => $row['es_destacado']
+                    'es_destacado' => $row['es_destacado'],
+                    'cert_aprobado' => (int)($row['cert_aprobado'] ?? 0),
+                    'cert_generado' => (int)($row['cert_generado'] ?? 0)
                 ];
             }
             

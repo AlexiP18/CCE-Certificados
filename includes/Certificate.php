@@ -652,6 +652,15 @@ class Certificate {
             ]);
             
             $certificado_id = $this->pdo->lastInsertId();
+
+            // Mantener consistencia con filtros por aprobacion en vistas de grupo/categoria.
+            // Si la instalacion no tiene estas columnas, ignorar sin interrumpir la generacion.
+            try {
+                $stmtApr = $this->pdo->prepare("UPDATE certificados SET aprobado = 1, requiere_aprobacion = 0, fecha_aprobacion = NOW() WHERE id = ?");
+                $stmtApr->execute([$certificado_id]);
+            } catch (\Throwable $e) {
+                // No-op por compatibilidad de esquema.
+            }
             
             return [
                 'success' => true,
