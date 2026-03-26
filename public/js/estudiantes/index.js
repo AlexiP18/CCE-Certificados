@@ -41,12 +41,17 @@ function toggleDropdown(id, event) {
             dropdown.style.top = (rect.bottom + 2) + 'px'; // Small gap
             dropdown.style.left = rect.left + 'px';
             dropdown.style.minWidth = '200px';
+            dropdown.style.maxWidth = 'calc(100vw - 20px)';
             dropdown.style.zIndex = '9999';
 
             // Boundary enforcement (optional, simplistic)
             const dropdownRect = dropdown.getBoundingClientRect();
             if (dropdownRect.right > window.innerWidth) {
                 dropdown.style.left = (window.innerWidth - dropdownRect.width - 10) + 'px';
+            }
+            const leftActual = parseFloat(dropdown.style.left || '0');
+            if (leftActual < 10) {
+                dropdown.style.left = '10px';
             }
         }
     }
@@ -57,6 +62,219 @@ function hideDropdown(id) {
     if (dropdown) {
         dropdown.classList.remove('active');
     }
+}
+
+function toggleMenoresIndex(repId) {
+    const rows = document.querySelectorAll(`.menor-de-${repId}`);
+    if (!rows.length) return;
+
+    const toggleEl = document.getElementById(`toggle-${repId}`);
+    const mostrar = Array.from(rows).some(row => row.style.display === 'none');
+
+    rows.forEach(row => {
+        row.style.display = mostrar ? 'table-row' : 'none';
+    });
+
+    if (toggleEl) {
+        toggleEl.classList.toggle('fa-chevron-right', !mostrar);
+        toggleEl.classList.toggle('fa-chevron-down', mostrar);
+    }
+}
+
+function normalizarTelefonoLocalEC(raw) {
+    const clean = String(raw || '').replace(/\D/g, '');
+    if (!clean) return '';
+    if (clean.startsWith('593')) return clean.substring(3).slice(0, 9);
+    if (clean.startsWith('0')) return clean.substring(1).slice(0, 9);
+    return clean.slice(0, 9);
+}
+
+function construirTelefonoApiEC(raw) {
+    const local = normalizarTelefonoLocalEC(raw);
+    return local ? `+593${local}` : '';
+}
+
+function calcularEdadDesdeFecha(fechaRaw) {
+    if (!fechaRaw) return null;
+    const fecha = new Date(fechaRaw);
+    if (Number.isNaN(fecha.getTime())) return null;
+
+    const hoy = new Date();
+    let edad = hoy.getFullYear() - fecha.getFullYear();
+    const m = hoy.getMonth() - fecha.getMonth();
+    if (m < 0 || (m === 0 && hoy.getDate() < fecha.getDate())) {
+        edad--;
+    }
+    return edad;
+}
+
+function esIconoFontAwesome(valor) {
+    return typeof valor === 'string' && valor.includes('fa-');
+}
+
+function renderBadgeIcon(iconoRaw, iconoFallback = '📁') {
+    const icono = (iconoRaw || '').toString().trim();
+    if (!icono) return iconoFallback;
+    if (esIconoFontAwesome(icono)) return `<i class="${icono}"></i>`;
+    return escapeHtml(icono);
+}
+
+function renderCategoriaIcono(iconoRaw) {
+    return renderBadgeIcon(iconoRaw, '📁');
+}
+
+function renderGrupoIcono(iconoRaw) {
+    return renderBadgeIcon(iconoRaw, '👥');
+}
+
+function formatearTelefonoReferencia(telefonoRaw) {
+    const clean = String(telefonoRaw || '').replace(/\D/g, '');
+    if (!clean) return '';
+    if (clean.startsWith('593')) return '0' + clean.substring(3);
+    if (clean.startsWith('0')) return clean;
+    return '0' + clean;
+}
+
+function generarLinkWhatsAppReferencia(telefonoRaw, nombreReferencia = '', relacion = '', estudianteNombre = 'Estudiante') {
+    const clean = String(telefonoRaw || '').replace(/\D/g, '');
+    if (!clean) return '#';
+
+    let numero = clean;
+    if (numero.startsWith('0')) numero = numero.substring(1);
+    if (!numero.startsWith('593')) numero = `593${numero}`;
+
+    const mensaje = `Hola 👋 le saluda Casa de la Cultura - Núcleo Tungurahua 🎭. Usted es ${nombreReferencia || 'referencia'}${relacion ? ` y ${relacion}` : ''} del estudiante ${estudianteNombre}. ¿Me podría confirmar esta información, por favor? 🙏`;
+    return `https://wa.me/${numero}?text=${encodeURIComponent(mensaje)}`;
+}
+
+function formatearFechaMatriculaBadge(fechaRaw) {
+    const raw = String(fechaRaw || '').trim();
+    if (!raw || raw === '0000-00-00') return 's/f';
+
+    const iso = raw.length >= 10 ? raw.substring(0, 10) : raw;
+    const parts = iso.split('-');
+    if (parts.length === 3) {
+        const [y, m, d] = parts;
+        if (y && m && d) return `${d}/${m}/${y}`;
+    }
+
+    const dateObj = new Date(raw);
+    if (!Number.isNaN(dateObj.getTime())) {
+        const d = String(dateObj.getDate()).padStart(2, '0');
+        const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+        const y = dateObj.getFullYear();
+        return `${d}/${m}/${y}`;
+    }
+
+    return 's/f';
+}
+
+function agruparCategoriasConPeriodos(categorias) {
+    const mapa = {};
+
+    (categorias || []).forEach(cat => {
+        const key = String(cat.id || cat.nombre || 'sin_categoria');
+        if (!mapa[key]) {
+            mapa[key] = {
+                id: cat.id,
+                nombre: cat.nombre || 'Sin categoría',
+                icono: cat.icono || '📁',
+                fecha_matricula: '',
+                periodos: []
+            };
+        }
+
+        const periodoNombre = cat.periodo || 'Sin período';
+        const fechaInicio = cat.fecha_inicio || '0000-00-00';
+        const fechaMatricula = cat.fecha_matricula || '';
+        const esDestacado = cat.es_destacado === 1 || cat.es_destacado === '1' || cat.es_destacado === true;
+
+        if (fechaMatricula) {
+            if (!mapa[key].fecha_matricula || mapa[key].fecha_matricula < fechaMatricula) {
+                mapa[key].fecha_matricula = fechaMatricula;
+            }
+        }
+
+        const periodoExistente = mapa[key].periodos.find(p => p.nombre === periodoNombre);
+        if (periodoExistente) {
+            if (esDestacado) periodoExistente.es_destacado = true;
+            if ((!periodoExistente.fecha || periodoExistente.fecha === '0000-00-00') && fechaInicio) {
+                periodoExistente.fecha = fechaInicio;
+            }
+            if (fechaMatricula) {
+                if (!periodoExistente.fecha_matricula || periodoExistente.fecha_matricula > fechaMatricula) {
+                    periodoExistente.fecha_matricula = fechaMatricula;
+                }
+            }
+            return;
+        }
+
+        mapa[key].periodos.push({
+            nombre: periodoNombre,
+            fecha: fechaInicio,
+            fecha_matricula: fechaMatricula,
+            es_destacado: esDestacado
+        });
+    });
+
+    return Object.values(mapa).map(cat => {
+        cat.periodos.sort((a, b) => {
+            const fechaA = a.fecha || '0000-00-00';
+            const fechaB = b.fecha || '0000-00-00';
+            if (fechaA === fechaB) {
+                return String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es', { sensitivity: 'base' });
+            }
+            return fechaA < fechaB ? -1 : 1;
+        });
+        return cat;
+    }).sort((a, b) => String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es', { sensitivity: 'base' }));
+}
+
+function buildCategoriasDropdownHtml(categorias) {
+    const categoriasAgrupadas = agruparCategoriasConPeriodos(categorias);
+
+    if (!categoriasAgrupadas.length) {
+        return '<div class="categoria-empty">Sin categorías</div>';
+    }
+
+    return categoriasAgrupadas.map(cat => {
+        const iconoHtml = renderCategoriaIcono(cat.icono);
+        const fechaMatricula = formatearFechaMatriculaBadge(cat.fecha_matricula);
+        const tieneDestacado = cat.periodos.some(p => p.es_destacado);
+        const estrellaHdr = tieneDestacado ? '<i class="fas fa-star categoria-star"></i>' : '';
+
+        let tooltipHtml = '<div class="tooltip-content">';
+        cat.periodos.forEach(periodo => {
+            const fechaPeriodo = formatearFechaMatriculaBadge(periodo.fecha_matricula || '');
+            tooltipHtml += `
+                <div class="tooltip-period-item">
+                    <span class="tooltip-period-main">
+                        <span class="tooltip-period-name">${escapeHtml(periodo.nombre)}</span>
+                        <span class="tooltip-period-date"><i class="far fa-calendar-check"></i> Reg: ${escapeHtml(fechaPeriodo)}</span>
+                    </span>
+                    ${periodo.es_destacado ? '<i class="fas fa-star tooltip-star"></i>' : ''}
+                </div>
+            `;
+        });
+        tooltipHtml += '</div>';
+
+        return `
+            <div class="categoria-item">
+                <span class="categoria-item-main">
+                    <span class="categoria-item-main-left">
+                        <span class="categoria-item-icon">${iconoHtml}</span>
+                        <span class="categoria-item-name">${escapeHtml(cat.nombre)}</span>
+                        ${estrellaHdr}
+                    </span>
+                    <span class="categoria-item-meta">
+                        <i class="far fa-calendar-check"></i>
+                        ${escapeHtml(fechaMatricula)}
+                    </span>
+                </span>
+                ${tooltipHtml}
+            </div>
+        `;
+    }).join('');
 }
 
 // Close dropdowns on scroll to prevent detached floating elements
@@ -223,7 +441,7 @@ async function loadEstudiantes() {
         console.error('Error:', error);
         tableBody.innerHTML = `
                     <tr>
-                        <td colspan="13">
+                        <td colspan="12">
                             <div class="empty-state">
                                 <i class="fas fa-exclamation-triangle"></i>
                                 <h3>Error al cargar los datos</h3>
@@ -241,7 +459,7 @@ function renderEstudiantes(estudiantes) {
     if (!estudiantes || estudiantes.length === 0) {
         tableBody.innerHTML = `
                     <tr>
-                        <td colspan="13">
+                        <td colspan="12">
                             <div class="empty-state">
                                 <i class="fas fa-users-slash"></i>
                                 <h3>No se encontraron estudiantes</h3>
@@ -253,6 +471,20 @@ function renderEstudiantes(estudiantes) {
         return;
     }
 
+    const representantesEnPagina = new Set(
+        estudiantes
+            .filter(e => Number(e.es_menor) !== 1)
+            .map(e => String(e.id))
+    );
+
+    const menoresPorRepresentante = new Map();
+    estudiantes.forEach(e => {
+        if (Number(e.es_menor) !== 1 || !e.representante_id) return;
+        const repId = String(e.representante_id);
+        if (!representantesEnPagina.has(repId)) return;
+        menoresPorRepresentante.set(repId, (menoresPorRepresentante.get(repId) || 0) + 1);
+    });
+
     tableBody.innerHTML = estudiantes.map(est => {
         // Parse Groups and Categories
         let gruposMap = {};
@@ -260,28 +492,43 @@ function renderEstudiantes(estudiantes) {
         if (est.enrollment_data) {
             const enrollments = est.enrollment_data.split('||');
             enrollments.forEach(enroll => {
-                // Data format: GrupoID##GrupoNombre##GrupoColor##Icono##CatID##CatNombre##CatIcono##Periodo
+                // Data format:
+                // GrupoID##GrupoNombre##GrupoColor##GrupoIcono##CatID##CatNombre##CatIcono##Periodo##EsDestacado##PeriodoFechaInicio##FechaMatricula
                 const parts = enroll.split('##');
                 if (parts.length >= 8) {
                     const gId = parts[0];
                     const gNombre = parts[1];
                     const gColor = parts[2] || '#ccc';
-                    // parts[3] is Icono (unused here but good to know)
+                    const gIcono = parts[3] || '👥';
                     const cId = parts[4];
                     const cNombre = parts[5];
-                    // parts[6] CatIcono, parts[7] Periodo
+                    const cIcono = parts[6] || '📁';
+                    const cPeriodo = parts[7] || 'Sin período';
+                    const cEsDestacado = parts[8] ?? '0';
+                    const cPeriodoFecha = parts[9] || '0000-00-00';
+                    const cFechaMatricula = parts[10] || '';
 
                     if (!gruposMap[gId]) {
                         gruposMap[gId] = {
                             id: gId,
                             nombre: gNombre,
                             color: gColor,
+                            icono: gIcono,
                             categorias: []
                         };
                     }
-                    // Avoid duplicates (though redundant DISTINCT in query should handle it)
-                    if (!gruposMap[gId].categorias.some(c => c.id === cId)) {
-                        gruposMap[gId].categorias.push({ id: cId, nombre: cNombre });
+
+                    const keyCategoriaPeriodo = `${cId}::${cPeriodo}`;
+                    if (!gruposMap[gId].categorias.some(c => `${c.id}::${c.periodo}` === keyCategoriaPeriodo)) {
+                        gruposMap[gId].categorias.push({
+                            id: cId,
+                            nombre: cNombre,
+                            icono: cIcono,
+                            periodo: cPeriodo,
+                            fecha_inicio: cPeriodoFecha,
+                            fecha_matricula: cFechaMatricula,
+                            es_destacado: cEsDestacado === '1'
+                        });
                     }
                 }
             });
@@ -290,11 +537,12 @@ function renderEstudiantes(estudiantes) {
         // Build Groups HTML
         let gruposHtml = '';
         if (Object.keys(gruposMap).length > 0) {
-            Object.values(gruposMap).forEach(grupo => {
+            Object.values(gruposMap)
+                .sort((a, b) => String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es', { sensitivity: 'base' }))
+                .forEach(grupo => {
                 // Dropdown Content
-                const categoriasList = grupo.categorias.map(c =>
-                    `<div class="categoria-item">${escapeHtml(c.nombre)}</div>`
-                ).join('');
+                const categoriasList = buildCategoriasDropdownHtml(grupo.categorias);
+                const grupoIcono = renderGrupoIcono(grupo.icono);
 
                 const dropdownId = `dropdown-${est.id}-${grupo.id}`;
 
@@ -303,15 +551,18 @@ function renderEstudiantes(estudiantes) {
                                 <span class="badge badge-grupo-interactive" 
                                       style="background: ${grupo.color}20; color: ${grupo.color}; border: 1px solid ${grupo.color}40;"
                                       onclick="toggleDropdown('${dropdownId}', event)">
-                                    ${escapeHtml(grupo.nombre)}
+                                    <span class="grupo-badge-icon">${grupoIcono}</span>
+                                    <span class="grupo-badge-name">${escapeHtml(grupo.nombre)}</span>
                                 </span>
                                 <div id="${dropdownId}" class="grupo-dropdown">
                                     <div style="font-size: 11px; font-weight: 600; color: #7f8c8d; margin-bottom: 4px; padding-left: 4px;">CATEGORÍAS:</div>
-                                    ${categoriasList}
+                                    <div class="categorias-dropdown-list">
+                                        ${categoriasList}
+                                    </div>
                                 </div>
                             </div>
                         `;
-            });
+                });
             // Wrap in scroll container
             gruposHtml = `<div class="groups-badge-list">${gruposHtml}</div>`;
         } else {
@@ -350,33 +601,47 @@ function renderEstudiantes(estudiantes) {
 
         // Reconstruct simple CSV strings for data attributes (compatibility)
         let gruposStr = Object.values(gruposMap).map(g => g.nombre).join(', ');
-        let categoriasStr = [];
+        let categoriasSet = new Set();
         Object.values(gruposMap).forEach(g => {
-            g.categorias.forEach(c => categoriasStr.push(c.nombre));
+            g.categorias.forEach(c => categoriasSet.add(c.nombre));
         });
-        categoriasStr = categoriasStr.join(', ');
+        const categoriasStr = Array.from(categoriasSet).join(', ');
 
         // Hierarchy Visuals
         const isMenor = est.es_menor == 1;
-        const isRepresentante = est.num_hijos > 0;
+        const isRepresentante = Number(est.num_hijos || 0) > 0;
+        const repIdStr = est.representante_id ? String(est.representante_id) : '';
+        const menorDeRepresentanteVisible = isMenor && repIdStr && representantesEnPagina.has(repIdStr);
+        const hasMenoresEnPagina = !isMenor && menoresPorRepresentante.has(String(est.id));
 
-        let namePrefix = '';
+        let prefijoNombre = '<span style="display:inline-block; width: 23px;"></span>';
         let rowStyle = '';
 
         if (isMenor) {
-            namePrefix = '<span style="color: #bdc3c7; margin-right: 8px; margin-left: 15px;"><i class="fas fa-level-up-alt fa-rotate-90"></i></span>';
+            prefijoNombre = '<span style="color: #bdc3c7; margin-right: 8px; margin-left: 15px;"><i class="fas fa-level-up-alt fa-rotate-90"></i></span>';
             rowStyle = 'background-color: #fef9e7;'; // Light yellow for minors
         } else if (isRepresentante) {
             rowStyle = 'background-color: #eaf2f8;'; // Light blue for representatives
         }
 
+        if (!isMenor && isRepresentante) {
+            const repUniqueId = `rep-${est.id}`;
+            if (hasMenoresEnPagina) {
+                prefijoNombre = `<i id="toggle-${repUniqueId}" class="fas fa-chevron-right" onclick="toggleMenoresIndex('${repUniqueId}')" style="cursor: pointer; margin-right: 8px; color: #3498db; width: 15px; text-align: center; display: inline-block;" title="Ver menores"></i>`;
+            } else {
+                prefijoNombre = '<i class="fas fa-chevron-right" style="cursor: not-allowed; margin-right: 8px; color: #95a5a6; opacity: .55; width: 15px; text-align: center; display: inline-block;" title="No hay menores visibles con los filtros/página actual"></i>';
+            }
+        }
+
         let badgesHtml = '';
         if (isRepresentante) {
-            badgesHtml += '<span class="badge" style="background: #3498db; color: white; font-size: 10px; margin-left: 5px;">REPRESENTANTE</span>';
+            badgesHtml += '<span class="badge" title="Representante" style="background: #3498db; color: white; font-size: 11px; margin-left: 5px; padding: 5px 8px;"><i class="fas fa-user-tie"></i></span>';
         }
         if (isMenor) {
-            badgesHtml += '<span class="badge" style="background: #f1c40f; color: white; font-size: 10px; margin-left: 5px;">MENOR</span>';
+            badgesHtml += '<span class="badge" title="Menor" style="background: #f1c40f; color: white; font-size: 11px; margin-left: 5px; padding: 5px 8px;"><i class="fas fa-child"></i></span>';
         }
+
+        const tieneReferencias = parseInt(est.tiene_referencias || 0, 10) > 0;
 
         // Cálculo de Edad
         let edadHtml = '<span style="color: #aaa;">—</span>';
@@ -399,8 +664,14 @@ function renderEstudiantes(estudiantes) {
                     `;
         }
 
+        const rowClasses = menorDeRepresentanteVisible ? `menor-de-rep-${repIdStr}` : '';
+        const rowInlineStyle = `${rowStyle}${menorDeRepresentanteVisible ? 'display:none;' : ''}`;
+        const btnEditarHtml = isMenor
+            ? `<button class="btn-icon btn-edit" disabled title="Edición no disponible para menores" style="opacity:.45; cursor:not-allowed;"><i class="fas fa-edit"></i></button>`
+            : `<button class="btn-icon btn-edit" onclick="editarEstudiante(${est.id})" title="Editar Estudiante"><i class="fas fa-edit"></i></button>`;
+
         return `
-                <tr data-estudiante-id="${est.id}" style="${rowStyle}">
+                <tr data-estudiante-id="${est.id}" class="${rowClasses}" style="${rowInlineStyle}">
                     <td class="checkbox-cell sticky-col sticky-left-1">
                         <input type="checkbox" class="select-checkbox estudiante-checkbox" 
                                value="${est.id}" 
@@ -411,9 +682,10 @@ function renderEstudiantes(estudiantes) {
                                onchange="actualizarSeleccion()">
                     </td>
                     <td class="nombre-cell sticky-col sticky-left-2">
-                        ${namePrefix}
+                        ${prefijoNombre}
                         ${est.destacado == 1 ? '<i class="fas fa-star" style="color: #f39c12; margin-right: 5px;"></i>' : ''}
                         ${escapeHtml(est.nombre)}
+                        ${tieneReferencias ? `<i class="fas fa-address-book icon-ref" onclick="verReferencias(${est.id})" title="Ver Referencias"></i>` : ''}
                         ${badgesHtml}
                     </td>
                     <td>
@@ -438,6 +710,11 @@ function renderEstudiantes(estudiantes) {
                             ${est.total_certificados || 0} certificado(s)
                         </span>
                     </td>
+                    <td style="text-align: center;">
+                        <button class="btn-icon btn-view" onclick="abrirModalHistorial(${est.id})" title="Ver Historial" style="margin: 0 auto;">
+                            <i class="fas fa-history"></i>
+                        </button>
+                    </td>
                     <td class="sticky-col sticky-right">
                         <div class="action-buttons">
                             <button class="btn-icon btn-view" onclick="verInfoGrupos(${est.id})" title="Ver Grupos y Categorías" style="color:#5e35b1; background:#ede7f6;">
@@ -446,6 +723,7 @@ function renderEstudiantes(estudiantes) {
                             <button class="btn-icon btn-certificate" onclick="viewEstudiante(${est.id})" title="Visualizar Certificados">
                                 <i class="fas fa-certificate"></i>
                             </button>
+                            ${btnEditarHtml}
                             <button class="btn-icon btn-delete" onclick="deleteEstudiante(${est.id}, '${escapeHtml(est.nombre)}')" title="Eliminar">
                                 <i class="fas fa-trash"></i>
                             </button>
@@ -678,6 +956,360 @@ async function viewEstudiante(id) {
     }
 }
 
+function sanitizarCedulaEdit(input) {
+    if (!input) return;
+    input.value = String(input.value || '').replace(/\D/g, '').slice(0, 10);
+}
+
+function sanitizarCelularEdit(input) {
+    if (!input) return;
+    input.value = String(input.value || '').replace(/\D/g, '').slice(0, 9);
+}
+
+function esMenorPorFechaNacimiento(fechaRaw) {
+    const edad = calcularEdadDesdeFecha(fechaRaw);
+    return edad !== null && edad < 18;
+}
+
+function formatearFechaHoraSimple(fechaRaw) {
+    const raw = String(fechaRaw || '').trim();
+    if (!raw || raw === '0000-00-00') return '-';
+    const [fechaPart, horaPart] = raw.split(' ');
+    const fechaFmt = formatDate(fechaPart);
+    if (horaPart) {
+        return `${fechaFmt} ${horaPart.substring(0, 5)}`;
+    }
+    return fechaFmt;
+}
+
+function buildPeriodoBadgeEdit(periodo) {
+    if (!periodo) {
+        return '<span class="edit-pill edit-pill-periodo"><i class="far fa-calendar-alt"></i> Sin período</span>';
+    }
+    return `
+        <span class="edit-pill edit-pill-periodo${periodo.es_destacado ? ' edit-pill-periodo-destacado' : ''}">
+            <i class="far fa-calendar-alt"></i> ${escapeHtml(periodo.nombre || 'Sin período')}
+            <span style="opacity:.85; margin-left:4px;">Reg: ${escapeHtml(formatearFechaMatriculaBadge(periodo.fecha_matricula || ''))}</span>
+            ${periodo.es_destacado ? '<i class="fas fa-star edit-period-star" title="Destacado"></i>' : ''}
+        </span>
+    `;
+}
+
+function buildPeriodoBadgeInfo(periodo) {
+    if (!periodo) {
+        return '<span class="badge" style="background: #e8f0fe; color: #1967d2; font-size: 0.82em; border: 1px solid #d2e3fc; padding: 4px 8px;"><i class="far fa-calendar-alt"></i> Sin período</span>';
+    }
+    return `
+        <span class="badge" style="background:${periodo.es_destacado ? '#fffbeb' : '#e8f0fe'}; color:${periodo.es_destacado ? '#92400e' : '#1967d2'}; font-size: 0.82em; border: 1px solid ${periodo.es_destacado ? '#fde68a' : '#d2e3fc'}; padding: 4px 8px;">
+            <i class="far fa-calendar-alt"></i> ${escapeHtml(periodo.nombre || 'Sin período')}
+            <span style="opacity:.85; margin-left:4px;">Reg: ${escapeHtml(formatearFechaMatriculaBadge(periodo.fecha_matricula || ''))}</span>
+            ${periodo.es_destacado ? '<i class="fas fa-star" style="margin-left:5px; color:#f59e0b;"></i>' : ''}
+        </span>
+    `;
+}
+
+function parseEnrollmentDataForEditModal(enrollmentRaw) {
+    const gruposMap = {};
+    const raw = String(enrollmentRaw || '').trim();
+    if (!raw) return [];
+
+    raw.split('||').forEach(enroll => {
+        if (!enroll) return;
+        const parts = enroll.split('##');
+        if (parts.length < 8) return;
+
+        const gId = parts[0] || '0';
+        const gNombre = parts[1] || 'Sin grupo';
+        const gColor = parts[2] || '#94a3b8';
+        const gIcono = parts[3] || '👥';
+        const cId = parts[4] || '';
+        const cNombre = parts[5] || 'Sin categoría';
+        const cIcono = parts[6] || '📁';
+        const cPeriodo = parts[7] || 'Sin período';
+        const cEsDestacado = (parts[8] || '0') === '1';
+        const cPeriodoFecha = parts[9] || '0000-00-00';
+        const cFechaMatricula = parts[10] || '';
+
+        if (!gruposMap[gId]) {
+            gruposMap[gId] = {
+                id: gId,
+                nombre: gNombre,
+                color: gColor,
+                icono: gIcono,
+                categoriasMap: {}
+            };
+        }
+
+        const categoriaKey = String(cId || cNombre || '').trim().toLowerCase() || `cat_${gId}`;
+        if (!gruposMap[gId].categoriasMap[categoriaKey]) {
+            gruposMap[gId].categoriasMap[categoriaKey] = {
+                id: cId,
+                nombre: cNombre,
+                icono: cIcono,
+                fecha_matricula: '',
+                periodos: [],
+                _periodosMap: {}
+            };
+        }
+
+        const categoriaRef = gruposMap[gId].categoriasMap[categoriaKey];
+
+        if (cFechaMatricula) {
+            if (!categoriaRef.fecha_matricula || cFechaMatricula < categoriaRef.fecha_matricula) {
+                categoriaRef.fecha_matricula = cFechaMatricula;
+            }
+        }
+
+        const periodoKey = `${cPeriodo}::${cPeriodoFecha}`;
+        if (!categoriaRef._periodosMap[periodoKey]) {
+            const periodoObj = {
+                nombre: cPeriodo,
+                fecha_inicio: cPeriodoFecha,
+                fecha_matricula: cFechaMatricula || '',
+                es_destacado: cEsDestacado
+            };
+            categoriaRef.periodos.push(periodoObj);
+            categoriaRef._periodosMap[periodoKey] = periodoObj;
+        } else if (cEsDestacado) {
+            categoriaRef._periodosMap[periodoKey].es_destacado = true;
+        }
+
+        if (categoriaRef._periodosMap[periodoKey]) {
+            const periodoExistente = categoriaRef._periodosMap[periodoKey];
+            if (cFechaMatricula) {
+                if (!periodoExistente.fecha_matricula || cFechaMatricula < periodoExistente.fecha_matricula) {
+                    periodoExistente.fecha_matricula = cFechaMatricula;
+                }
+            }
+        }
+    });
+
+    return Object.values(gruposMap)
+        .map(g => {
+            const categorias = Object.values(g.categoriasMap).map(cat => {
+                cat.periodos.sort((a, b) => {
+                    const fechaA = String(a.fecha_inicio || '0000-00-00');
+                    const fechaB = String(b.fecha_inicio || '0000-00-00');
+                    if (fechaA === fechaB) {
+                        return String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es', { sensitivity: 'base' });
+                    }
+                    return fechaA < fechaB ? -1 : 1;
+                });
+                delete cat._periodosMap;
+                return cat;
+            });
+
+            categorias.sort((a, b) => String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es', { sensitivity: 'base' }));
+
+            return {
+                id: g.id,
+                nombre: g.nombre,
+                color: g.color,
+                icono: g.icono,
+                categorias
+            };
+        })
+        .sort((a, b) => String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es', { sensitivity: 'base' }));
+}
+
+function renderResumenInscripcionEditModal(enrollmentRaw) {
+    const container = document.getElementById('editEnrollmentResumen');
+    if (!container) return;
+
+    const grupos = parseEnrollmentDataForEditModal(enrollmentRaw || '');
+    if (!grupos.length) {
+        container.innerHTML = `
+            <div class="empty-state" style="padding: 18px 0;">
+                <i class="fas fa-layer-group"></i>
+                <p>Este estudiante no tiene grupos/categorías registrados.</p>
+            </div>
+        `;
+        return;
+    }
+
+    const html = grupos.map(grupo => {
+        const iconoGrupo = renderGrupoIcono(grupo.icono);
+        const categoriasHtml = grupo.categorias.map(cat => {
+            const iconoCat = renderCategoriaIcono(cat.icono);
+            const periodos = cat.periodos || [];
+            const primerPeriodo = periodos[0] || null;
+            const periodosAdicionales = periodos.slice(1);
+            const primerBadge = buildPeriodoBadgeEdit(primerPeriodo);
+            const periodosAdicionalesHtml = periodosAdicionales.map(buildPeriodoBadgeEdit).join('');
+            const mostrarDespliegue = periodosAdicionales.length > 0;
+
+            return `
+                <div class="edit-enrollment-cat">
+                    <div class="edit-enrollment-cat-main">
+                        <span class="edit-enrollment-cat-main-left">
+                            <span>${iconoCat}</span>
+                            <span class="edit-enrollment-cat-name">${escapeHtml(cat.nombre)}</span>
+                        </span>
+                        <span class="edit-enrollment-cat-main-right">
+                            ${primerBadge}
+                            ${mostrarDespliegue ? `
+                                <details class="periodos-inline-dropdown">
+                                    <summary class="periodos-inline-summary" title="Ver períodos adicionales">
+                                        <i class="fas fa-chevron-down periodos-dropdown-chevron"></i>
+                                    </summary>
+                                    <div class="periodos-inline-content">
+                                        ${periodosAdicionalesHtml}
+                                    </div>
+                                </details>
+                            ` : ''}
+                        </span>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        return `
+            <div class="edit-enrollment-group">
+                <div class="edit-enrollment-group-header" style="color:${escapeHtml(grupo.color)};">
+                    <span>${iconoGrupo}</span>
+                    <span>${escapeHtml(grupo.nombre)}</span>
+                </div>
+                ${categoriasHtml}
+            </div>
+        `;
+    }).join('');
+
+    container.innerHTML = html;
+}
+
+function bloquearFormularioEdicion(esBloqueado) {
+    const form = document.getElementById('editEstudianteForm');
+    const warning = document.getElementById('editMinorWarning');
+    const btnGuardar = document.getElementById('btnGuardarEdicionEstudiante');
+    if (!form) return;
+
+    form.querySelectorAll('input, select, textarea').forEach(el => {
+        if (el.type === 'hidden') return;
+        el.disabled = esBloqueado;
+    });
+
+    if (warning) warning.style.display = esBloqueado ? 'flex' : 'none';
+    if (btnGuardar) btnGuardar.disabled = esBloqueado;
+}
+
+async function editarEstudiante(id) {
+    const overlay = document.getElementById('modalEditarOverlay');
+    const form = document.getElementById('editEstudianteForm');
+    if (!overlay || !form) return;
+
+    overlay.classList.add('active');
+    form.reset();
+    document.getElementById('edit_estudiante_id').value = String(id);
+    bloquearFormularioEdicion(false);
+    renderResumenInscripcionEditModal('');
+
+    const btnGuardar = document.getElementById('btnGuardarEdicionEstudiante');
+    const estado = document.getElementById('editModalEstado');
+    let bloqueoPorMenor = false;
+    if (btnGuardar) btnGuardar.disabled = true;
+    if (estado) estado.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Cargando datos del estudiante...';
+
+    try {
+        const response = await fetch(`../api/estudiantes/index.php?action=get_details&id=${encodeURIComponent(id)}`);
+        const data = await response.json();
+        if (!response.ok || !data.success || !data.estudiante) {
+            throw new Error(data.message || 'No se pudo cargar la información del estudiante');
+        }
+
+        const est = data.estudiante;
+        const estListado = estudiantesData.find(e => String(e.id) === String(est.id || id));
+
+        document.getElementById('edit_estudiante_id').value = est.id || id;
+        document.getElementById('edit_es_menor_actual').value = Number(est.es_menor || 0) === 1 ? '1' : '0';
+        document.getElementById('edit_nombre').value = est.nombre || '';
+        document.getElementById('edit_cedula').value = est.cedula || '';
+        document.getElementById('edit_celular').value = normalizarTelefonoLocalEC(est.celular || '');
+        document.getElementById('edit_email').value = est.email || '';
+        document.getElementById('edit_fecha_nacimiento').value = est.fecha_nacimiento || '';
+
+        const metaRegistro = document.getElementById('editMetaRegistro');
+        const metaActualizacion = document.getElementById('editMetaActualizacion');
+        if (metaRegistro) metaRegistro.textContent = formatearFechaHoraSimple(est.fecha_creacion);
+        if (metaActualizacion) metaActualizacion.textContent = formatearFechaHoraSimple(est.fecha_actualizacion);
+
+        const enrollmentRaw = (est && est.enrollment_data) || (estListado && estListado.enrollment_data) || '';
+        renderResumenInscripcionEditModal(enrollmentRaw);
+
+        const esMenorInicial = Number(est.es_menor || 0) === 1 || esMenorPorFechaNacimiento(est.fecha_nacimiento || '');
+        bloqueoPorMenor = esMenorInicial;
+        bloquearFormularioEdicion(esMenorInicial);
+
+        if (estado) estado.textContent = '';
+    } catch (error) {
+        if (estado) estado.textContent = '';
+        alert(error.message || 'No se pudo abrir el formulario de edición');
+        cerrarModalEditar();
+    } finally {
+        if (btnGuardar) btnGuardar.disabled = bloqueoPorMenor;
+    }
+}
+
+function cerrarModalEditar(event) {
+    if (!event || event.target.id === 'modalEditarOverlay') {
+        const overlay = document.getElementById('modalEditarOverlay');
+        if (overlay) overlay.classList.remove('active');
+    }
+}
+
+async function guardarEdicionEstudiante(event) {
+    event.preventDefault();
+
+    const id = (document.getElementById('edit_estudiante_id') || {}).value;
+    const nombre = (document.getElementById('edit_nombre') || {}).value || '';
+    if (!id || !String(nombre).trim()) {
+        alert('El nombre del estudiante es obligatorio');
+        return;
+    }
+    const esMenorActual = String((document.getElementById('edit_es_menor_actual') || {}).value || '0') === '1';
+    if (esMenorActual || esMenorPorFechaNacimiento((document.getElementById('edit_fecha_nacimiento') || {}).value || '')) {
+        alert('La edición de estudiantes menores de edad no está habilitada en este modal.');
+        return;
+    }
+
+    const payload = {
+        action: 'update',
+        id: String(id).trim(),
+        nombre: String(nombre).trim(),
+        cedula: String((document.getElementById('edit_cedula') || {}).value || '').trim(),
+        celular: construirTelefonoApiEC((document.getElementById('edit_celular') || {}).value || ''),
+        email: String((document.getElementById('edit_email') || {}).value || '').trim(),
+        fecha_nacimiento: String((document.getElementById('edit_fecha_nacimiento') || {}).value || '').trim(),
+        es_menor: 0
+    };
+
+    const btnGuardar = document.getElementById('btnGuardarEdicionEstudiante');
+    const estado = document.getElementById('editModalEstado');
+
+    try {
+        if (btnGuardar) btnGuardar.disabled = true;
+        if (estado) estado.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Guardando cambios...';
+
+        const response = await fetch('../api/estudiantes/index.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+            throw new Error(data.message || 'No se pudo actualizar el estudiante');
+        }
+
+        cerrarModalEditar();
+        await loadEstudiantes();
+    } catch (error) {
+        alert(error.message || 'Error al guardar cambios');
+    } finally {
+        if (btnGuardar) btnGuardar.disabled = false;
+        if (estado) estado.textContent = '';
+    }
+}
+
 // Better Switcher
 window.switchModalTab = function (tabId) {
     const tabs = document.querySelectorAll('.tab-content');
@@ -701,6 +1333,234 @@ function closeModal(event) {
     if (!event || event.target.id === 'modalOverlay') {
         const overlay = document.getElementById('modalOverlay');
         if (overlay) overlay.classList.remove('active');
+    }
+}
+
+document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    closeModal();
+    cerrarModalCertificado();
+    cerrarModalEditar();
+    cerrarModalHistorial();
+    cerrarModalReferencias();
+    cerrarInfoGruposModal();
+});
+
+function cerrarModalHistorial(event) {
+    if (!event || event.target.id === 'modalHistorialOverlay') {
+        const overlay = document.getElementById('modalHistorialOverlay');
+        if (overlay) overlay.classList.remove('active');
+    }
+}
+
+function cerrarModalReferencias(event) {
+    if (!event || event.target.id === 'modalReferenciasOverlay') {
+        const overlay = document.getElementById('modalReferenciasOverlay');
+        if (overlay) overlay.classList.remove('active');
+    }
+}
+
+function obtenerMetaAccionAuditoria(accion) {
+    switch (accion) {
+    case 'creacion':
+        return { texto: 'Creación', color: '#2ecc71', icono: 'fa-plus-circle' };
+    case 'actualizacion':
+        return { texto: 'Actualización', color: '#f39c12', icono: 'fa-edit' };
+    case 'eliminacion':
+        return { texto: 'Eliminación', color: '#e74c3c', icono: 'fa-trash-alt' };
+    case 'cambio_categoria':
+        return { texto: 'Cambio Categoría', color: '#9b59b6', icono: 'fa-exchange-alt' };
+    default:
+        return { texto: 'Acción', color: '#3498db', icono: 'fa-info-circle' };
+    }
+}
+
+function formatearFechaAuditoria(fechaRaw) {
+    if (!fechaRaw) return '-';
+    const fechaObj = new Date(String(fechaRaw).replace(' ', 'T'));
+    if (isNaN(fechaObj.getTime())) return escapeHtml(String(fechaRaw));
+    return fechaObj.toLocaleString('es-ES', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+}
+
+function renderizarDetallesAuditoria(detallesRaw) {
+    if (!detallesRaw) return '-';
+
+    try {
+        const parsed = typeof detallesRaw === 'string' ? JSON.parse(detallesRaw) : detallesRaw;
+
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+            const lines = [];
+
+            Object.keys(parsed).forEach(key => {
+                const value = parsed[key];
+                const keySafe = escapeHtml(String(key));
+
+                if (value && typeof value === 'object' && !Array.isArray(value) && ('old' in value || 'new' in value)) {
+                    const oldVal = value.old == null || value.old === '' ? 'vacío' : escapeHtml(String(value.old));
+                    const newVal = value.new == null || value.new === '' ? 'vacío' : escapeHtml(String(value.new));
+                    lines.push(`<strong>${keySafe}:</strong> ${oldVal} <i class="fas fa-arrow-right" style="opacity:.6;"></i> ${newVal}`);
+                    return;
+                }
+
+                if (Array.isArray(value)) {
+                    const arrText = value.map(v => escapeHtml(String(v))).join(', ');
+                    lines.push(`<strong>${keySafe}:</strong> ${arrText || '[]'}`);
+                    return;
+                }
+
+                if (value && typeof value === 'object') {
+                    lines.push(`<strong>${keySafe}:</strong> ${escapeHtml(JSON.stringify(value))}`);
+                    return;
+                }
+
+                lines.push(`<strong>${keySafe}:</strong> ${value == null || value === '' ? 'vacío' : escapeHtml(String(value))}`);
+            });
+
+            return lines.length ? lines.join('<br>') : '-';
+        }
+
+        if (Array.isArray(parsed)) {
+            return escapeHtml(parsed.map(v => String(v)).join(', '));
+        }
+
+        return escapeHtml(String(parsed));
+    } catch (_error) {
+        return escapeHtml(String(detallesRaw));
+    }
+}
+
+async function abrirModalHistorial(estudianteId) {
+    const overlay = document.getElementById('modalHistorialOverlay');
+    const container = document.getElementById('historialContainer');
+    if (!overlay || !container) return;
+
+    overlay.classList.add('active');
+    container.innerHTML = `
+        <div class="loading">
+            <i class="fas fa-spinner"></i>
+            <p>Cargando historial del estudiante...</p>
+        </div>
+    `;
+
+    try {
+        const response = await fetch(`../api/categorias/estudiantes.php?action=historial_auditoria&estudiante_id=${encodeURIComponent(estudianteId)}`);
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+            throw new Error(data.message || 'No se pudo cargar el historial');
+        }
+
+        if (!Array.isArray(data.historial) || data.historial.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state" style="padding: 30px 20px;">
+                    <i class="fas fa-history"></i>
+                    <h3>Sin historial</h3>
+                    <p>No se encontraron registros para este estudiante.</p>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = data.historial.map(item => {
+            const accionMeta = obtenerMetaAccionAuditoria(item.accion);
+            const fechaFmt = formatearFechaAuditoria(item.fecha);
+            const usuario = escapeHtml(item.usuario_nombre || 'Sistema / Desconocido');
+            const detalles = renderizarDetallesAuditoria(item.detalles);
+
+            return `
+                <div class="audit-item" style="border-left-color: ${accionMeta.color};">
+                    <div class="audit-header">
+                        <span><i class="fas ${accionMeta.icono}" style="color:${accionMeta.color}; margin-right: 6px;"></i>${fechaFmt}</span>
+                        <span style="color: #4b5563;"><i class="fas fa-user-circle" style="margin-right: 5px;"></i>${usuario}</span>
+                    </div>
+                    <div class="audit-action">${accionMeta.texto}</div>
+                    <p class="audit-details">${detalles}</p>
+                </div>
+            `;
+        }).join('');
+    } catch (error) {
+        console.error('Error cargando historial:', error);
+        container.innerHTML = `
+            <div class="empty-state" style="padding: 30px 20px;">
+                <i class="fas fa-exclamation-triangle" style="color: #ef4444;"></i>
+                <h3>Error al cargar</h3>
+                <p>${escapeHtml(error.message || 'No fue posible cargar el historial.')}</p>
+            </div>
+        `;
+    }
+}
+
+async function verReferencias(estudianteId) {
+    const overlay = document.getElementById('modalReferenciasOverlay');
+    const title = document.getElementById('modalReferenciasTitle');
+    const body = document.getElementById('modalReferenciasBody');
+    if (!overlay || !title || !body) return;
+
+    overlay.classList.add('active');
+    title.innerHTML = '<i class="fas fa-address-book"></i> Referencias';
+    body.innerHTML = `
+        <div style="text-align:center; padding:20px; color:#7f8c8d;">
+            <i class="fas fa-spinner fa-spin" style="font-size:24px;"></i>
+            <p>Cargando referencias...</p>
+        </div>
+    `;
+
+    try {
+        const response = await fetch(`../api/categorias/estudiantes.php?action=listar_referencias&estudiante_id=${encodeURIComponent(estudianteId)}`);
+        const data = await response.json();
+
+        title.innerHTML = `<i class="fas fa-address-book"></i> Referencias de ${escapeHtml(data.estudiante_nombre || 'Estudiante')}`;
+
+        if (!response.ok || !data.success) {
+            throw new Error(data.message || 'No se pudieron cargar las referencias');
+        }
+
+        if (!Array.isArray(data.referencias) || data.referencias.length === 0) {
+            body.innerHTML = `
+                <div style="text-align:center; padding:30px; color:#95a5a6;">
+                    <i class="fas fa-user-slash" style="font-size:48px; margin-bottom:15px; opacity:0.3;"></i>
+                    <p style="font-size:15px; margin:0;">No se han registrado referencias para este estudiante.</p>
+                </div>
+            `;
+            return;
+        }
+
+        let html = '<div class="ref-modal-list">';
+        data.referencias.forEach((ref, i) => {
+            const telefonoDisplay = formatearTelefonoReferencia(ref.telefono);
+            const telefonoLink = telefonoDisplay
+                ? `<a href="${generarLinkWhatsAppReferencia(ref.telefono, ref.nombre, ref.relacion, data.estudiante_nombre || 'Estudiante')}" target="_blank" class="ref-phone-link"><i class="fab fa-whatsapp"></i> ${escapeHtml(telefonoDisplay)}</a>`
+                : '<span class="ref-phone-empty">Sin teléfono</span>';
+
+            html += `
+                <div class="ref-modal-card">
+                    <div class="ref-modal-number">${i + 1}</div>
+                    <div class="ref-modal-info">
+                        <div class="ref-modal-name">${escapeHtml(ref.nombre || 'Referencia')}</div>
+                        <div class="ref-modal-details">
+                            ${telefonoLink}
+                            ${ref.relacion ? `<span class="ref-relacion-badge">${escapeHtml(ref.relacion)}</span>` : ''}
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+        html += '</div>';
+
+        body.innerHTML = html;
+    } catch (error) {
+        body.innerHTML = `
+            <div style="text-align:center; padding:20px; color:#e74c3c;">
+                <i class="fas fa-exclamation-triangle" style="font-size:24px;"></i>
+                <p>${escapeHtml(error.message || 'Error al cargar las referencias')}</p>
+            </div>
+        `;
     }
 }
 
@@ -852,13 +1712,13 @@ function actualizarSeleccion() {
 }
 
 function setupHorizontalScroll() {
-    const tableWrapper = document.querySelector('.table-scroll-wrapper');
+    const tableWrapper = document.querySelector('.table-inner-scroll') || document.querySelector('.table-scroll-wrapper');
     if (tableWrapper) {
         tableWrapper.addEventListener('wheel', (evt) => {
             // Si hay contenido para scrollear horizontalmente
             if (tableWrapper.scrollWidth > tableWrapper.clientWidth) {
                 evt.preventDefault();
-                tableWrapper.scrollLeft += evt.deltaY;
+                tableWrapper.scrollLeft += evt.deltaY || evt.deltaX;
             }
         }, { passive: false });
     }
@@ -1111,76 +1971,52 @@ function verInfoGrupos(estudianteId) {
 
     let html = '';
 
-    if (estudiante.enrollment_data) {
-        // Group by Grupo
-        const gruposMap = {};
-
-        // Parse enrollment_data: "GrupoID##GrupoNombre##GrupoColor##CatID##CatNombre||..."
-        const enrollments = estudiante.enrollment_data.split('||');
-
-        enrollments.forEach(enroll => {
-            if (!enroll) return;
-            const parts = enroll.split('##');
-            // Expected format: ID##Nombre##Color##Icono##CatID##CatNombre##CatIcono##Periodo
-            if (parts.length >= 8) {
-                const gId = parts[0];
-                const gNombre = parts[1];
-                const gColor = parts[2] || '#ccc';
-                const gIcono = parts[3] || 'fas fa-users'; // Default Group Icon
-                const cId = parts[4];
-                const cNombre = parts[5];
-                const cIcono = parts[6] || 'fas fa-layer-group'; // Default Category Icon
-                const periodo = parts[7] || '-';
-
-                if (!gruposMap[gId]) {
-                    gruposMap[gId] = {
-                        id: gId,
-                        nombre: gNombre,
-                        color: gColor,
-                        icono: gIcono,
-                        categorias: []
-                    };
-                }
-                gruposMap[gId].categorias.push({
-                    id: cId,
-                    nombre: cNombre,
-                    icono: cIcono,
-                    periodo: periodo
-                });
-            }
-        });
-
-        // Generate Tabs and Content
+    const grupos = parseEnrollmentDataForEditModal(estudiante.enrollment_data || '');
+    if (grupos.length) {
         let tabsHtml = '<div class="modal-tabs-nav">';
         let contentHtml = '';
 
-        Object.values(gruposMap).forEach((grupo, index) => {
+        grupos.forEach((grupo, index) => {
             const isActive = index === 0 ? 'active' : '';
-            const tabId = `grupo-tab-${grupo.id}`;
-
-            // Tab Button
-            const gIconHTML = grupo.icono.includes('fa-') ? `<i class="${grupo.icono}" style="color: ${grupo.color}"></i>` : `<span>${grupo.icono}</span>`;
+            const tabId = `info-grupo-tab-${grupo.id}`;
+            const gIconHTML = renderGrupoIcono(grupo.icono);
 
             tabsHtml += `
                         <button class="tab-btn ${isActive}" onclick="switchInfoTab('${tabId}')">
-                             ${gIconHTML} ${escapeHtml(grupo.nombre)}
+                             <span style="color:${escapeHtml(grupo.color)};">${gIconHTML}</span> ${escapeHtml(grupo.nombre)}
                         </button>
                     `;
 
-            // Tab Content
             contentHtml += `
                         <div id="${tabId}" class="tab-content ${isActive}">
                             <div style="padding: 10px 0;">
                                 ${grupo.categorias.map(cat => {
-                const cIconHTML = cat.icono.includes('fa-') ? `<i class="${cat.icono}" style="color: #667eea;"></i>` : `<span>${cat.icono}</span>`;
+                const cIconHTML = renderCategoriaIcono(cat.icono);
+                const periodos = cat.periodos || [];
+                const primerPeriodo = periodos[0] || null;
+                const periodosAdicionales = periodos.slice(1);
+                const primerBadge = buildPeriodoBadgeInfo(primerPeriodo);
+                const periodosAdicionalesHtml = periodosAdicionales.map(buildPeriodoBadgeInfo).join('');
+                const mostrarDespliegue = periodosAdicionales.length > 0;
+
                 return `
-                                    <div style="margin-bottom: 8px; font-size: 0.95em; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px dashed #eee; padding-bottom: 8px;">
-                                        <span style="display: flex; align-items: center; gap: 8px;">
+                                    <div style="margin-bottom: 8px; font-size: 0.95em; display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px dashed #eee; padding-bottom: 8px; gap: 10px;">
+                                        <span style="display: inline-flex; align-items: center; gap: 8px; min-width:0; flex:1;">
                                             <span style="width: 20px; text-align: center;">${cIconHTML}</span>
                                             <span style="color: #2c3e50; font-weight: 500;">${escapeHtml(cat.nombre)}</span>
                                         </span>
-                                        <span class="badge" style="background: #e8f0fe; color: #1967d2; font-size: 0.85em; border: 1px solid #d2e3fc; padding: 4px 8px;">
-                                            <i class="far fa-calendar-alt"></i> ${cat.periodo}
+                                        <span style="display:inline-flex; align-items:center; gap:6px; justify-content:flex-end; margin-left:auto;">
+                                            ${primerBadge}
+                                            ${mostrarDespliegue ? `
+                                                <details class="periodos-inline-dropdown periodos-inline-dropdown-compact">
+                                                    <summary class="periodos-inline-summary periodos-inline-summary-compact" title="Ver períodos adicionales">
+                                                        <i class="fas fa-chevron-down periodos-dropdown-chevron"></i>
+                                                    </summary>
+                                                    <div class="periodos-inline-content periodos-inline-content-compact">
+                                                        ${periodosAdicionalesHtml}
+                                                    </div>
+                                                </details>
+                                            ` : ''}
                                         </span>
                                     </div>
                                     `;
@@ -1192,7 +2028,6 @@ function verInfoGrupos(estudianteId) {
 
         tabsHtml += '</div>';
         html = tabsHtml + contentHtml;
-
     } else {
         html = `
                     <div class="empty-state" style="padding: 30px 0;">

@@ -457,6 +457,15 @@
                         </div>
                     </div>
 
+                    <div class="edit-categorias-section">
+                        <h4><i class="fas fa-layer-group"></i> Categorías y Períodos del Grupo</h4>
+                        <div id="editCategoriasResumenGroup" class="edit-categorias-list">
+                            <div class="edit-categorias-empty">
+                                <i class="fas fa-spinner fa-spin"></i> Cargando categorías...
+                            </div>
+                        </div>
+                    </div>
+
                     <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
                         <button type="button" class="btn-bulk" style="background:#e0e0e0; color:#333; border:none; border-radius:8px; padding:10px 20px; cursor:pointer;" onclick="cerrarEditModal()">Cancelar</button>
                         <button type="submit" class="btn-bulk" style="background:var(--color-grupo); color:white; border:none; border-radius:8px; padding:10px 20px; cursor:pointer;"><i class="fas fa-save"></i> Guardar Cambios</button>
@@ -513,6 +522,19 @@
                 <div id="historialContainer">
                     <!-- Contenido cargado dinámicamente -->
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Referencias -->
+    <div id="modalReferencias" class="modal" onclick="cerrarModal(event, 'modalReferencias')">
+        <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 520px; padding: 0; border-radius: 16px; overflow: hidden;">
+            <div class="modal-header" style="background: linear-gradient(135deg, #8e44ad, #9b59b6); padding: 20px 25px; margin: 0;">
+                <h3 id="modalReferenciasTitle" style="color: white; margin: 0;"><i class="fas fa-address-book"></i> Referencias</h3>
+                <button class="modal-close" onclick="cerrarModal(null, 'modalReferencias')" style="background: rgba(255,255,255,0.2); color: white;">&times;</button>
+            </div>
+            <div class="modal-body" id="modalReferenciasBody" style="padding: 25px;">
+                <!-- Contenido dinámico -->
             </div>
         </div>
     </div>

@@ -219,6 +219,8 @@ function prepararJerarquia(lista) {
                     cedula: est.representante_cedula,
                     celular: est.representante_celular,
                     email: est.representante_email,
+                    fecha_nacimiento: est.representante_fecha_nacimiento,
+                    representante_id: est.representante_id,
                     menores: grupoMenores
                 });
                 grupoMenores.forEach(m => procesados.add(m.id));
@@ -456,7 +458,10 @@ function buildEstudianteRowHtml(est, repUniqueId, hasMenores, representantesCedu
                     ${chevron}
                     <div class="student-avatar" style="background:linear-gradient(135deg,${colorCat}cc,${colorCat});">${iniciales}</div>
                     <div class="student-info">
-                        <strong>${escapeHtml(est.nombre)}</strong>
+                        <strong>
+                            ${escapeHtml(est.nombre)}
+                            ${parseInt(est.tiene_referencias || 0) > 0 ? `<i class="fas fa-address-book icon-ref" onclick="verReferencias(${est.id})" title="Ver Referencias"></i>` : ''}
+                        </strong>
                         ${esMenor ? '<span class="badge badge-menor"><i class="fas fa-child"></i> Menor de edad</span>' : ''}
                     </div>
                 </div>
@@ -497,7 +502,10 @@ function buildMenorRowHtml(est, repUniqueId) {
                     <i class="fas fa-level-up-alt fa-rotate-90" style="color: #bdc3c7; margin-right: 8px; margin-left: 5px;"></i>
                     <div class="student-avatar" style="background:linear-gradient(135deg,${colorCat}cc,${colorCat});width:28px;height:28px;font-size:11px;">${iniciales}</div>
                     <div class="student-info">
-                        <strong>${escapeHtml(est.nombre)}</strong>
+                        <strong>
+                            ${escapeHtml(est.nombre)}
+                            ${parseInt(est.tiene_referencias || 0) > 0 ? `<i class="fas fa-address-book icon-ref" onclick="verReferencias(${est.id})" title="Ver Referencias"></i>` : ''}
+                        </strong>
                         <span class="badge badge-menor"><i class="fas fa-child"></i> Menor de edad</span>
                     </div>
                 </div>
@@ -538,6 +546,21 @@ function buildRepresentanteVirtualRowHtml(fila, repUniqueId) {
         ? `<span style="background:#3498db22;color:#3498db;border-radius:10px;padding:1px 7px;font-size:11px;margin-left:6px;font-weight:600;">${fila.menores.length} menor${fila.menores.length>1?'es':''}</span>`
         : '';
 
+    let fechaNacimientoHtml = '<span style="color:#cbd5e0;">-</span>';
+    if (fila.fecha_nacimiento) {
+        fechaNacimientoHtml = `<div>${escapeHtml(fila.fecha_nacimiento)}</div><div class="badge badge-edad">${calcularEdad(fila.fecha_nacimiento)} años</div>`;
+    }
+
+    const accionesHtml = fila.representante_id
+        ? `
+            <div class="actions-cell" style="justify-content:flex-end;">
+                <button class="btn-icon btn-edit" onclick="editarEstudiante(${fila.representante_id})" title="Editar Representante">
+                    <i class="fas fa-edit"></i>
+                </button>
+            </div>
+        `
+        : '';
+
     return `
         <tr class="estudiante-representante">
             <td class="sticky-col sticky-left-1"></td>
@@ -548,7 +571,10 @@ function buildRepresentanteVirtualRowHtml(fila, repUniqueId) {
                         <i class="fas fa-user-tie" style="font-size:14px;"></i>
                     </div>
                     <div class="student-info">
-                        <strong>${escapeHtml(fila.nombre || 'Sin nombre')}</strong>
+                        <strong>
+                            ${escapeHtml(fila.nombre || 'Sin nombre')}
+                            ${(parseInt(fila.tiene_referencias || 0) > 0 && fila.representante_id) ? `<i class="fas fa-address-book icon-ref" onclick="verReferencias(${fila.representante_id})" title="Ver Referencias"></i>` : ''}
+                        </strong>
                         <span style="display:inline-flex;align-items:center;gap:4px;">
                             <span class="badge" style="background:#7f8c8d22;color:#7f8c8d;font-size:10px;"><i class="fas fa-user-tie"></i> Representante</span>
                             ${countBadge}
@@ -557,12 +583,12 @@ function buildRepresentanteVirtualRowHtml(fila, repUniqueId) {
                 </div>
             </td>
             <td>${fila.cedula ? `<span class="cedula-cell" style="opacity:0.85;">${escapeHtml(fila.cedula)}</span>` : '<span style="color:#aaa">—</span>'}</td>
-            <td></td>
+            <td>${fechaNacimientoHtml}</td>
             <td style="text-align:center;">${contactoHtml}</td>
             <td></td>
             <td></td>
             <td></td>
-            <td class="sticky-col sticky-right"></td>
+            <td class="sticky-col sticky-right" style="text-align:right;">${accionesHtml}</td>
         </tr>`;
 }
 
@@ -1543,9 +1569,150 @@ function manejarDescarga(estudianteId) {
 
 // ========== EDIT & DELETE ==========
 
-function editarEstudiante(id) {
-    const est = estudiantesData.find(e => e.id == id);
-    if (!est) return;
+function formatearFechaModalGrupo(fechaRaw) {
+    const raw = String(fechaRaw || '').trim();
+    if (!raw || raw === '0000-00-00') return 's/f';
+
+    const iso = raw.length >= 10 ? raw.substring(0, 10) : raw;
+    const parts = iso.split('-');
+    if (parts.length === 3) {
+        const [y, m, d] = parts;
+        if (y && m && d) return `${d}/${m}/${y}`;
+    }
+    return raw;
+}
+
+function renderIconoCategoriaModal(iconoRaw) {
+    const icono = String(iconoRaw || '').trim();
+    if (!icono) return '📁';
+    if (icono.includes('fa-')) return `<i class="${escapeHtml(icono)}"></i>`;
+    return escapeHtml(icono);
+}
+
+function agruparCategoriasModalGrupo(categoriasRaw) {
+    const map = {};
+    (Array.isArray(categoriasRaw) ? categoriasRaw : []).forEach(cat => {
+        const key = String(cat.id || cat.nombre || '').trim().toLowerCase() || 'sin_categoria';
+        if (!map[key]) {
+            map[key] = {
+                id: cat.id || null,
+                nombre: cat.nombre || 'Sin categoría',
+                icono: cat.icono || '📁',
+                periodos: [],
+                _periodosMap: {}
+            };
+        }
+
+        const periodoNombre = cat.periodo || 'Sin período';
+        const periodoKey = `${cat.periodo_id ?? 'null'}::${periodoNombre}`;
+        const periodoExistente = map[key]._periodosMap[periodoKey];
+        const esDestacado = Number(cat.es_destacado || 0) === 1;
+
+        if (!periodoExistente) {
+            const periodoObj = {
+                nombre: periodoNombre,
+                fecha_inicio: cat.fecha_inicio || '0000-00-00',
+                fecha_matricula: cat.fecha_matricula || '',
+                es_destacado: esDestacado
+            };
+            map[key].periodos.push(periodoObj);
+            map[key]._periodosMap[periodoKey] = periodoObj;
+        } else {
+            if (esDestacado) periodoExistente.es_destacado = true;
+            if (!periodoExistente.fecha_matricula && cat.fecha_matricula) {
+                periodoExistente.fecha_matricula = cat.fecha_matricula;
+            }
+            if ((!periodoExistente.fecha_inicio || periodoExistente.fecha_inicio === '0000-00-00') && cat.fecha_inicio) {
+                periodoExistente.fecha_inicio = cat.fecha_inicio;
+            }
+        }
+    });
+
+    return Object.values(map).map(cat => {
+        cat.periodos.sort((a, b) => {
+            const fa = String(a.fecha_inicio || '0000-00-00');
+            const fb = String(b.fecha_inicio || '0000-00-00');
+            if (fa === fb) return String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es', { sensitivity: 'base' });
+            return fa < fb ? -1 : 1;
+        });
+        delete cat._periodosMap;
+        return cat;
+    }).sort((a, b) => String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es', { sensitivity: 'base' }));
+}
+
+function renderResumenCategoriasModalGrupo(categoriasRaw) {
+    const container = document.getElementById('editCategoriasResumenGroup');
+    if (!container) return;
+
+    const categorias = agruparCategoriasModalGrupo(categoriasRaw);
+    if (!categorias.length) {
+        container.innerHTML = '<div class="edit-categorias-empty"><i class="fas fa-folder-open"></i> Este estudiante no tiene categorías registradas en este grupo.</div>';
+        return;
+    }
+
+    const buildPeriodoChip = (p) => `
+        <span class="edit-periodo-chip${p.es_destacado ? ' destacado' : ''}">
+            <i class="far fa-calendar-alt"></i> ${escapeHtml(p.nombre || 'Sin período')}
+            <span class="edit-periodo-reg">Reg: ${escapeHtml(formatearFechaModalGrupo(p.fecha_matricula || ''))}</span>
+            ${p.es_destacado ? '<i class="fas fa-star" style="color:#f59e0b;"></i>' : ''}
+        </span>
+    `;
+
+    const html = categorias.map(cat => {
+        const periodos = Array.isArray(cat.periodos) ? cat.periodos : [];
+        const primerPeriodo = periodos[0] || { nombre: 'Sin período', fecha_matricula: '', es_destacado: false };
+        const periodosAdicionales = periodos.slice(1);
+        const mostrarDespliegue = periodosAdicionales.length > 0;
+
+        return `
+            <div class="edit-cat-item">
+                <div class="edit-cat-main">
+                    <div class="edit-cat-main-left">
+                        <div class="edit-cat-header">
+                            <span>${renderIconoCategoriaModal(cat.icono)}</span>
+                            <span>${escapeHtml(cat.nombre)}</span>
+                        </div>
+                    </div>
+                    <div class="edit-cat-main-right">
+                        ${buildPeriodoChip(primerPeriodo)}
+                        ${mostrarDespliegue ? `
+                            <details class="edit-periodos-dropdown">
+                                <summary class="edit-periodos-summary" title="Ver períodos adicionales">
+                                    <i class="fas fa-chevron-down edit-periodos-chevron"></i>
+                                </summary>
+                                <div class="edit-periodos-content">
+                                    ${periodosAdicionales.map(buildPeriodoChip).join('')}
+                                </div>
+                            </details>
+                        ` : ''}
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    container.innerHTML = html;
+}
+
+async function editarEstudiante(id) {
+    let est = estudiantesData.find(e => String(e.id) === String(id));
+
+    if (!est) {
+        try {
+            const response = await fetch(`../api/estudiantes/index.php?action=get&id=${encodeURIComponent(id)}`);
+            const data = await response.json();
+
+            if (!response.ok || !data.success || !data.estudiante) {
+                throw new Error(data.message || 'No se pudo cargar la información del representante');
+            }
+
+            est = data.estudiante;
+        } catch (error) {
+            console.error(error);
+            mostrarError(error.message || 'No se pudo abrir el formulario de edición');
+            return;
+        }
+    }
 
     document.getElementById('edit_estudiante_id').value = est.id;
     document.getElementById('edit_nombre').value = est.nombre;
@@ -1558,7 +1725,7 @@ function editarEstudiante(id) {
 
     document.getElementById('edit_email').value = est.email || '';
     document.getElementById('edit_fecha_nacimiento').value = est.fecha_nacimiento || '';
-    document.getElementById('edit_destacado').checked = est.destacado == 1;
+    document.getElementById('edit_destacado').checked = Number(est.destacado ?? est.es_destacado ?? 0) === 1;
 
     toggleEditRepresentante();
 
@@ -1572,6 +1739,7 @@ function editarEstudiante(id) {
     document.getElementById('edit_rep_celular').value = repCelular;
 
     document.getElementById('edit_rep_email').value = est.representante_email || '';
+    renderResumenCategoriasModalGrupo(est.categorias || []);
 
     document.getElementById('editEstudianteModal').classList.add('active');
 }
@@ -1720,6 +1888,74 @@ function mostrarNotificacion(mensaje, tipo = 'info') {
 
 function mostrarError(mensaje) {
     alert(mensaje);
+}
+
+async function verReferencias(estudianteId) {
+    const modal = document.getElementById('modalReferencias');
+    const body = document.getElementById('modalReferenciasBody');
+    const title = document.getElementById('modalReferenciasTitle');
+
+    if (!modal || !body || !title) return;
+
+    body.innerHTML = `
+        <div style="text-align:center; padding:24px; color:#7f8c8d;">
+            <i class="fas fa-spinner fa-spin" style="font-size:24px; margin-bottom:8px;"></i>
+            <p style="margin:0;">Cargando referencias...</p>
+        </div>
+    `;
+    modal.classList.add('active');
+
+    try {
+        const response = await fetch(`../api/categorias/estudiantes.php?action=listar_referencias&estudiante_id=${encodeURIComponent(estudianteId)}`);
+        const data = await response.json();
+
+        title.innerHTML = `<i class="fas fa-address-book"></i> Referencias de ${escapeHtml(data.estudiante_nombre || 'Estudiante')}`;
+
+        if (!data.success || !Array.isArray(data.referencias) || data.referencias.length === 0) {
+            body.innerHTML = `
+                <div style="text-align:center; padding:30px; color:#95a5a6;">
+                    <i class="fas fa-user-slash" style="font-size:48px; margin-bottom:15px; opacity:0.3;"></i>
+                    <p style="font-size:15px; margin:0;">No se han registrado referencias para este estudiante.</p>
+                </div>
+            `;
+            return;
+        }
+
+        let html = '<div style="display:flex; flex-direction:column; gap:10px;">';
+        data.referencias.forEach((ref, index) => {
+            const telefonoRaw = String(ref.telefono || '').trim();
+            const telefonoHtml = telefonoRaw
+                ? `<a href="https://wa.me/${formatPhoneLink(telefonoRaw)}" target="_blank" class="contact-chip contact-chip-whatsapp"><i class="fab fa-whatsapp"></i> ${escapeHtml(formatPhoneDisplay(telefonoRaw))}</a>`
+                : '<span style="color:#bdc3c7; font-size:12px;">Sin teléfono</span>';
+
+            const relacionHtml = ref.relacion
+                ? `<span class="badge" style="background:#eef2ff; color:#4f46e5; font-size:11px; border:1px solid #dbeafe;">${escapeHtml(ref.relacion)}</span>`
+                : '';
+
+            html += `
+                <div style="display:flex; gap:12px; align-items:flex-start; border:1px solid #e8ecf0; border-radius:12px; padding:10px 12px; background:#fff;">
+                    <div style="width:28px; height:28px; border-radius:50%; background:#eef2ff; color:#4f46e5; display:flex; align-items:center; justify-content:center; font-weight:700; flex-shrink:0;">${index + 1}</div>
+                    <div style="flex:1; min-width:0;">
+                        <div style="font-weight:600; color:#334155; margin-bottom:6px;">${escapeHtml(ref.nombre || 'Sin nombre')}</div>
+                        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+                            ${telefonoHtml}
+                            ${relacionHtml}
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+        html += '</div>';
+        body.innerHTML = html;
+    } catch (error) {
+        console.error(error);
+        body.innerHTML = `
+            <div style="text-align:center; padding:24px; color:#e74c3c;">
+                <i class="fas fa-exclamation-triangle" style="font-size:24px; margin-bottom:8px;"></i>
+                <p style="margin:0;">Error al cargar las referencias.</p>
+            </div>
+        `;
+    }
 }
 
 function formatPhoneDisplay(num) {

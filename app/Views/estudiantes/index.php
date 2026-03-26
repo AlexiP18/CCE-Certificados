@@ -114,135 +114,134 @@
             </div>
         </div>
 
-        <!-- FILTROS -->
-        <div class="filters-section">
-            <div class="filters-title">
-                <i class="fas fa-filter"></i> Filtros de Búsqueda
-            </div>
-            
-            <div class="filters-grid">
-                <div class="filter-group">
-                    <label for="searchInput">Buscar Estudiante</label>
-                    <div style="position: relative;">
-                        <input type="text" id="searchInput" placeholder="Nombre, cédula, email..." style="width: 100%; padding-left: 35px; box-sizing: border-box;">
-                        <i class="fas fa-search" style="position: absolute; left: 12px; top: 12px; color: #95a5a6;"></i>
-                    </div>
-                </div>
-                
-                <div class="filter-group">
-                    <label for="grupoFilter">Filtrar por Grupo</label>
-                    <select id="grupoFilter">
-                        <option value="">Todos los Grupos</option>
-                        <?php foreach ($grupos as $grupo): ?>
-                            <option value="<?= $grupo['id'] ?>"><?= htmlspecialchars($grupo['nombre']) ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                
-                <div class="filter-group">
-                    <label for="categoriaFilter">Filtrar por Categoría</label>
-                    <select id="categoriaFilter">
-                        <option value="">Todas las Categorías</option>
-                        <?php foreach ($categorias as $cat): ?>
-                            <option value="<?= $cat['id'] ?>" data-grupo="<?= $cat['grupo_id'] ?>">
-                                <?= htmlspecialchars($cat['nombre']) ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-            </div>
-            
-            <div class="filter-actions">
-                <button class="btn btn-primary" onclick="applyFilters()">
-                    <i class="fas fa-check"></i> Aplicar Filtros
-                </button>
-                <button class="btn btn-secondary" onclick="clearFilters()">
-                    <i class="fas fa-times"></i> Limpiar
-                </button>
-                
-                <button id="btnVerCertificados" class="btn btn-secondary" style="display: none; background: #eef2ff; color: #667eea;" onclick="irACertificados()">
-                    <i class="fas fa-certificate"></i> Ver Certificados
-                </button>
-            </div>
-        </div>
-
         <!-- RESULTADOS -->
         <div class="results-section">
-            
-            <!-- BARRA DE ACCIONES MASIVAS -->
-            <div class="bulk-actions-bar" id="bulkActionsBar">
-                <div class="bulk-actions-info">
-                    <i class="fas fa-check-circle"></i>
-                    <span><span id="selectedCount" class="selected-count">0</span> estudiantes seleccionados</span>
-                </div>
-                <div class="bulk-actions-buttons">
-                    <button class="btn-bulk btn-bulk-success" onclick="abrirModalGenerarCertificados()">
-                        <i class="fas fa-certificate"></i> Generar Certificados
-                    </button>
-                    <button class="btn-bulk btn-bulk-cancel" onclick="cancelarSeleccion()">
-                        Cancelar
-                    </button>
-                </div>
-            </div>
-
-            <div class="results-header">
-                <div class="results-count">
-                    Mostrando <strong id="pagStart">0</strong> - <strong id="pagEnd">0</strong> de <strong id="pagTotal">0</strong> estudiantes
-                </div>
-                <div style="display: flex; gap: 10px; align-items: center;">
-                    <label for="perPageSelect" style="font-size: 14px; color: #5a6c7d;">Mostrar:</label>
-                    <select id="perPageSelect" onchange="cambiarFilasPorPagina(this.value)" style="padding: 5px 10px; border-radius: 5px; border: 1px solid #e0e0e0; color: #5a6c7d;">
-                        <option value="20">20</option>
-                        <option value="50">50</option>
-                        <option value="100">100</option>
-                        <option value="-1">Todos</option>
-                    </select>
-                </div>
-            </div>
-
             <div class="table-wrapper table-scroll-wrapper">
-                <table class="estudiantes-table">
-                    <thead>
-                        <tr>
-                            <th class="checkbox-cell sticky-col sticky-left-1" style="background: #f8f9fa;">
-                                <input type="checkbox" class="select-checkbox" id="selectAll" onclick="toggleSelectAll(this)">
-                            </th>
-                            <th class="sticky-col sticky-left-2" style="background: #f8f9fa;">Estudiante</th>
-                            <th>Cédula</th>
-                            <th>Edad / Cumpleaños</th>
-                            <th>Contacto</th>
-                            <th style="min-width: 150px;">Grupos</th>
-                            <th>Estado</th>
-                            <th>Registro</th>
-                            <th>Actualizado</th>
-                            <th>Certificados</th>
-                            <th class="sticky-col sticky-right" style="text-align: right; background: #f8f9fa;">Acciones</th>
-                        </tr>
-                    </thead>
-                    <tbody id="estudiantesTableBody">
-                        <!-- Dynamic Content -->
-                    </tbody>
-                </table>
-            </div>
-            
-            <!-- PAGINACIÓN -->
-            <div class="pagination-footer">
-                <div class="pagination-info">
-                    Página <span id="pageInputDisplay" style="font-weight: bold;">1</span> de <span id="totalPages">1</span>
-                </div>
-                <div class="pagination-buttons">
-                    <button id="btnPageFirst" class="btn-page" onclick="irPagina(1)" disabled><i class="fas fa-angle-double-left"></i></button>
-                    <button id="btnPagePrev" class="btn-page" onclick="prevPagina()" disabled><i class="fas fa-angle-left"></i></button>
-                    
-                    <div class="pagination-current">
-                        <input type="number" id="pageInput" value="1" min="1" onchange="irPaginaManual(this.value)">
-                    </div>
-                    
-                    <button id="btnPageNext" class="btn-page" onclick="nextPagina()"><i class="fas fa-angle-right"></i></button>
-                    <button id="btnPageLast" class="btn-page" onclick="irPagina('last')"><i class="fas fa-angle-double-right"></i></button>
-                </div>
-            </div>
+                <div class="table-header">
+                    <h3>
+                        <i class="fas fa-list"></i> Listado de Estudiantes
+                        <span class="count-badge" id="countBadge">0 estudiantes</span>
+                    </h3>
+                    <div class="table-header-actions">
+                        <div class="table-filter-grid">
+                            <div class="table-filter-group table-filter-group-search">
+                                <label for="searchInput"><i class="fas fa-search"></i> Buscar</label>
+                                <div class="table-search-wrap">
+                                    <i class="fas fa-search"></i>
+                                    <input type="text" id="searchInput" placeholder="Nombre, cédula o email...">
+                                </div>
+                            </div>
 
+                            <div class="table-filter-group">
+                                <label for="grupoFilter"><i class="fas fa-layer-group"></i> Grupo</label>
+                                <select id="grupoFilter">
+                                    <option value="">Todos los Grupos</option>
+                                    <?php foreach ($grupos as $grupo): ?>
+                                        <option value="<?= $grupo['id'] ?>"><?= htmlspecialchars($grupo['nombre']) ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+
+                            <div class="table-filter-group">
+                                <label for="categoriaFilter"><i class="fas fa-folder"></i> Categoría</label>
+                                <select id="categoriaFilter">
+                                    <option value="">Todas las Categorías</option>
+                                    <?php foreach ($categorias as $cat): ?>
+                                        <option value="<?= $cat['id'] ?>" data-grupo="<?= $cat['grupo_id'] ?>">
+                                            <?= htmlspecialchars($cat['nombre']) ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="table-filter-actions">
+                            <button class="btn btn-primary" onclick="applyFilters()">
+                                <i class="fas fa-check"></i> Aplicar
+                            </button>
+                            <button class="btn btn-secondary" onclick="clearFilters()">
+                                <i class="fas fa-times"></i> Limpiar
+                            </button>
+                            <button id="btnVerCertificados" class="btn btn-secondary btn-filter-certificados" style="display: none;" onclick="irACertificados()">
+                                <i class="fas fa-certificate"></i> Ver Certificados
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- BARRA DE ACCIONES MASIVAS -->
+                <div class="bulk-actions-bar" id="bulkActionsBar">
+                    <div class="bulk-actions-info">
+                        <i class="fas fa-check-circle"></i>
+                        <span><span id="selectedCount" class="selected-count">0</span> estudiantes seleccionados</span>
+                    </div>
+                    <div class="bulk-actions-buttons">
+                        <button class="btn-bulk btn-bulk-success" onclick="abrirModalGenerarCertificados()">
+                            <i class="fas fa-certificate"></i> Generar Certificados
+                        </button>
+                        <button class="btn-bulk btn-bulk-cancel" onclick="cancelarSeleccion()">
+                            Cancelar
+                        </button>
+                    </div>
+                </div>
+
+                <div class="table-inner-scroll">
+                    <table class="estudiantes-table">
+                        <thead>
+                            <tr>
+                                <th class="checkbox-cell sticky-col sticky-left-1" style="background: #f8f9fa;">
+                                    <input type="checkbox" class="select-checkbox" id="selectAll" onclick="toggleSelectAll(this)">
+                                </th>
+                                <th class="sticky-col sticky-left-2" style="background: #f8f9fa; min-width: 340px;">Estudiante</th>
+                                <th>Cédula</th>
+                                <th>Edad / Cumpleaños</th>
+                                <th>Contacto</th>
+                                <th style="min-width: 150px;">Grupos</th>
+                                <th>Estado</th>
+                                <th>Registro</th>
+                                <th>Actualizado</th>
+                                <th>Certificados</th>
+                                <th style="text-align: center;">Historial</th>
+                                <th class="sticky-col sticky-right" style="text-align: right; background: #f8f9fa;">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="estudiantesTableBody">
+                            <!-- Dynamic Content -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- PAGINACIÓN -->
+                <div class="pagination-footer">
+                    <div class="pagination-info">
+                        Mostrando <span id="pagStart">0</span> - <span id="pagEnd">0</span> de <span id="pagTotal">0</span> estudiantes
+                    </div>
+
+                    <div class="pagination-controls">
+                        <div>
+                            <label for="rowsPerPageSelect">Filas por página:</label>
+                            <select id="rowsPerPageSelect" onchange="cambiarFilasPorPagina(this.value)">
+                                <option value="20" selected>20</option>
+                                <option value="50">50</option>
+                                <option value="100">100</option>
+                                <option value="-1">Todas</option>
+                            </select>
+                        </div>
+
+                        <div class="pagination-buttons">
+                            <button id="btnPageFirst" class="btn-page" onclick="irPagina(1)" disabled><i class="fas fa-angle-double-left"></i></button>
+                            <button id="btnPagePrev" class="btn-page" onclick="prevPagina()" disabled><i class="fas fa-angle-left"></i></button>
+
+                            <span class="pagination-current">
+                                Página <input type="number" id="pageInput" value="1" min="1" onchange="irPaginaManual(this.value)"> de <span id="totalPages">1</span>
+                            </span>
+
+                            <button id="btnPageNext" class="btn-page" onclick="nextPagina()"><i class="fas fa-angle-right"></i></button>
+                            <button id="btnPageLast" class="btn-page" onclick="irPagina('last')"><i class="fas fa-angle-double-right"></i></button>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -325,6 +324,120 @@
                 <button id="btnGenerarCertificados" class="btn-modal btn-modal-success" onclick="generarCertificados()" disabled>
                     <i class="fas fa-check"></i> Generar Certificados
                 </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL EDITAR ESTUDIANTE -->
+    <div class="modal-overlay" id="modalEditarOverlay" onclick="cerrarModalEditar(event)">
+        <div class="modal modal-lg edit-modal" style="max-width: 760px;" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h3><i class="fas fa-user-edit"></i> Editar Estudiante</h3>
+                <button class="modal-close" onclick="cerrarModalEditar()">×</button>
+            </div>
+            <form id="editEstudianteForm" onsubmit="guardarEdicionEstudiante(event)">
+                <div class="modal-body edit-modal-body">
+                    <input type="hidden" id="edit_estudiante_id" name="id">
+                    <input type="hidden" id="edit_es_menor_actual" name="es_menor_actual" value="0">
+
+                    <div id="editMinorWarning" class="edit-minor-warning" style="display:none;">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        Este estudiante es menor de edad. La edición desde este modal está bloqueada para menores.
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="edit_nombre">Nombre Completo *</label>
+                            <input type="text" id="edit_nombre" name="nombre" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="edit_cedula">Cédula</label>
+                            <input type="text" id="edit_cedula" name="cedula" maxlength="10" oninput="sanitizarCedulaEdit(this)">
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="edit_celular">Celular</label>
+                            <div class="input-prefix-wrap">
+                                <span class="input-prefix-label">+593</span>
+                                <input type="text" id="edit_celular" name="celular" maxlength="9" oninput="sanitizarCelularEdit(this)">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="edit_email">Email</label>
+                            <input type="email" id="edit_email" name="email">
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="edit_fecha_nacimiento">Fecha de Nacimiento</label>
+                            <input type="date" id="edit_fecha_nacimiento" name="fecha_nacimiento">
+                        </div>
+                    </div>
+
+                    <div class="edit-meta-grid">
+                        <div class="edit-meta-item">
+                            <span class="edit-meta-label"><i class="fas fa-calendar-plus"></i> Registro</span>
+                            <span id="editMetaRegistro">-</span>
+                        </div>
+                        <div class="edit-meta-item">
+                            <span class="edit-meta-label"><i class="fas fa-clock"></i> Actualización</span>
+                            <span id="editMetaActualizacion">-</span>
+                        </div>
+                    </div>
+
+                    <div class="edit-enrollment-section">
+                        <h4><i class="fas fa-layer-group"></i> Grupos, Categorías y Períodos</h4>
+                        <div id="editEnrollmentResumen" class="edit-enrollment-list">
+                            <div class="empty-state" style="padding:20px 0;">
+                                <i class="fas fa-spinner fa-spin"></i>
+                                <p>Cargando información de inscripción...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <div id="editModalEstado" style="margin-right: auto; color: #64748b; font-size: 13px;"></div>
+                    <button type="button" class="btn-modal btn-modal-cancel" onclick="cerrarModalEditar()">Cancelar</button>
+                    <button type="submit" id="btnGuardarEdicionEstudiante" class="btn-modal btn-modal-success">
+                        <i class="fas fa-save"></i> Guardar Cambios
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL HISTORIAL DE CAMBIOS -->
+    <div class="modal-overlay" id="modalHistorialOverlay" onclick="cerrarModalHistorial(event)">
+        <div class="modal modal-lg">
+            <div class="modal-header">
+                <h3><i class="fas fa-history"></i> Historial de Cambios</h3>
+                <button class="modal-close" onclick="cerrarModalHistorial()">×</button>
+            </div>
+            <div class="modal-body">
+                <div id="historialContainer">
+                    <!-- Dynamic Content -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-modal btn-modal-cancel" onclick="cerrarModalHistorial()">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL REFERENCIAS -->
+    <div class="modal-overlay" id="modalReferenciasOverlay" onclick="cerrarModalReferencias(event)">
+        <div class="modal" style="max-width: 520px; padding: 0; border-radius: 16px; overflow: hidden;">
+            <div class="modal-header" style="background: linear-gradient(135deg, #8e44ad, #9b59b6); padding: 20px 25px; margin: 0; flex-shrink: 0;">
+                <h3 id="modalReferenciasTitle" style="color: white; margin: 0;">
+                    <i class="fas fa-address-book"></i> Referencias
+                </h3>
+                <button class="modal-close" onclick="cerrarModalReferencias()" style="background: rgba(255,255,255,0.2); color: white;">×</button>
+            </div>
+            <div id="modalReferenciasBody" class="modal-body" style="padding: 25px;">
+                <!-- Dynamic Content -->
             </div>
         </div>
     </div>

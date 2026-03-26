@@ -203,8 +203,14 @@ try {
             // Construir consulta con JOINs para obtener grupos y categorías
             // Usamos categoria_estudiantes para obtener las inscripciones reales, no solo certificados
             $sql = "SELECT DISTINCT e.*, 
-                    GROUP_CONCAT(DISTINCT CONCAT(g.id, '##', g.nombre, '##', COALESCE(g.color, '#cccccc'), '##', COALESCE(g.icono, ''), '##', cat.id, '##', cat.nombre, '##', COALESCE(cat.icono, ''), '##', COALESCE(p.nombre, '-')) SEPARATOR '||') as enrollment_data,
+                    GROUP_CONCAT(DISTINCT CONCAT(
+                        g.id, '##', g.nombre, '##', COALESCE(g.color, '#cccccc'), '##', COALESCE(g.icono, ''), '##',
+                        cat.id, '##', cat.nombre, '##', COALESCE(cat.icono, ''), '##', COALESCE(p.nombre, '-'), '##',
+                        COALESCE(ce.es_destacado, 0), '##', COALESCE(DATE_FORMAT(p.fecha_inicio, '%Y-%m-%d'), '0000-00-00'), '##',
+                        COALESCE(DATE_FORMAT(ce.fecha_matricula, '%Y-%m-%d'), '')
+                    ) SEPARATOR '||') as enrollment_data,
                     COUNT(DISTINCT c.id) as total_certificados,
+                    (SELECT COUNT(*) FROM estudiantes_referencias er WHERE er.estudiante_id = e.id) as tiene_referencias,
                     (SELECT COUNT(*) FROM estudiantes child WHERE child.representante_id = e.id) as num_hijos
                     FROM estudiantes e
                     LEFT JOIN categoria_estudiantes ce ON e.id = ce.estudiante_id
@@ -544,6 +550,7 @@ try {
                     ce.estado,
                     ce.categoria_id,
                     ce.periodo_id,
+                    ce.fecha_matricula as categoria_fecha_matricula,
                     c.nombre as categoria_nombre,
                     c.icono as categoria_icono,
                     p.nombre as periodo_nombre,
@@ -622,6 +629,7 @@ try {
                     'color' => '#3498db', // Fallback color as column dropped
                     'periodo' => $row['periodo_nombre'],
                     'fecha_inicio' => $row['periodo_fecha_inicio'],
+                    'fecha_matricula' => $row['categoria_fecha_matricula'],
                     'periodo_id' => $row['periodo_id'],
                     'estado' => $row['estado'],
                     'es_destacado' => $row['es_destacado'],
@@ -691,9 +699,10 @@ try {
             // 1. Intentar buscar por estudiante_id (más robusto)
             $sql = "
                 SELECT DISTINCT c.codigo, c.fecha, c.fechas_generacion, 
-                       cat.nombre as categoria_nombre, cat.icono as categoria_icono, cat.color as categoria_color,
+                       cat.nombre as categoria_nombre, cat.icono as categoria_icono, '#e67e22' as categoria_color,
                        g.id as grupo_id, g.nombre as grupo_nombre,
-                       p.nombre as periodo_nombre
+                       p.nombre as periodo_nombre,
+                       p.fecha_inicio as periodo_fecha_inicio
                 FROM certificados c
                 LEFT JOIN categorias cat ON c.categoria_id = cat.id
                 LEFT JOIN grupos g ON cat.grupo_id = g.id
@@ -703,7 +712,7 @@ try {
                 LEFT JOIN periodos p ON ce.periodo_id = p.id
                 WHERE c.estudiante_id = ?
                 AND p.id IS NOT NULL 
-                ORDER BY p.fecha_inicio DESC, c.fecha DESC
+                ORDER BY periodo_fecha_inicio DESC, c.fecha DESC
             ";
             $stmt = $pdo->prepare($sql);
             $stmt->execute([$id]);
@@ -721,9 +730,10 @@ try {
                 if ($nombreEstudiante) {
                     $stmt = $pdo->prepare("
                         SELECT DISTINCT c.codigo, c.fecha, c.fechas_generacion, 
-                               cat.nombre as categoria_nombre, cat.icono as categoria_icono, cat.color as categoria_color,
+                               cat.nombre as categoria_nombre, cat.icono as categoria_icono, '#e67e22' as categoria_color,
                                g.id as grupo_id, g.nombre as grupo_nombre,
-                               p.nombre as periodo_nombre
+                               p.nombre as periodo_nombre,
+                               p.fecha_inicio as periodo_fecha_inicio
                         FROM certificados c
                         LEFT JOIN categorias cat ON c.categoria_id = cat.id
                         LEFT JOIN grupos g ON cat.grupo_id = g.id
@@ -733,17 +743,44 @@ try {
                         LEFT JOIN periodos p ON ce.periodo_id = p.id
                         WHERE (TRIM(c.nombre) = TRIM(?) OR c.nombre LIKE ?)
                         AND p.id IS NOT NULL
-                        ORDER BY p.fecha_inicio DESC, c.fecha DESC
+                        ORDER BY periodo_fecha_inicio DESC, c.fecha DESC
                     ");
                     $stmt->execute([$nombreEstudiante, '%' . $nombreEstudiante . '%']);
                     $certificados = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 }
             }
 
-            // Obtener datos del estudiante
-            $stmtEstData = $pdo->prepare("SELECT * FROM estudiantes WHERE id = ?");
+            // Obtener datos del estudiante + datos de su representante (si aplica)
+            $stmtEstData = $pdo->prepare("
+                SELECT 
+                    e.*,
+                    rep.nombre as representante_nombre,
+                    rep.cedula as representante_cedula,
+                    rep.celular as representante_celular,
+                    rep.email as representante_email,
+                    rep.fecha_nacimiento as representante_fecha_nacimiento,
+                    (
+                        SELECT GROUP_CONCAT(DISTINCT CONCAT(
+                            g2.id, '##', g2.nombre, '##', COALESCE(g2.color, '#cccccc'), '##', COALESCE(g2.icono, ''), '##',
+                            c2.id, '##', c2.nombre, '##', COALESCE(c2.icono, ''), '##', COALESCE(p2.nombre, '-'), '##',
+                            COALESCE(ce2.es_destacado, 0), '##', COALESCE(DATE_FORMAT(p2.fecha_inicio, '%Y-%m-%d'), '0000-00-00'), '##',
+                            COALESCE(DATE_FORMAT(ce2.fecha_matricula, '%Y-%m-%d'), '')
+                        ) SEPARATOR '||')
+                        FROM categoria_estudiantes ce2
+                        LEFT JOIN categorias c2 ON ce2.categoria_id = c2.id
+                        LEFT JOIN grupos g2 ON c2.grupo_id = g2.id
+                        LEFT JOIN periodos p2 ON ce2.periodo_id = p2.id
+                        WHERE ce2.estudiante_id = e.id
+                    ) as enrollment_data
+                FROM estudiantes e
+                LEFT JOIN estudiantes rep ON e.representante_id = rep.id
+                WHERE e.id = ?
+                LIMIT 1
+            ");
             $stmtEstData->execute([$id]);
             $estudianteData = $stmtEstData->fetch(PDO::FETCH_ASSOC);
+
+            $fallbackUsed = empty($certificados) && !empty($nombreEstudiante ?? null);
 
             echo json_encode([
                 'success' => true,
@@ -752,7 +789,7 @@ try {
                 'debug_info' => [
                     'received_id' => $id,
                     'count' => count($certificados),
-                    'fallback_used' => empty($certificados) && !empty($nombreEstudiante)
+                    'fallback_used' => $fallbackUsed
                 ]
             ]);
             break;
