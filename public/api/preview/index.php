@@ -56,6 +56,15 @@ function resolveAssetPath($relativePath) {
     return null;
 }
 
+function tableExistsForPreview(PDO $pdo, $tableName) {
+    try {
+        $pdo->query("SELECT 1 FROM {$tableName} LIMIT 1");
+        return true;
+    } catch (Exception $e) {
+        return false;
+    }
+}
+
 /**
  * Sobrescribe configuración base con la configuración de plantilla activa.
  * Esto mantiene consistencia con generación real desde grupo_plantillas/categoria_plantillas.
@@ -345,85 +354,215 @@ try {
 
     // Conexión DB
     $pdo = getConnection();
+    $hasGrupoPlantillas = tableExistsForPreview($pdo, 'grupo_plantillas');
+    $hasCategoriaPlantillas = tableExistsForPreview($pdo, 'categoria_plantillas');
     
     if ($tipo === 'categoria') {
-        // Cargar configuración de categoría junto con la del grupo
-        $stmt = $pdo->prepare("
-            SELECT c.*, g.plantilla as grupo_plantilla, g.firma_imagen as grupo_firma_imagen,
-                   g.id as grupo_id, g.fuente_nombre as grupo_fuente_nombre, 
-                   g.formato_nombre as grupo_formato_nombre,
-                   g.tamanio_fuente as grupo_tamanio_fuente, g.color_texto as grupo_color_texto,
-                   g.posicion_nombre_x as grupo_pos_nombre_x, g.posicion_nombre_y as grupo_pos_nombre_y,
-                   g.posicion_qr_x as grupo_pos_qr_x, g.posicion_qr_y as grupo_pos_qr_y,
-                   g.posicion_firma_x as grupo_pos_firma_x, g.posicion_firma_y as grupo_pos_firma_y,
-                   g.posicion_razon_x as grupo_pos_razon_x, g.posicion_razon_y as grupo_pos_razon_y,
-                   g.posicion_fecha_x as grupo_pos_fecha_x, g.posicion_fecha_y as grupo_pos_fecha_y,
-                   g.tamanio_qr as grupo_tamanio_qr, g.tamanio_firma as grupo_tamanio_firma,
-                   g.variables_habilitadas as grupo_variables_habilitadas,
-                   g.razon_defecto as grupo_razon_defecto, g.fuente_razon as grupo_fuente_razon,
-                   g.tamanio_razon as grupo_tamanio_razon, g.color_razon as grupo_color_razon,
-                   g.ancho_razon as grupo_ancho_razon,
-                   g.formato_fecha as grupo_formato_fecha, g.fuente_fecha as grupo_fuente_fecha,
-                   g.tamanio_fecha as grupo_tamanio_fecha, g.color_fecha as grupo_color_fecha,
-                   g.firma_nombre as grupo_firma_nombre, g.firma_cargo as grupo_firma_cargo,
-                   g.posicion_destacado_x as grupo_pos_destacado_x, g.posicion_destacado_y as grupo_pos_destacado_y,
-                   g.tamanio_destacado as grupo_tamanio_destacado, g.destacado_tipo as grupo_destacado_tipo,
-                   g.destacado_icono as grupo_destacado_icono, g.destacado_imagen as grupo_destacado_imagen,
-                   g.destacado_habilitado as grupo_destacado_habilitado
-            FROM categorias c
-            INNER JOIN grupos g ON c.grupo_id = g.id
-            WHERE c.id = ?
-        ");
-        $stmt->execute([$id]);
-        $cat = $stmt->fetch(PDO::FETCH_ASSOC);
+        // Cargar configuración de categoría junto con la del grupo.
+        // Intento 1: query completa (esquema nuevo).
+        // Intento 2: fallback compatible (esquemas mixtos/legacy).
+        $cat = null;
+        try {
+            $stmt = $pdo->prepare("
+                SELECT c.*, g.plantilla as grupo_plantilla, g.firma_imagen as grupo_firma_imagen,
+                       g.id as grupo_id, g.fuente_nombre as grupo_fuente_nombre, 
+                       g.formato_nombre as grupo_formato_nombre,
+                       g.tamanio_fuente as grupo_tamanio_fuente, g.color_texto as grupo_color_texto,
+                       g.posicion_nombre_x as grupo_pos_nombre_x, g.posicion_nombre_y as grupo_pos_nombre_y,
+                       g.posicion_qr_x as grupo_pos_qr_x, g.posicion_qr_y as grupo_pos_qr_y,
+                       g.posicion_firma_x as grupo_pos_firma_x, g.posicion_firma_y as grupo_pos_firma_y,
+                       g.posicion_razon_x as grupo_pos_razon_x, g.posicion_razon_y as grupo_pos_razon_y,
+                       g.posicion_fecha_x as grupo_pos_fecha_x, g.posicion_fecha_y as grupo_pos_fecha_y,
+                       g.tamanio_qr as grupo_tamanio_qr, g.tamanio_firma as grupo_tamanio_firma,
+                       g.variables_habilitadas as grupo_variables_habilitadas,
+                       g.razon_defecto as grupo_razon_defecto, g.fuente_razon as grupo_fuente_razon,
+                       g.tamanio_razon as grupo_tamanio_razon, g.color_razon as grupo_color_razon,
+                       g.ancho_razon as grupo_ancho_razon,
+                       g.formato_fecha as grupo_formato_fecha, g.fuente_fecha as grupo_fuente_fecha,
+                       g.tamanio_fecha as grupo_tamanio_fecha, g.color_fecha as grupo_color_fecha,
+                       g.firma_nombre as grupo_firma_nombre, g.firma_cargo as grupo_firma_cargo,
+                       g.posicion_destacado_x as grupo_pos_destacado_x, g.posicion_destacado_y as grupo_pos_destacado_y,
+                       g.tamanio_destacado as grupo_tamanio_destacado, g.destacado_tipo as grupo_destacado_tipo,
+                       g.destacado_icono as grupo_destacado_icono, g.destacado_imagen as grupo_destacado_imagen,
+                       g.destacado_habilitado as grupo_destacado_habilitado
+                FROM categorias c
+                INNER JOIN grupos g ON c.grupo_id = g.id
+                WHERE c.id = ?
+            ");
+            $stmt->execute([$id]);
+            $cat = $stmt->fetch(PDO::FETCH_ASSOC);
+        } catch (Exception $e) {
+            $stmt = $pdo->prepare("
+                SELECT c.*,
+                       g.id as grupo_id,
+                       g.nombre as grupo_nombre,
+                       g.descripcion as grupo_descripcion,
+                       g.icono as grupo_icono,
+                       g.color as grupo_color,
+                       g.activo as grupo_activo,
+                       g.fecha_creacion as grupo_fecha_creacion,
+                       g.firma_imagen as grupo_firma_imagen
+                FROM categorias c
+                INNER JOIN grupos g ON c.grupo_id = g.id
+                WHERE c.id = ?
+            ");
+            $stmt->execute([$id]);
+            $cat = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if ($cat) {
+                if (!array_key_exists('grupo_plantilla', $cat)) {
+                    $cat['grupo_plantilla'] = null;
+                }
+                if (!array_key_exists('usar_plantilla_propia', $cat)) {
+                    $cat['usar_plantilla_propia'] = 0;
+                }
+                if (!array_key_exists('plantilla_archivo', $cat)) {
+                    $cat['plantilla_archivo'] = '';
+                }
+            }
+
+            if ($cat && !empty($cat['grupo_id'])) {
+                $stmtGrupo = $pdo->prepare("SELECT * FROM grupos WHERE id = ? LIMIT 1");
+                $stmtGrupo->execute([$cat['grupo_id']]);
+                $grupoBase = $stmtGrupo->fetch(PDO::FETCH_ASSOC) ?: [];
+
+                $map = [
+                    'grupo_fuente_nombre' => 'fuente_nombre',
+                    'grupo_formato_nombre' => 'formato_nombre',
+                    'grupo_tamanio_fuente' => 'tamanio_fuente',
+                    'grupo_color_texto' => 'color_texto',
+                    'grupo_pos_nombre_x' => 'posicion_nombre_x',
+                    'grupo_pos_nombre_y' => 'posicion_nombre_y',
+                    'grupo_pos_qr_x' => 'posicion_qr_x',
+                    'grupo_pos_qr_y' => 'posicion_qr_y',
+                    'grupo_pos_firma_x' => 'posicion_firma_x',
+                    'grupo_pos_firma_y' => 'posicion_firma_y',
+                    'grupo_pos_razon_x' => 'posicion_razon_x',
+                    'grupo_pos_razon_y' => 'posicion_razon_y',
+                    'grupo_pos_fecha_x' => 'posicion_fecha_x',
+                    'grupo_pos_fecha_y' => 'posicion_fecha_y',
+                    'grupo_tamanio_qr' => 'tamanio_qr',
+                    'grupo_tamanio_firma' => 'tamanio_firma',
+                    'grupo_variables_habilitadas' => 'variables_habilitadas',
+                    'grupo_razon_defecto' => 'razon_defecto',
+                    'grupo_fuente_razon' => 'fuente_razon',
+                    'grupo_tamanio_razon' => 'tamanio_razon',
+                    'grupo_color_razon' => 'color_razon',
+                    'grupo_ancho_razon' => 'ancho_razon',
+                    'grupo_formato_fecha' => 'formato_fecha',
+                    'grupo_fuente_fecha' => 'fuente_fecha',
+                    'grupo_tamanio_fecha' => 'tamanio_fecha',
+                    'grupo_color_fecha' => 'color_fecha',
+                    'grupo_firma_nombre' => 'firma_nombre',
+                    'grupo_firma_cargo' => 'firma_cargo',
+                    'grupo_pos_destacado_x' => 'posicion_destacado_x',
+                    'grupo_pos_destacado_y' => 'posicion_destacado_y',
+                    'grupo_tamanio_destacado' => 'tamanio_destacado',
+                    'grupo_destacado_tipo' => 'destacado_tipo',
+                    'grupo_destacado_icono' => 'destacado_icono',
+                    'grupo_destacado_imagen' => 'destacado_imagen',
+                    'grupo_destacado_habilitado' => 'destacado_habilitado'
+                ];
+
+                foreach ($map as $alias => $source) {
+                    if (!array_key_exists($alias, $cat) && array_key_exists($source, $grupoBase)) {
+                        $cat[$alias] = $grupoBase[$source];
+                    }
+                }
+            }
+        }
         
         if (!$cat) {
             throw new Exception("Categoría no encontrada");
         }
         
         // Determinar si usar configuración propia de la categoría o del grupo
-        $usarConfigPropia = $cat['usar_plantilla_propia'] == 1;
+        $usarConfigPropia = isset($cat['usar_plantilla_propia']) && (int)$cat['usar_plantilla_propia'] === 1;
         $plantillaConfigActiva = null;
         
         // Determinar plantilla a usar
         $plantillaIdPost = $_POST['plantilla_id'] ?? null;
+        $plantillaIdNumerico = null;
+        if ($plantillaIdPost && $plantillaIdPost !== 'null' && $plantillaIdPost !== 'system') {
+            $plantillaIdNumerico = intval($plantillaIdPost);
+            if ($plantillaIdNumerico <= 0) {
+                $plantillaIdNumerico = null;
+            }
+        }
 
-        if ($usarConfigPropia) {
+        // 1) Prioridad: si viene plantilla_id e identifica una plantilla de categoría, usarla
+        // incluso cuando usar_plantilla_propia esté en 0 (compatibilidad con datos mixtos).
+        if ($plantillaIdNumerico) {
+            $plantillaById = null;
+            if ($hasCategoriaPlantillas) {
+                $stmtPlantillaById = $pdo->prepare("SELECT * FROM categoria_plantillas WHERE id = ? AND categoria_id = ? LIMIT 1");
+                $stmtPlantillaById->execute([$plantillaIdNumerico, $id]);
+                $plantillaById = $stmtPlantillaById->fetch(PDO::FETCH_ASSOC);
+            }
+
+            if ($plantillaById) {
+                $plantillaPath = resolveAssetPath('uploads/categorias/' . $id . '/' . $plantillaById['archivo']);
+                $plantillaConfigActiva = $plantillaById;
+                $usarConfigPropia = true;
+            }
+        }
+
+        // 2) Si la categoría usa plantilla propia y aún no resolvimos plantilla, buscar activa
+        if ($usarConfigPropia && (empty($plantillaPath) || !file_exists($plantillaPath))) {
             // Buscar plantilla especificada o activa en categoria_plantillas
-            if ($plantillaIdPost && $plantillaIdPost !== 'null' && $plantillaIdPost !== 'system') {
-                $stmtPlantilla = $pdo->prepare("SELECT * FROM categoria_plantillas WHERE id = ? LIMIT 1");
-                $stmtPlantilla->execute([intval($plantillaIdPost)]);
-            } else {
+            if (!$plantillaIdNumerico && $hasCategoriaPlantillas) {
                 $stmtPlantilla = $pdo->prepare("SELECT * FROM categoria_plantillas WHERE categoria_id = ? AND es_activa = 1 LIMIT 1");
                 $stmtPlantilla->execute([$id]);
+                $plantillaActiva = $stmtPlantilla->fetch(PDO::FETCH_ASSOC);
+            } else {
+                $plantillaActiva = null;
             }
-            $plantillaActiva = $stmtPlantilla->fetch(PDO::FETCH_ASSOC);
             
             if ($plantillaActiva) {
                 $plantillaPath = resolveAssetPath('uploads/categorias/' . $id . '/' . $plantillaActiva['archivo']);
                 $plantillaConfigActiva = $plantillaActiva;
             } elseif (!empty($cat['plantilla_archivo'])) {
-                // Fallback a la plantilla antigua de categoría si existe
-                $plantillaPath = resolveAssetPath('assets/templates/' . $cat['plantilla_archivo']);
+                // Fallback legacy de categoría.
+                // Debe seguir la misma convención que Certificate.php:
+                //   uploads/categorias/{plantilla_archivo}
+                // y mantener compatibilidad con rutas antiguas.
+                $legacyArchivo = trim((string)$cat['plantilla_archivo']);
+                $legacyBasename = basename($legacyArchivo);
+                $legacyCandidates = [
+                    'uploads/categorias/' . ltrim($legacyArchivo, '/'),
+                    'uploads/categorias/' . $id . '/' . $legacyBasename,
+                    'assets/templates/' . $legacyBasename,
+                    'assets/templates/' . ltrim($legacyArchivo, '/')
+                ];
+
+                foreach ($legacyCandidates as $candidate) {
+                    $resolved = resolveAssetPath($candidate);
+                    if ($resolved) {
+                        $plantillaPath = $resolved;
+                        break;
+                    }
+                }
             }
         }
         
         // Si no usa plantilla propia o no encontró, buscar del grupo
         if (empty($plantillaPath) || !file_exists($plantillaPath)) {
             // Buscar plantilla especificada o activa del grupo
-            if ($plantillaIdPost && $plantillaIdPost !== 'null' && $plantillaIdPost !== 'system') {
+            $grupoPlantillaActiva = null;
+            if ($plantillaIdNumerico && $hasGrupoPlantillas) {
                 $stmtGrupoPlantilla = $pdo->prepare("SELECT * FROM grupo_plantillas WHERE id = ? LIMIT 1");
-                $stmtGrupoPlantilla->execute([intval($plantillaIdPost)]);
-            } else {
+                $stmtGrupoPlantilla->execute([$plantillaIdNumerico]);
+                $grupoPlantillaActiva = $stmtGrupoPlantilla->fetch(PDO::FETCH_ASSOC);
+            } elseif ($hasGrupoPlantillas) {
                 $stmtGrupoPlantilla = $pdo->prepare("SELECT * FROM grupo_plantillas WHERE grupo_id = ? AND es_activa = 1 LIMIT 1");
                 $stmtGrupoPlantilla->execute([$cat['grupo_id']]);
+                $grupoPlantillaActiva = $stmtGrupoPlantilla->fetch(PDO::FETCH_ASSOC);
             }
-            $grupoPlantillaActiva = $stmtGrupoPlantilla->fetch(PDO::FETCH_ASSOC);
             
             if ($grupoPlantillaActiva) {
                 $plantillaPath = resolveAssetPath('uploads/grupos/' . $cat['grupo_id'] . '/' . $grupoPlantillaActiva['archivo']);
                 $plantillaConfigActiva = $grupoPlantillaActiva;
-            } elseif (!empty($cat['grupo_plantilla'])) {
+            } elseif (!empty($cat['grupo_plantilla'] ?? null)) {
                 // Fallback a la plantilla antigua del grupo
                 $plantillaPath = resolveAssetPath('assets/templates/' . $cat['grupo_plantilla']);
             }
@@ -581,11 +720,11 @@ try {
         $plantillaIdPost = $_POST['plantilla_id'] ?? null;
         $plantillaActiva = null;
         
-        if ($plantillaIdPost && $plantillaIdPost !== 'null' && $plantillaIdPost !== 'system') {
+        if ($plantillaIdPost && $plantillaIdPost !== 'null' && $plantillaIdPost !== 'system' && $hasGrupoPlantillas) {
             $stmtPlantilla = $pdo->prepare("SELECT * FROM grupo_plantillas WHERE id = ? LIMIT 1");
             $stmtPlantilla->execute([intval($plantillaIdPost)]);
             $plantillaActiva = $stmtPlantilla->fetch(PDO::FETCH_ASSOC);
-        } else {
+        } elseif ($hasGrupoPlantillas) {
             $stmtPlantilla = $pdo->prepare("SELECT * FROM grupo_plantillas WHERE grupo_id = ? AND es_activa = 1 LIMIT 1");
             $stmtPlantilla->execute([$id]);
             $plantillaActiva = $stmtPlantilla->fetch(PDO::FETCH_ASSOC);

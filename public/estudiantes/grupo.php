@@ -25,7 +25,15 @@ if (!$grupo) {
 }
 
 // Obtener categorías del grupo
-$stmt = $pdo->prepare("SELECT id, nombre, icono FROM categorias WHERE grupo_id = ? AND activo = 1 ORDER BY nombre");
+// Compatibilidad: no depender de columnas legacy opcionales de categorias.
+$stmt = $pdo->prepare("
+    SELECT id, nombre, icono,
+           0 AS usar_plantilla_propia,
+           '' AS plantilla_archivo
+    FROM categorias
+    WHERE grupo_id = ? AND activo = 1
+    ORDER BY nombre
+");
 $stmt->execute([$grupo_id]);
 $categorias = $stmt->fetchAll(PDO::FETCH_ASSOC);
 

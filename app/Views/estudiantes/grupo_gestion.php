@@ -543,6 +543,7 @@
         // Inject PHP variables
         const grupoId = <?= $grupo_id ?>;
         const grupoColor = '<?= htmlspecialchars($grupo['color']) ?>';
+        const categoriasGrupo = <?= json_encode($categorias, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?>;
     </script>
     <script src="<?= $jsPath ?>/estudiantes/grupo_gestion.js?v=<?= time() ?>"></script>
 </body>

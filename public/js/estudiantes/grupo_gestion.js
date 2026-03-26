@@ -1103,14 +1103,36 @@ async function cargarPreviewPlantillasGeneracion() {
     const container = document.getElementById('genLotePreviewPlantillas');
     if (!container) return;
 
-    const seleccionados = generacionLoteItems.filter(i => generacionLoteSeleccion.has(i.key));
     const categoriasMap = new Map();
-    seleccionados.forEach(i => {
-        if (!categoriasMap.has(String(i.categoria_id))) categoriasMap.set(String(i.categoria_id), i);
-    });
+    if (typeof categoriasGrupo !== 'undefined' && Array.isArray(categoriasGrupo)) {
+        categoriasGrupo.forEach(cat => {
+            const categoriaId = String(cat.id || '').trim();
+            if (!categoriaId || categoriasMap.has(categoriaId)) return;
+            categoriasMap.set(categoriaId, {
+                categoria_id: categoriaId,
+                categoria_nombre: cat.nombre || 'Sin categoría',
+                usar_plantilla_propia: Number(cat.usar_plantilla_propia || 0),
+                plantilla_archivo: cat.plantilla_archivo || ''
+            });
+        });
+    }
+
+    // Fallback por compatibilidad: si no existe el catálogo del grupo, usar categorías del lote.
+    if (categoriasMap.size === 0) {
+        generacionLoteItems.forEach(i => {
+            const categoriaId = String(i.categoria_id || '').trim();
+            if (!categoriaId || categoriasMap.has(categoriaId)) return;
+            categoriasMap.set(categoriaId, {
+                categoria_id: categoriaId,
+                categoria_nombre: i.categoria_nombre || 'Sin categoría',
+                usar_plantilla_propia: Number(i.usar_plantilla_propia || 0),
+                plantilla_archivo: i.plantilla_archivo || ''
+            });
+        });
+    }
 
     if (categoriasMap.size === 0) {
-        container.innerHTML = '<div class="gen-empty">Selecciona al menos un elemento para ver plantillas.</div>';
+        container.innerHTML = '<div class="gen-empty">No hay categorías registradas para este grupo.</div>';
         return;
     }
 
@@ -1137,7 +1159,12 @@ async function cargarPreviewPlantillasGeneracion() {
     const grupoDynamicPreviewUrl = await generarPreviewPlantillaUrl('grupo', grupoId, grupoPlantillaId);
     const grupoPreviewUrl = grupoSnapshotLocalUrl || grupoDynamicPreviewUrl || grupoSnapshotUrl;
 
-    const categoriasConPlantilla = diagnosticos.filter(({ data }) => !!data?.plantilla_categoria?.archivo);
+    const categoriasConPlantilla = diagnosticos.filter(({ categoria, data }) => {
+        const tieneDiagnostico = !!data?.plantilla_categoria?.archivo;
+        const categoriaMarcaPropia = Number(categoria?.usar_plantilla_propia || 0) === 1;
+        const categoriaArchivoPropio = String(categoria?.plantilla_archivo || '').trim() !== '';
+        return tieneDiagnostico || categoriaMarcaPropia || categoriaArchivoPropio;
+    });
 
     const categoriasTabs = await Promise.all(categoriasConPlantilla.map(async ({ categoria, data }) => {
         const snap = data?.snapshot_categoria || null;

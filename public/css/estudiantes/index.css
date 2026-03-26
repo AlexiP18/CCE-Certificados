@@ -985,6 +985,16 @@ body {
         justify-content: center;
     }
 
+    .table-dropdown-filter {
+        width: 100%;
+    }
+
+    .table-dropdown-filter .dropdown-filter-menu {
+        left: 0;
+        right: 0;
+        min-width: 0;
+    }
+
     .pagination-controls {
         width: 100%;
         justify-content: space-between;
@@ -1122,6 +1132,69 @@ body {
     color: #fff;
     transform: none;
     box-shadow: none;
+}
+
+.table-dropdown-filter {
+    position: relative;
+}
+
+.table-dropdown-filter .btn i.fa-caret-down {
+    margin-left: 2px;
+}
+
+.table-dropdown-filter .dropdown-filter-menu {
+    display: none;
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    left: auto;
+    min-width: 220px;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
+    z-index: 1300;
+    overflow: hidden;
+}
+
+.table-dropdown-filter .dropdown-filter-menu.show {
+    display: block;
+}
+
+.table-dropdown-filter .dropdown-filter-menu a {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 11px 13px;
+    color: #334155;
+    text-decoration: none;
+    border-bottom: 1px solid #eef2f7;
+    cursor: pointer;
+    font-size: 13px;
+}
+
+.table-dropdown-filter .dropdown-filter-menu a:last-child {
+    border-bottom: none;
+}
+
+.table-dropdown-filter .dropdown-filter-menu a i {
+    width: 16px;
+    text-align: center;
+    color: #64748b;
+}
+
+.table-dropdown-filter .dropdown-filter-menu a:hover {
+    background: #f8fafc;
+}
+
+.table-dropdown-filter .dropdown-filter-menu a.active {
+    background: #eef2ff;
+    color: #4338ca;
+    font-weight: 600;
+}
+
+.table-dropdown-filter .dropdown-filter-menu a.active i {
+    color: #4338ca;
 }
 
 .btn-filter-certificados {

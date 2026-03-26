@@ -156,6 +156,27 @@
                         </div>
 
                         <div class="table-filter-actions">
+                            <div class="dropdown-filter table-dropdown-filter">
+                                <button type="button" class="btn" id="btnFiltroTabla" onclick="toggleDropdownFiltroTabla(event)">
+                                    <i class="fas fa-filter"></i>
+                                    <span id="filtroTextoTabla">Todos</span>
+                                    <i class="fas fa-caret-down"></i>
+                                </button>
+                                <div class="dropdown-filter-menu" id="dropdownFiltroTabla">
+                                    <a data-filtro="todos" onclick="aplicarFiltroTabla('todos')" class="active">
+                                        <i class="fas fa-users"></i> Todos
+                                    </a>
+                                    <a data-filtro="representante" onclick="aplicarFiltroTabla('representante')">
+                                        <i class="fas fa-user-tie"></i> Con Representante
+                                    </a>
+                                    <a data-filtro="mayores" onclick="aplicarFiltroTabla('mayores')">
+                                        <i class="fas fa-user-graduate"></i> Mayores de Edad
+                                    </a>
+                                    <a data-filtro="destacados" onclick="aplicarFiltroTabla('destacados')">
+                                        <i class="fas fa-star"></i> Destacados
+                                    </a>
+                                </div>
+                            </div>
                             <button class="btn btn-primary" onclick="applyFilters()">
                                 <i class="fas fa-check"></i> Aplicar
                             </button>

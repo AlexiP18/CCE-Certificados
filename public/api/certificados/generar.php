@@ -93,6 +93,21 @@ try {
             // Verificar si hay plantilla configurada para un grupo
             $grupo_id = $data['grupo_id'] ?? $_GET['grupo_id'] ?? 0;
             $categoria_id = $data['categoria_id'] ?? $_GET['categoria_id'] ?? 0;
+
+            $existeGrupoPlantillas = false;
+            $existeCategoriaPlantillas = false;
+            try {
+                $pdo->query("SELECT 1 FROM grupo_plantillas LIMIT 1");
+                $existeGrupoPlantillas = true;
+            } catch (Exception $e) {
+                $existeGrupoPlantillas = false;
+            }
+            try {
+                $pdo->query("SELECT 1 FROM categoria_plantillas LIMIT 1");
+                $existeCategoriaPlantillas = true;
+            } catch (Exception $e) {
+                $existeCategoriaPlantillas = false;
+            }
             
             $resultado = [
                 'grupo_id' => $grupo_id,
@@ -109,14 +124,30 @@ try {
             
             // Verificar plantilla de grupo
             if ($grupo_id) {
-                $stmt = $pdo->prepare("SELECT id, archivo, es_activa FROM grupo_plantillas WHERE grupo_id = ? AND es_activa = 1 LIMIT 1");
-                $stmt->execute([$grupo_id]);
-                $resultado['plantilla_grupo'] = $stmt->fetch(PDO::FETCH_ASSOC);
-                
-                // También ver todas las plantillas del grupo
-                $stmt = $pdo->prepare("SELECT id, archivo, es_activa FROM grupo_plantillas WHERE grupo_id = ?");
-                $stmt->execute([$grupo_id]);
-                $resultado['todas_plantillas_grupo'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                if ($existeGrupoPlantillas) {
+                    $stmt = $pdo->prepare("SELECT id, archivo, es_activa FROM grupo_plantillas WHERE grupo_id = ? AND es_activa = 1 LIMIT 1");
+                    $stmt->execute([$grupo_id]);
+                    $resultado['plantilla_grupo'] = $stmt->fetch(PDO::FETCH_ASSOC);
+
+                    // También ver todas las plantillas del grupo
+                    $stmt = $pdo->prepare("SELECT id, archivo, es_activa FROM grupo_plantillas WHERE grupo_id = ?");
+                    $stmt->execute([$grupo_id]);
+                    $resultado['todas_plantillas_grupo'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                } else {
+                    $stmt = $pdo->prepare("SELECT * FROM grupos WHERE id = ? LIMIT 1");
+                    $stmt->execute([$grupo_id]);
+                    $grupoLegacy = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+                    $archivoLegacyGrupo = trim((string)($grupoLegacy['plantilla'] ?? ''));
+                    if ($archivoLegacyGrupo !== '') {
+                        $resultado['plantilla_grupo'] = [
+                            'id' => null,
+                            'archivo' => $archivoLegacyGrupo,
+                            'es_activa' => 1,
+                            'origen' => 'legacy_grupo'
+                        ];
+                    }
+                    $resultado['todas_plantillas_grupo'] = $resultado['plantilla_grupo'] ? [$resultado['plantilla_grupo']] : [];
+                }
 
                 // Último certificado generado en el grupo (snapshot)
                 $stmt = $pdo->prepare("
@@ -141,9 +172,35 @@ try {
             
             // Verificar plantilla de categoría
             if ($categoria_id) {
-                $stmt = $pdo->prepare("SELECT id, archivo, es_activa FROM categoria_plantillas WHERE categoria_id = ? AND es_activa = 1 LIMIT 1");
-                $stmt->execute([$categoria_id]);
-                $resultado['plantilla_categoria'] = $stmt->fetch(PDO::FETCH_ASSOC);
+                if ($existeCategoriaPlantillas) {
+                    $stmt = $pdo->prepare("SELECT id, archivo, es_activa FROM categoria_plantillas WHERE categoria_id = ? AND es_activa = 1 LIMIT 1");
+                    $stmt->execute([$categoria_id]);
+                    $resultado['plantilla_categoria'] = $stmt->fetch(PDO::FETCH_ASSOC);
+                }
+
+                // Compatibilidad legacy: algunas categorías usan plantilla_archivo en tabla categorias
+                // y no necesariamente tienen registro activo en categoria_plantillas.
+                if (!$resultado['plantilla_categoria']) {
+                    // IMPORTANTE: usar SELECT * para no romper en instalaciones donde
+                    // no existen columnas legacy específicas.
+                    $stmt = $pdo->prepare("SELECT * FROM categorias WHERE id = ? LIMIT 1");
+                    $stmt->execute([$categoria_id]);
+                    $catLegacy = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
+                    $usaPropiaLegacy = isset($catLegacy['usar_plantilla_propia'])
+                        ? ((int)$catLegacy['usar_plantilla_propia'] === 1)
+                        : true; // Si no existe la columna, asumimos legacy activa si hay archivo.
+                    $archivoLegacy = trim((string)($catLegacy['plantilla_archivo'] ?? ''));
+
+                    if ($archivoLegacy !== '' && $usaPropiaLegacy) {
+                        $resultado['plantilla_categoria'] = [
+                            'id' => null,
+                            'archivo' => $archivoLegacy,
+                            'es_activa' => 1,
+                            'origen' => 'legacy_categoria'
+                        ];
+                    }
+                }
 
                 // Último certificado generado de la categoría (snapshot)
                 if ($grupo_id) {

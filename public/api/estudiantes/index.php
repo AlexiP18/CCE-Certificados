@@ -199,6 +199,11 @@ try {
             $search = $input['search'] ?? '';
             $grupo_id = $input['grupo_id'] ?? '';
             $categoria_id = $input['categoria_id'] ?? '';
+            $tipo_filtro = strtolower(trim($input['tipo_filtro'] ?? 'todos'));
+            $tiposPermitidos = ['todos', 'representante', 'mayores', 'destacados'];
+            if (!in_array($tipo_filtro, $tiposPermitidos, true)) {
+                $tipo_filtro = 'todos';
+            }
             
             // Construir consulta con JOINs para obtener grupos y categorías
             // Usamos categoria_estudiantes para obtener las inscripciones reales, no solo certificados
@@ -230,15 +235,26 @@ try {
             }
             
             if (!empty($grupo_id)) {
-                $where[] = "ce.grupo_id = ?"; // Using ce (enrollments) effectively via category join? Wait, ce doesn't have grupo_id directly.
-                // Correct logic: ce -> cat -> grupo
                 $where[] = "g.id = ?";
                 $params[] = $grupo_id;
             }
             
             if (!empty($categoria_id)) {
-                $where[] = "ce.categoria_id = ?";
+                $where[] = "cat.id = ?";
                 $params[] = $categoria_id;
+            }
+
+            if ($tipo_filtro === 'representante') {
+                $where[] = "(e.es_menor = 1 OR COALESCE(e.representante_id, 0) > 0 OR EXISTS (SELECT 1 FROM estudiantes eh WHERE eh.representante_id = e.id))";
+            } elseif ($tipo_filtro === 'mayores') {
+                $where[] = "e.es_menor = 0";
+            } elseif ($tipo_filtro === 'destacados') {
+                $where[] = "(COALESCE(e.destacado, 0) = 1 OR EXISTS (
+                    SELECT 1
+                    FROM categoria_estudiantes cex
+                    WHERE cex.estudiante_id = e.id
+                      AND COALESCE(cex.es_destacado, 0) = 1
+                ))";
             }
             
             if (!empty($where)) {
@@ -254,7 +270,10 @@ try {
             
             // Contar total
             $countSql = "SELECT COUNT(DISTINCT e.id) FROM estudiantes e
-                        LEFT JOIN certificados c ON e.id = c.estudiante_id";
+                        LEFT JOIN categoria_estudiantes ce ON e.id = ce.estudiante_id
+                        LEFT JOIN categorias cat ON ce.categoria_id = cat.id
+                        LEFT JOIN grupos g ON cat.grupo_id = g.id
+                        LEFT JOIN periodos p ON ce.periodo_id = p.id";
             
             if (!empty($where)) {
                 $countSql .= " WHERE " . implode(" AND ", $where);

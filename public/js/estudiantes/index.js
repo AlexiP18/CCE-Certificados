@@ -6,7 +6,8 @@ let totalPagesGlobal = 1;
 let currentFilters = {
     search: '',
     grupo_id: '',
-    categoria_id: ''
+    categoria_id: '',
+    tipo_filtro: 'todos'
 };
 
 let estudiantesData = []; // Global store for students
@@ -62,6 +63,55 @@ function hideDropdown(id) {
     if (dropdown) {
         dropdown.classList.remove('active');
     }
+}
+
+const FILTER_LABELS_TABLA = {
+    todos: 'Todos',
+    representante: 'Con Representante',
+    mayores: 'Mayores de Edad',
+    destacados: 'Destacados'
+};
+
+function closeDropdownFiltroTabla() {
+    const dropdown = document.getElementById('dropdownFiltroTabla');
+    if (dropdown) {
+        dropdown.classList.remove('show');
+    }
+}
+
+function updateFiltroTablaUI(tipo) {
+    const tipoActual = FILTER_LABELS_TABLA[tipo] ? tipo : 'todos';
+    const filtroTexto = document.getElementById('filtroTextoTabla');
+    const dropdown = document.getElementById('dropdownFiltroTabla');
+
+    if (filtroTexto) {
+        filtroTexto.textContent = FILTER_LABELS_TABLA[tipoActual];
+    }
+
+    if (dropdown) {
+        dropdown.querySelectorAll('a').forEach(a => a.classList.remove('active'));
+        const option = dropdown.querySelector(`a[data-filtro="${tipoActual}"]`) ||
+            dropdown.querySelector(`a[onclick="aplicarFiltroTabla('${tipoActual}')"]`);
+        if (option) {
+            option.classList.add('active');
+        }
+    }
+}
+
+function toggleDropdownFiltroTabla(event) {
+    if (event) event.stopPropagation();
+    const dropdown = document.getElementById('dropdownFiltroTabla');
+    if (!dropdown) return;
+    dropdown.classList.toggle('show');
+}
+
+function aplicarFiltroTabla(tipo) {
+    const tipoFiltro = FILTER_LABELS_TABLA[tipo] ? tipo : 'todos';
+    currentFilters.tipo_filtro = tipoFiltro;
+    updateFiltroTablaUI(tipoFiltro);
+    closeDropdownFiltroTabla();
+    currentPage = 1;
+    loadEstudiantes();
 }
 
 function toggleMenoresIndex(repId) {
@@ -289,6 +339,10 @@ document.addEventListener('click', function (event) {
     document.querySelectorAll('.grupo-dropdown.active').forEach(d => {
         d.classList.remove('active');
     });
+
+    if (!event.target.closest('.table-dropdown-filter')) {
+        closeDropdownFiltroTabla();
+    }
 });
 
 // Inicializar
@@ -309,6 +363,7 @@ document.addEventListener('DOMContentLoaded', function () {
             currentFilters.categoria_id = window.initialCategoriaId;
         }
     }
+    updateFiltroTablaUI(currentFilters.tipo_filtro);
 
     actualizarBotonCertificados();
     loadEstudiantes();
@@ -421,7 +476,8 @@ async function loadEstudiantes() {
             offset: offset,
             search: currentFilters.search,
             grupo_id: currentFilters.grupo_id,
-            categoria_id: currentFilters.categoria_id
+            categoria_id: currentFilters.categoria_id,
+            tipo_filtro: currentFilters.tipo_filtro
         });
 
         const response = await fetch(`../api/estudiantes/index.php?${params}`);
@@ -809,7 +865,9 @@ function clearFilters() {
     document.getElementById('searchInput').value = '';
     document.getElementById('grupoFilter').value = '';
     document.getElementById('categoriaFilter').value = '';
-    currentFilters = { search: '', grupo_id: '', categoria_id: '' };
+    currentFilters = { search: '', grupo_id: '', categoria_id: '', tipo_filtro: 'todos' };
+    updateFiltroTablaUI('todos');
+    closeDropdownFiltroTabla();
 
     // Mostrar todas las categorías
     filterCategoriasByGrupo('');
