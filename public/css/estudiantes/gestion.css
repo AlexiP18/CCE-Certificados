@@ -158,7 +158,7 @@ body {
     background: rgba(255, 255, 255, 0.3);
 }
 
-/* ===== PERÍODO SELECTOR ===== */
+/* ===== PERÍODO SELECTOR (CHIPS) ===== */
 .periodo-selector {
     background: white;
     border-radius: 15px;
@@ -177,20 +177,40 @@ body {
     display: flex;
     align-items: center;
     gap: 8px;
+    margin-right: 5px;
 }
 
-.periodo-selector select {
-    padding: 10px 15px;
-    border: 2px solid #e8ecf0;
-    border-radius: 10px;
+.period-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.period-chip {
+    padding: 8px 16px;
+    border-radius: 20px;
+    background: #f8f9fa;
+    color: #4b5563;
+    border: 1px solid #e5e7eb;
     font-size: 14px;
-    min-width: 250px;
+    font-weight: 500;
     cursor: pointer;
+    transition: all 0.2s ease;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
 }
 
-.periodo-selector select:focus {
-    outline: none;
+.period-chip:hover {
+    background: #eef2f5;
+    color: var(--color-principal, #3498db);
+}
+
+.period-chip.active {
+    background: var(--color-principal, #3498db);
+    color: white;
     border-color: var(--color-principal, #3498db);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
 }
 
 /* ===== CONTENT PANELS ===== */

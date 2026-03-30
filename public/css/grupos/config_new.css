@@ -188,15 +188,18 @@
 }
 
 .variables-toolbar {
+    position: absolute;
+    left: 20px;
+    top: 50%;
+    transform: translateY(-50%);
     display: flex;
-    gap: 25px;
-    flex-wrap: wrap;
-    margin-bottom: 15px;
-    align-items: center;
-    justify-content: center;
-    padding: 10px;
-    background: var(--bg-light);
-    border-radius: 6px;
+    flex-direction: column;
+    gap: 15px;
+    background: white;
+    padding: 15px;
+    border-radius: 30px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    z-index: 100;
 }
 
 .toolbar-label {

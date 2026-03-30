@@ -21,15 +21,25 @@ let generacionLoteItems = [];
 let generacionLoteSeleccion = new Set();
 let generacionLoteFiltro = 'todos';
 let generacionLoteBusqueda = '';
+let generacionLotePeriodoFiltro = '';
 let currentPageGenLote = 1;
 let rowsPerPageGenLote = 10;
 let totalPagesGenLote = 1;
 let lastFilteredGenLote = [];
+let filtroCategoriaAnterior = '';
+let filtroPeriodoAnterior = '';
 
 document.addEventListener('DOMContentLoaded', () => {
     actualizarModoFiltro();
     cargarEstudiantes();
     setupHorizontalScroll();
+    actualizarEstadoBotonGenerarLote();
+
+    const btnActivo = document.querySelector('.group-tab-btn.active') || document.querySelector('.group-tab-btn');
+    if (btnActivo) {
+        const tabInicial = btnActivo.dataset.target || 'tab-todos';
+        switchGroupTab(tabInicial, btnActivo);
+    }
 });
 
 function actualizarModoFiltro() {
@@ -51,6 +61,48 @@ function setupHorizontalScroll() {
                 tableWrapper.scrollLeft += evt.deltaY;
             }
         }, { passive: false });
+    }
+}
+
+function switchGroupTab(tabId, btn = null) {
+    document.querySelectorAll('.group-tab-pane').forEach(pane => {
+        pane.classList.remove('active');
+        pane.style.display = 'none';
+    });
+
+    document.querySelectorAll('.group-tab-btn').forEach(tabBtn => {
+        tabBtn.classList.remove('active');
+    });
+
+    const tabObjetivo = document.getElementById(tabId);
+    if (tabObjetivo) {
+        tabObjetivo.classList.add('active');
+        tabObjetivo.style.display = 'block';
+    }
+
+    const btnObjetivo = btn || Array.from(document.querySelectorAll('.group-tab-btn'))
+        .find(tabBtn => String(tabBtn.dataset.target || '') === String(tabId));
+    if (btnObjetivo) {
+        btnObjetivo.classList.add('active');
+    }
+
+    if (String(tabId).startsWith('tab-cat-')) {
+        const categoriaId = String(tabId).replace('tab-cat-', '');
+        const iframe = document.getElementById(`iframe-cat-${categoriaId}`);
+        const loader = document.getElementById(`loader-cat-${categoriaId}`);
+        if (!iframe) return;
+
+        const srcActual = iframe.getAttribute('src');
+        const srcPendiente = iframe.getAttribute('data-src');
+
+        if (!srcActual && srcPendiente) {
+            if (loader) loader.style.display = 'block';
+            iframe.style.display = 'none';
+            iframe.setAttribute('src', srcPendiente);
+        } else {
+            if (loader) loader.style.display = 'none';
+            iframe.style.display = 'block';
+        }
     }
 }
 
@@ -123,6 +175,19 @@ function filtrarEstudiantes() {
     const modoCertificados = document.getElementById('filterModoEstado')?.checked || false;
     // const estado = document.getElementById('filterEstado').value; // Removed
 
+    const cambioAmbito = String(categoriaId) !== String(filtroCategoriaAnterior)
+        || String(periodoId) !== String(filtroPeriodoAnterior);
+    if (cambioAmbito) {
+        estudiantesSeleccionados.clear();
+        const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+        if (selectAllCheckbox) {
+            selectAllCheckbox.checked = false;
+            selectAllCheckbox.indeterminate = false;
+        }
+    }
+    filtroCategoriaAnterior = String(categoriaId);
+    filtroPeriodoAnterior = String(periodoId);
+
     estudiantesFiltrados = estudiantesData.filter(est => {
         let cumple = true;
         const categorias = Array.isArray(est.categorias) ? est.categorias : [];
@@ -158,6 +223,7 @@ function filtrarEstudiantes() {
 
     paginaActual = 1;
     prepararJerarquia(estudiantesFiltrados);
+    actualizarEstadoBotonGenerarLote();
 }
 
 // Prepara datosPaginados con jerarquía: representantes (reales o virtuales) con sus menores
@@ -327,6 +393,7 @@ function renderTabla() {
 
 
     tbody.innerHTML = htmlContent;
+    sincronizarCheckboxSeleccionGeneral();
 }
 
 // ========== ROW BUILDER HELPERS ==========
@@ -434,7 +501,7 @@ function buildEstudianteRowHtml(est, repUniqueId, hasMenores, representantesCedu
     const iniciales = est.nombre ? est.nombre.split(' ').map(n=>n[0]).slice(0,2).join('').toUpperCase() : '?';
     const colorCat = est.categoria_color || '#95a5a6';
     const esMenor = est.es_menor == 1;
-    const isSelected = estudiantesSeleccionados.has(est.id);
+    const isSelected = estudiantesSeleccionados.has(String(est.id));
     const esRepresentante = representantesCedulas && est.cedula && representantesCedulas.has(est.cedula);
 
     let rowClass = isSelected ? 'row-selected' : '';
@@ -485,7 +552,7 @@ function buildEstudianteRowHtml(est, repUniqueId, hasMenores, representantesCedu
 function buildMenorRowHtml(est, repUniqueId) {
     const iniciales = est.nombre ? est.nombre.split(' ').map(n=>n[0]).slice(0,2).join('').toUpperCase() : '?';
     const colorCat = est.categoria_color || '#95a5a6';
-    const isSelected = estudiantesSeleccionados.has(est.id);
+    const isSelected = estudiantesSeleccionados.has(String(est.id));
 
     const { edadHtml, fechaRegistroHtml, categoriasHtml, contactoHtml, historialHtml } = buildCeldasDatos(est);
 
@@ -613,37 +680,65 @@ function toggleMenores(repUniqueId) {
 
 // ========== SELECTION & BULK ACTIONS ==========
 
+function obtenerIdsFilasEnTablaActual() {
+    return Array.from(
+        document.querySelectorAll('#estudiantesBody .select-checkbox[data-id]')
+    )
+        .map(chk => String(chk.dataset.id || '').trim())
+        .filter(Boolean);
+}
+
+function sincronizarCheckboxSeleccionGeneral() {
+    const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+    if (!selectAllCheckbox) return;
+
+    const idsPagina = Array.from(new Set(obtenerIdsFilasEnTablaActual()));
+    if (!idsPagina.length) {
+        selectAllCheckbox.checked = false;
+        selectAllCheckbox.indeterminate = false;
+        return;
+    }
+
+    const seleccionadosPagina = idsPagina.filter(id => estudiantesSeleccionados.has(id)).length;
+    selectAllCheckbox.checked = seleccionadosPagina > 0 && seleccionadosPagina === idsPagina.length;
+    selectAllCheckbox.indeterminate = seleccionadosPagina > 0 && seleccionadosPagina < idsPagina.length;
+}
+
+function normalizarSeleccionVisible() {
+    const idsVisiblesMarcados = Array.from(new Set(obtenerIdsSeleccionadosEnTabla()));
+    estudiantesSeleccionados = new Set(idsVisiblesMarcados);
+    return idsVisiblesMarcados;
+}
+
 function toggleSelectAll(checkbox) {
     const isChecked = checkbox.checked;
+    const idsPagina = Array.from(new Set(obtenerIdsFilasEnTablaActual()));
+
     if (isChecked) {
-        estudiantesFiltrados.forEach(est => estudiantesSeleccionados.add(est.id));
+        idsPagina.forEach(id => estudiantesSeleccionados.add(id));
     } else {
-        estudiantesSeleccionados.clear();
+        idsPagina.forEach(id => estudiantesSeleccionados.delete(id));
     }
     renderTabla();
     updateBulkActionsBar();
 }
 
 function toggleSelectStudent(id) {
-    if (estudiantesSeleccionados.has(id)) {
-        estudiantesSeleccionados.delete(id);
+    const studentId = String(id);
+
+    if (estudiantesSeleccionados.has(studentId)) {
+        estudiantesSeleccionados.delete(studentId);
     } else {
-        estudiantesSeleccionados.add(id);
+        estudiantesSeleccionados.add(studentId);
     }
 
-    const selectAllCheckbox = document.getElementById('selectAllCheckbox');
-    if (selectAllCheckbox) {
-        const todosSeleccionados = estudiantesFiltrados.length > 0 && estudiantesFiltrados.every(est => estudiantesSeleccionados.has(est.id));
-        const algunosSeleccionados = estudiantesFiltrados.some(est => estudiantesSeleccionados.has(est.id));
-        selectAllCheckbox.checked = todosSeleccionados;
-        selectAllCheckbox.indeterminate = algunosSeleccionados && !todosSeleccionados;
-    }
+    sincronizarCheckboxSeleccionGeneral();
 
     // Update specific row class
-    const checkbox = document.querySelector(`.select-checkbox[data-id="${id}"]`);
+    const checkbox = document.querySelector(`.select-checkbox[data-id="${studentId}"]`);
     if (checkbox) {
         const row = checkbox.closest('tr');
-        if (row) row.classList.toggle('row-selected', estudiantesSeleccionados.has(id));
+        if (row) row.classList.toggle('row-selected', estudiantesSeleccionados.has(studentId));
     }
 
     updateBulkActionsBar();
@@ -652,7 +747,8 @@ function toggleSelectStudent(id) {
 function updateBulkActionsBar() {
     const bar = document.getElementById('bulkActionsBar');
     const countText = document.getElementById('selectedCountText');
-    const count = estudiantesSeleccionados.size;
+    const idsSeleccionados = normalizarSeleccionVisible();
+    const count = idsSeleccionados.length;
 
     if (count > 0) {
         bar.classList.add('visible');
@@ -662,6 +758,26 @@ function updateBulkActionsBar() {
         bar.classList.remove('visible');
         bar.style.display = 'none';
     }
+
+    actualizarEstadoBotonGenerarLote();
+}
+
+function tieneFiltroCategoriaSeleccionado() {
+    const categoriaId = document.getElementById('filterCategoria')?.value || '';
+    return String(categoriaId).trim() !== '';
+}
+
+function actualizarEstadoBotonGenerarLote() {
+    const btn = document.getElementById('btnGenerarLote');
+    if (!btn) return;
+
+    const habilitado = tieneFiltroCategoriaSeleccionado();
+    btn.disabled = !habilitado;
+    btn.style.opacity = habilitado ? '1' : '0.55';
+    btn.style.cursor = habilitado ? 'pointer' : 'not-allowed';
+    btn.title = habilitado
+        ? 'Generar certificados para los estudiantes seleccionados'
+        : 'Primero selecciona una categoría en el filtro';
 }
 
 function deseleccionarTodos() {
@@ -708,6 +824,7 @@ function obtenerItemsGenerables(estudianteIds) {
                 categoria_nombre: cat.nombre || 'Sin categoría',
                 periodo_id: cat.periodo_id,
                 periodo_nombre: cat.periodo || 'Sin período',
+                periodo_fecha_inicio: cat.fecha_inicio || '',
                 es_destacado: Number(cat.es_destacado) === 1
             });
         });
@@ -716,10 +833,124 @@ function obtenerItemsGenerables(estudianteIds) {
     return items;
 }
 
+function getGenLotePeriodoKey(periodoId) {
+    return periodoId == null || String(periodoId).trim() === '' ? 'null' : String(periodoId).trim();
+}
+
+function getGenLotePeriodoKeyFromItem(item) {
+    return getGenLotePeriodoKey(item?.periodo_id);
+}
+
+function obtenerPeriodosGeneracionLote() {
+    const map = new Map();
+
+    generacionLoteItems.forEach(item => {
+        const key = getGenLotePeriodoKeyFromItem(item);
+        if (!map.has(key)) {
+            map.set(key, {
+                id: key,
+                nombre: item.periodo_nombre || 'Sin período',
+                fecha_inicio: item.periodo_fecha_inicio || '',
+                total: 0
+            });
+        }
+        map.get(key).total += 1;
+    });
+
+    return Array.from(map.values()).sort((a, b) => {
+        const fa = String(a.fecha_inicio || '').trim();
+        const fb = String(b.fecha_inicio || '').trim();
+        const aHasDate = /^\d{4}-\d{2}-\d{2}$/.test(fa);
+        const bHasDate = /^\d{4}-\d{2}-\d{2}$/.test(fb);
+
+        if (aHasDate && bHasDate && fa !== fb) return fa < fb ? -1 : 1;
+        if (aHasDate && !bHasDate) return -1;
+        if (!aHasDate && bHasDate) return 1;
+
+        const na = String(a.nombre || '');
+        const nb = String(b.nombre || '');
+        return na.localeCompare(nb, 'es', { sensitivity: 'base', numeric: true });
+    });
+}
+
+function prepararFiltroPeriodoGeneracionLote(defaultPeriodo = '') {
+    const container = document.getElementById('genLoteListTabsContainer');
+    const select = document.getElementById('filterPeriodoGenLote');
+    const periodos = obtenerPeriodosGeneracionLote();
+
+    if (!periodos.length) {
+        generacionLotePeriodoFiltro = '';
+        if (container) container.innerHTML = '';
+        if (select) {
+            select.innerHTML = '<option value="">Sin períodos</option>';
+            select.disabled = true;
+        }
+        return periodos;
+    }
+
+    const keys = new Set(periodos.map(p => String(p.id)));
+    const sugerido = String(defaultPeriodo || '').trim();
+    if (sugerido && keys.has(sugerido)) {
+        generacionLotePeriodoFiltro = sugerido;
+    }
+    if (!keys.has(String(generacionLotePeriodoFiltro || ''))) {
+        generacionLotePeriodoFiltro = String(periodos[0].id);
+    }
+
+    if (select) {
+        select.disabled = false;
+        select.innerHTML = periodos.map(periodo => `
+            <option value="${escapeHtml(String(periodo.id))}">
+                ${escapeHtml(periodo.nombre)}
+            </option>
+        `).join('');
+        select.value = String(generacionLotePeriodoFiltro);
+    }
+
+    if (container) {
+        const tabsHtml = periodos.map(periodo => {
+            const isActive = String(periodo.id) === String(generacionLotePeriodoFiltro);
+            return `
+                <button
+                    type="button"
+                    class="gen-lote-period-slide ${isActive ? 'active' : ''}"
+                    data-periodo-id="${escapeHtml(String(periodo.id))}"
+                    onclick="cambiarPeriodoGeneracionLote(this.dataset.periodoId)"
+                >
+                    <span class="gen-lote-period-name">${escapeHtml(periodo.nombre)}</span>
+                    <span class="gen-lote-period-count">${periodo.total}</span>
+                </button>
+            `;
+        }).join('');
+
+        container.innerHTML = `
+            <div class="gen-lote-period-slides" role="tablist" aria-label="Períodos de generación">
+                ${tabsHtml}
+            </div>
+        `;
+    }
+
+    return periodos;
+}
+
+function cambiarPeriodoGeneracionLote(periodoId) {
+    const nextPeriodo = String(periodoId || '').trim();
+    if (!nextPeriodo || nextPeriodo === String(generacionLotePeriodoFiltro || '')) return;
+
+    generacionLotePeriodoFiltro = nextPeriodo;
+    currentPageGenLote = 1;
+    renderGeneracionLoteTabla();
+}
+
 function getGeneracionLoteFiltrados() {
     const q = (generacionLoteBusqueda || '').toLowerCase().trim();
+    const periodoFiltro = String(generacionLotePeriodoFiltro || '').trim();
 
     return generacionLoteItems.filter(item => {
+        if (periodoFiltro && getGenLotePeriodoKeyFromItem(item) !== periodoFiltro) {
+            return false;
+        }
+
         if (q) {
             const nombre = (item.estudiante_nombre || '').toLowerCase();
             const cedula = String(item.estudiante_cedula || '').toLowerCase();
@@ -834,8 +1065,10 @@ function renderGeneracionLoteTabla() {
     const selectAll = document.getElementById('genLoteSelectAll');
     if (!body || !resumen || !selectAll) return;
 
+    const periodos = prepararFiltroPeriodoGeneracionLote();
+
     if (!generacionLoteItems.length) {
-        body.innerHTML = '<tr><td colspan="5" class="gen-empty">No hay estudiantes aprobados pendientes de generación para la selección actual.</td></tr>';
+        body.innerHTML = '<tr><td colspan="6" class="gen-empty">No hay estudiantes aprobados pendientes de generación para la selección actual.</td></tr>';
         resumen.textContent = 'Sin elementos generables';
         selectAll.checked = false;
         selectAll.indeterminate = false;
@@ -848,9 +1081,12 @@ function renderGeneracionLoteTabla() {
     const filtrados = getGeneracionLoteFiltrados();
     lastFilteredGenLote = filtrados;
 
+    const periodoActivo = periodos.find(p => String(p.id) === String(generacionLotePeriodoFiltro));
+    const periodoLabel = periodoActivo ? periodoActivo.nombre : 'Período seleccionado';
+
     if (!filtrados.length) {
-        body.innerHTML = '<tr><td colspan="5" class="gen-empty">No hay resultados con el filtro actual.</td></tr>';
-        resumen.textContent = `${generacionLoteItems.length} registro(s) listos para generar`;
+        body.innerHTML = '<tr><td colspan="6" class="gen-empty">No hay resultados con el filtro actual.</td></tr>';
+        resumen.textContent = `0 registro(s) en ${periodoLabel}`;
         selectAll.checked = false;
         selectAll.indeterminate = false;
         updatePaginacionGeneracionLote(0, 0, 0, 0);
@@ -872,9 +1108,14 @@ function renderGeneracionLoteTabla() {
             <td style="text-align:center; color:#64748b; font-weight:600;">${start + idx + 1}</td>
             <td>
                 <strong>${escapeHtml(item.estudiante_nombre)}${item.es_destacado ? ' <i class="fas fa-star" style="color:#f59e0b;"></i>' : ''}</strong>
-                <div style="font-size:12px; color:#64748b; margin-top:2px;">${escapeHtml(item.categoria_nombre)} · ${escapeHtml(item.periodo_nombre)}</div>
+                <div style="font-size:12px; color:#64748b; margin-top:2px;">${escapeHtml(item.categoria_nombre)}</div>
             </td>
             <td>${escapeHtml(item.estudiante_cedula || '-')}</td>
+            <td>
+                <span class="badge badge-categoria" style="display:inline-flex; width:auto; margin:0; background:#e8f0fe; color:#1f4f9a;">
+                    <i class="fas fa-calendar-alt"></i> ${escapeHtml(item.periodo_nombre || 'Sin período')}
+                </span>
+            </td>
             <td style="text-align:center;">
                 <button class="btn-table-delete" onclick="quitarItemGeneracionLote('${item.key}')" title="Quitar del lote" style="background:#fce8e6; color:#d93025; border:none; padding:6px 10px; border-radius:6px; cursor:pointer;">
                     <i class="fas fa-user-minus"></i>
@@ -886,7 +1127,7 @@ function renderGeneracionLoteTabla() {
     const total = generacionLoteItems.length;
     const selected = generacionLoteSeleccion.size;
     const selectedFiltrados = filtrados.filter(item => generacionLoteSeleccion.has(item.key)).length;
-    resumen.textContent = `${total} registro(s) listos para generar`;
+    resumen.textContent = `${filtrados.length} registro(s) en ${periodoLabel} · ${total} en total`;
     selectAll.checked = selectedFiltrados > 0 && selectedFiltrados === filtrados.length;
     selectAll.indeterminate = selectedFiltrados > 0 && selectedFiltrados < filtrados.length;
     updatePaginacionGeneracionLote(filtrados.length, pageItems.length, pageItems.length ? start + 1 : 0, pageItems.length ? start + pageItems.length : 0);
@@ -1256,23 +1497,62 @@ async function cargarPreviewPlantillasGeneracion() {
     `;
 }
 
-function abrirModalGeneracionLote(estudianteIds = null) {
-    let idsBase = [];
-    if (Array.isArray(estudianteIds) && estudianteIds.length) {
-        idsBase = estudianteIds;
-    } else if (estudiantesSeleccionados.size) {
-        idsBase = Array.from(estudiantesSeleccionados);
-    } else {
-        idsBase = (estudiantesFiltrados || []).map(e => e.id);
-    }
+function obtenerIdsSeleccionadosEnTabla() {
+    return Array.from(
+        document.querySelectorAll('#estudiantesBody .select-checkbox[data-id]:checked')
+    )
+        .filter(chk => {
+            const row = chk.closest('tr');
+            return !!row && window.getComputedStyle(row).display !== 'none';
+        })
+        .map(chk => String(chk.dataset.id || '').trim())
+        .filter(Boolean);
+}
 
-    if (!idsBase.length) {
-        mostrarNotificacion('No hay estudiantes disponibles para cargar en el lote', 'error');
+function abrirModalGeneracionSeleccionActual() {
+    if (!tieneFiltroCategoriaSeleccionado()) {
+        mostrarNotificacion('Debes seleccionar una categoría en el filtro para generar certificados', 'warning');
         return;
     }
 
-    generacionLoteItems = obtenerItemsGenerables(idsBase);
-    generacionLoteSeleccion = new Set(generacionLoteItems.map(i => i.key));
+    const idsMarcados = normalizarSeleccionVisible();
+    if (!idsMarcados.length) {
+        mostrarNotificacion('Selecciona al menos un estudiante para generar certificados', 'error');
+        return;
+    }
+    abrirModalGeneracionLote(idsMarcados);
+}
+
+function abrirModalGeneracionLote(estudianteIds = null) {
+    // Modo estricto: solo abrir con IDs explícitos (fila o selección actual).
+    // Evita cualquier fallback que pueda terminar cargando todos.
+    let idsBase = Array.isArray(estudianteIds)
+        ? estudianteIds.map(id => String(id)).filter(Boolean)
+        : [];
+    idsBase = Array.from(new Set(idsBase));
+
+    if (!idsBase.length) {
+        mostrarNotificacion('Selecciona al menos un estudiante para generar certificados', 'error');
+        return;
+    }
+
+    const idsPermitidos = new Set(idsBase.map(id => String(id)));
+    generacionLoteItems = obtenerItemsGenerables(idsBase)
+        .filter(item => idsPermitidos.has(String(item.estudiante_id)));
+    generacionLotePeriodoFiltro = '';
+    const periodoPreferido = String(document.getElementById('filterPeriodo')?.value || '').trim();
+    prepararFiltroPeriodoGeneracionLote(periodoPreferido);
+
+    if (generacionLotePeriodoFiltro) {
+        generacionLoteSeleccion = new Set(
+            generacionLoteItems
+                .filter(item => getGenLotePeriodoKeyFromItem(item) === String(generacionLotePeriodoFiltro))
+                .map(i => i.key)
+        );
+    } else {
+        generacionLoteSeleccion = new Set(generacionLoteItems.map(i => i.key));
+    }
+
     generacionLoteFiltro = 'todos';
     generacionLoteBusqueda = '';
     currentPageGenLote = 1;
@@ -2101,6 +2381,178 @@ function exportarPDF() {
     if (categoriaId) url += `&categoria=${encodeURIComponent(categoriaId)}`;
     if (periodoId) url += `&periodo=${encodeURIComponent(periodoId)}`;
 
+    window.open(url, '_blank');
+}
+
+function construirUrlDescargaCertificado(codigo, tipo = 'pdf', inline = false) {
+    if (!codigo) return '';
+
+    const tipoNorm = String(tipo || 'pdf').toLowerCase();
+    const action = (tipoNorm === 'imagen' || tipoNorm === 'png' || tipoNorm === 'image')
+        ? 'descargar_imagen'
+        : 'descargar_pdf';
+
+    const params = new URLSearchParams();
+    params.set('action', action);
+    params.set('codigo', String(codigo));
+    params.set('t', String(Date.now()));
+    if (inline) params.set('inline', '1');
+
+    return `../api/certificados/generar.php?${params.toString()}`;
+}
+
+function formatearFechaModalCertPadre(fechaRaw) {
+    if (!fechaRaw) return '--';
+    const f = new Date(fechaRaw);
+    if (Number.isNaN(f.getTime())) return String(fechaRaw);
+    const dd = String(f.getDate()).padStart(2, '0');
+    const mm = String(f.getMonth() + 1).padStart(2, '0');
+    const yyyy = f.getFullYear();
+    const hh = String(f.getHours()).padStart(2, '0');
+    const mi = String(f.getMinutes()).padStart(2, '0');
+    return `${dd}/${mm}/${yyyy} ${hh}:${mi}`;
+}
+
+function cargarImagenModalCertPadre(imageEl, src, loaderEl = null) {
+    return new Promise(resolve => {
+        if (!imageEl || !src) {
+            resolve(false);
+            return;
+        }
+
+        imageEl.onload = () => {
+            if (loaderEl) loaderEl.style.display = 'none';
+            imageEl.style.display = 'block';
+            resolve(true);
+        };
+        imageEl.onerror = () => resolve(false);
+        imageEl.src = src;
+    });
+}
+
+async function intentarFallbackPreviewBase64Padre(codigo, imageEl, loaderEl = null, loaderTextEl = null) {
+    try {
+        const resp = await fetch(`../api/certificados/index.php?action=get_image&code=${encodeURIComponent(codigo)}&t=${Date.now()}`);
+        const json = await resp.json();
+        if (json?.success && json?.image) {
+            return await cargarImagenModalCertPadre(imageEl, json.image, loaderEl);
+        }
+        if (loaderTextEl && json?.message) loaderTextEl.textContent = json.message;
+    } catch (e) {
+        console.warn('Fallback preview padre falló:', e);
+    }
+    return false;
+}
+
+async function intentarPreviewDesdePlantillaPadre(cert = {}, imageEl, loaderEl = null, loaderTextEl = null) {
+    const categoriaId = Number(cert.categoria_id || 0);
+    if (!categoriaId) return false;
+
+    try {
+        const formData = new FormData();
+        formData.append('tipo', 'categoria');
+        formData.append('id', String(categoriaId));
+        formData.append('use_form_data', '0');
+        if (cert.estudiante_id) formData.append('estudiante_id', String(cert.estudiante_id));
+        if (cert.fecha) formData.append('fecha_certificado', String(cert.fecha));
+        if (cert.codigo) formData.append('codigo_certificado', String(cert.codigo));
+
+        const resp = await fetch(`../api/preview/index.php?v=${Date.now()}_${Math.random().toString(36).slice(2, 8)}`, {
+            method: 'POST',
+            body: formData
+        });
+        const json = await resp.json();
+
+        if (json?.success && json?.preview_url) {
+            return await cargarImagenModalCertPadre(
+                imageEl,
+                `${json.preview_url}?v=${Date.now()}`,
+                loaderEl
+            );
+        }
+
+        if (loaderTextEl && json?.message) loaderTextEl.textContent = json.message;
+    } catch (e) {
+        console.warn('Preview por plantilla (padre) falló:', e);
+    }
+
+    return false;
+}
+
+async function abrirModalInfoCertificadoPadre(cert = {}) {
+    const codigo = String(cert.codigo || '').trim();
+    if (!codigo) {
+        mostrarNotificacion('No se encontró el código del certificado', 'warning');
+        return;
+    }
+
+    const modal = document.getElementById('modalInfoCertificado');
+    if (!modal) return;
+
+    const elNombre = document.getElementById('infoCertNombre');
+    const elCedula = document.getElementById('infoCertCedula');
+    const elCodigo = document.getElementById('infoCertCodigo');
+    const elFecha = document.getElementById('infoCertFecha');
+    const elCategoria = document.getElementById('infoCertCategoria');
+    const elQR = document.getElementById('infoCertQR');
+    const elDestacado = document.getElementById('infoCertDestacadoBadge');
+    const elLoader = document.getElementById('infoCertPreviewLoader');
+    const elLoaderText = document.getElementById('infoCertPreviewLoaderText');
+    const elPreview = document.getElementById('infoCertPreviewImg');
+
+    if (elNombre) elNombre.textContent = cert.nombre || '—';
+    if (elCedula) elCedula.textContent = cert.cedula || '—';
+    if (elCodigo) elCodigo.textContent = codigo;
+    if (elFecha) elFecha.textContent = formatearFechaModalCertPadre(cert.fecha || '');
+    if (elCategoria) elCategoria.textContent = cert.categoria || 'Sin categoría';
+
+    if (elQR) {
+        elQR.src = `../api/certificados/qr.php?codigo=${encodeURIComponent(codigo)}&t=${Date.now()}`;
+    }
+
+    if (elDestacado) {
+        elDestacado.style.display = cert.es_destacado ? 'block' : 'none';
+    }
+
+    if (elLoaderText) elLoaderText.textContent = 'Cargando previsualización...';
+    if (elLoader) elLoader.style.display = 'flex';
+    if (elPreview) {
+        elPreview.style.display = 'none';
+        let ok = await intentarPreviewDesdePlantillaPadre(cert, elPreview, elLoader, elLoaderText);
+        if (!ok) {
+            if (elLoaderText) elLoaderText.textContent = 'Intentando carga por certificado...';
+            ok = await cargarImagenModalCertPadre(elPreview, construirUrlDescargaCertificado(codigo, 'imagen', true), elLoader);
+        }
+        if (!ok) {
+            if (elLoaderText) elLoaderText.textContent = 'Intentando carga alternativa...';
+            ok = await intentarFallbackPreviewBase64Padre(codigo, elPreview, elLoader, elLoaderText);
+        }
+        if (!ok && elLoaderText) {
+            elLoaderText.textContent = 'No se pudo cargar la previsualización';
+        }
+    }
+
+    modal.classList.add('active');
+}
+
+window.addEventListener('message', function (event) {
+    if (event.origin && event.origin !== window.location.origin) return;
+    const payload = event.data || {};
+    if (payload.type !== 'cce:open-cert-modal' || !payload.certificado) return;
+    abrirModalInfoCertificadoPadre(payload.certificado);
+});
+
+function descargarDesdeInfoModalPadre(tipo) {
+    const codigoEl = document.getElementById('infoCertCodigo');
+    const codigo = codigoEl ? String(codigoEl.textContent || '').trim() : '';
+
+    if (!codigo || codigo === '...') {
+        mostrarNotificacion('No se encontró el código del certificado para descargar', 'warning');
+        return;
+    }
+
+    const url = construirUrlDescargaCertificado(codigo, tipo, false);
+    if (!url) return;
     window.open(url, '_blank');
 }
 

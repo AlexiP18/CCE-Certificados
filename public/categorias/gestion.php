@@ -59,7 +59,7 @@ $stmt->execute([$categoria_id]);
 $periodos = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 // Si no hay periodo seleccionado, usar el primero
-if (empty($periodo_id) && !empty($periodos)) {
+if (empty($periodo_id) && $periodo_id !== 'todos' && !empty($periodos)) {
     $periodo_id = $periodos[0]['id'];
 }
 

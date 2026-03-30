@@ -589,7 +589,7 @@ try {
                     (
                         SELECT MAX(
                             CASE
-                                WHEN cert_gen.archivo_pdf IS NOT NULL OR cert_gen.archivo_imagen IS NOT NULL THEN 1
+                                WHEN cert_gen.id IS NOT NULL THEN 1
                                 ELSE 0
                             END
                         )

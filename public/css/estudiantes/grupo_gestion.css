@@ -808,13 +808,6 @@ tr.row-selected td {
     visibility: visible !important;
 }
 
-.btn-bulk {
-    /* Generic class for bulk buttons if added */
-}
-
-.bulk-actions-bar button {
-    /* Styles for buttons inside bar */
-}
 
 /* Loading */
 .loading-overlay {
@@ -1912,6 +1905,59 @@ tr.row-selected td {
     border-bottom: 1px solid #e5e7eb;
 }
 
+.gen-lote-period-slides {
+    display: flex;
+    gap: 8px;
+    padding: 10px 14px 2px;
+    overflow-x: auto;
+    scrollbar-width: thin;
+}
+
+.gen-lote-period-slide {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid #d1d5db;
+    border-radius: 999px;
+    padding: 7px 12px;
+    background: #ffffff;
+    color: #475569;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: all .2s ease;
+}
+
+.gen-lote-period-slide:hover {
+    border-color: var(--color-grupo, #2563eb);
+    color: var(--color-grupo, #2563eb);
+}
+
+.gen-lote-period-slide.active {
+    background: var(--color-grupo, #2563eb);
+    border-color: var(--color-grupo, #2563eb);
+    color: #ffffff;
+    box-shadow: 0 6px 16px rgba(37, 99, 235, 0.22);
+}
+
+.gen-lote-period-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 22px;
+    height: 22px;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: rgba(148, 163, 184, .2);
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.gen-lote-period-slide.active .gen-lote-period-count {
+    background: rgba(255, 255, 255, .24);
+}
+
 .gen-check-all {
     display: inline-flex;
     align-items: center;
@@ -2115,4 +2161,170 @@ tr.row-selected td {
 tr.row-selected td.sticky-col {
     background: #eef6ff !important;
     background: color-mix(in srgb, var(--color-grupo) 12%, white) !important;
+}
+
+/* ===== ESTILOS IMPORTADOS DE GESTION.CSS PARA EL MODAL DE LOTE ===== */
+
+.search-bar { display: flex; gap: 10px; flex-wrap: wrap; }
+.search-input { padding: 10px 15px; border: 2px solid #e8ecf0; border-radius: 10px; font-size: 14px; min-width: 250px; }
+.search-input:focus { outline: none; border-color: var(--color-grupo, #3498db); }
+
+.dropdown-filter { position: relative; display: inline-block; }
+.dropdown-filter-menu { display: none; position: absolute; top: 100%; left: 0; background: white; min-width: 200px; border-radius: 10px; box-shadow: 0 5px 20px rgba(0, 0, 0, 0.15); z-index: 1000; margin-top: 5px; overflow: hidden; }
+.dropdown-filter-menu.show { display: block; }
+.dropdown-filter-menu a { display: flex; align-items: center; gap: 10px; padding: 12px 15px; text-decoration: none; color: #333; transition: background 0.2s; cursor: pointer; }
+.dropdown-filter-menu a:hover { background: #f8f9fa; }
+.dropdown-filter-menu a.active { background: rgba(52, 152, 219, 0.1); color: var(--color-grupo, #3498db); font-weight: 600; }
+.dropdown-filter-menu a i { width: 18px; text-align: center; color: #888; }
+.dropdown-filter-menu a.active i { color: var(--color-grupo, #3498db); }
+
+.pagination-footer { display: flex; justify-content: space-between; align-items: center; padding: 25px 25px 15px; border-top: 1px solid #e8ecf0; flex-wrap: wrap; gap: 15px; }
+.pagination-info { color: #5a6c7d; font-size: 14px; }
+.pagination-info span { font-weight: 600; color: #2c3e50; }
+.pagination-controls { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+.pagination-controls label { font-size: 14px; color: #5a6c7d; margin-right: 8px; }
+.pagination-controls select { padding: 8px 12px; border: 2px solid #e8ecf0; border-radius: 8px; font-size: 14px; outline: none; }
+.pagination-controls select:focus { border-color: var(--color-grupo, #3498db); }
+.pagination-buttons { display: flex; align-items: center; gap: 5px; background: #f8f9fa; padding: 5px; border-radius: 10px; }
+.btn-page { width: 36px; height: 36px; border: none; background: white; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #5a6c7d; transition: all 0.2s; box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05); }
+.btn-page:hover:not(:disabled) { background: var(--color-grupo, #3498db); color: white; transform: translateY(-2px); }
+.btn-page:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
+.pagination-current { padding: 0 15px; font-size: 14px; color: #5a6c7d; font-weight: 500; display: flex; align-items: center; gap: 8px; }
+.pagination-current input { width: 50px; text-align: center; padding: 6px; border: 2px solid #e8ecf0; border-radius: 6px; font-weight: 600; outline: none; }
+.pagination-current input:focus { border-color: var(--color-grupo, #3498db); }
+
+/* ===== BOTONES GESTION ===== */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s;
+    border: none;
+    text-decoration: none;
+}
+
+.btn-primary {
+    background: var(--color-grupo, #3498db);
+    color: white;
+}
+.btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(52, 152, 219, 0.4);
+}
+
+.btn-secondary {
+    background: #e8ecf0;
+    color: #5a6c7d;
+}
+.btn-secondary:hover {
+    background: #d5dbdb;
+}
+
+.btn-outline {
+    background: transparent;
+    border: 2px solid var(--color-grupo, #3498db);
+    color: var(--color-grupo, #3498db);
+}
+.btn-outline:hover {
+    background: var(--color-grupo, #3498db);
+    color: white;
+}
+.btn-outline.active {
+    background: var(--color-grupo, #3498db);
+    color: white;
+}
+
+/* ===== BOTONES LOTE ===== */
+.btn-bulk {
+    padding: 10px 18px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    border: none;
+    transition: all 0.2s;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+.btn-bulk-cancel {
+    background: #e74c3c;
+    color: white;
+}
+.btn-bulk-cancel:hover {
+    background: #c0392b;
+}
+
+/* ====== GROUP TABS NAVIGATION ====== */
+.group-tabs-container {
+    display: flex;
+    overflow-x: auto;
+    gap: 10px;
+    margin-bottom: 20px;
+    padding-bottom: 5px;
+    border-bottom: 2px solid #ecf0f1;
+}
+
+.group-tabs-container::-webkit-scrollbar {
+    height: 6px;
+}
+
+.group-tabs-container::-webkit-scrollbar-thumb {
+    background-color: #bdc3c7;
+    border-radius: 4px;
+}
+
+.group-tab-btn {
+    padding: 12px 20px;
+    background: #f8f9fa;
+    border: 1px solid #e0e0e0;
+    border-bottom: none;
+    border-radius: 8px 8px 0 0;
+    color: #555;
+    font-weight: 500;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    position: relative;
+    top: 2px;
+}
+
+.group-tab-btn:hover {
+    background: #eef2f5;
+    color: var(--color-grupo);
+}
+
+.group-tab-btn.active {
+    background: white;
+    color: var(--color-grupo);
+    border: 2px solid #ecf0f1;
+    border-bottom: 2px solid white;
+    font-weight: 600;
+    z-index: 10;
+}
+
+.group-tab-btn.active::before {
+    content: '';
+    position: absolute;
+    top: -2px;
+    left: -2px;
+    right: -2px;
+    height: 4px;
+    background: var(--color-grupo);
+    border-radius: 4px 4px 0 0;
+}
+
+.group-tabs-content {
+    background: white;
+    border-radius: 0 0 12px 12px;
+    min-height: 400px;
 }

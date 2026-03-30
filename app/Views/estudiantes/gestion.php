@@ -6,14 +6,20 @@
     <title><?= htmlspecialchars($categoria['nombre']) ?> - Gestión</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
     <link rel="stylesheet" href="<?= BASE_URL ?>/css/style.css">
-    <link rel="stylesheet" href="<?= BASE_URL ?>/css/estudiantes/gestion.css">
-    <style>
-        :root {
-            --color-principal: <?= $color_principal ?>;
-        }
-    </style>
+    <link rel="stylesheet" href="<?= BASE_URL ?>/css/estudiantes/gestion.css?v=<?= time() ?>">
+<?php $isEmbedded = isset($_GET['embedded']) && $_GET['embedded'] === 'true'; ?>
+<style>
+    :root {
+        --color-principal: <?= $color_principal ?>;
+    }
+    <?php if ($isEmbedded): ?>
+    .page-header { display: none !important; }
+    .container { padding: 0 !important; max-width: 100% !important; margin: 0 !important; box-shadow: none !important; }
+    body { background: transparent !important; padding: 0 !important; }
+    <?php endif; ?>
+</style>
 </head>
-<body>
+<body class="<?= $isEmbedded ? 'embedded-mode' : '' ?>">
     <div class="container">
         <!-- Header -->
         <div class="page-header">
@@ -39,20 +45,7 @@
             </div>
         </div>
         
-        <!-- Selector de Período -->
-        <?php if (count($periodos) > 1): ?>
-        <div class="periodo-selector">
-            <label><i class="fas fa-calendar-alt"></i> Período:</label>
-            <select id="periodoSelect" onchange="cambiarPeriodo(this.value)">
-                <?php foreach ($periodos as $p): ?>
-                <option value="<?= $p['id'] ?>" <?= $p['id'] == $periodo_id ? 'selected' : '' ?>>
-                    <?= htmlspecialchars($p['nombre']) ?>
-                </option>
-                <?php endforeach; ?>
-            </select>
-        </div>
-        <?php endif; ?>
-        
+
         <!-- Stats -->
         <div class="stats-row">
             <div class="stat-card">
@@ -93,6 +86,29 @@
             </div>
         </div>
         
+        <!-- Selector de Período -->
+        <?php if (count($periodos) > 1): ?>
+        <div class="periodo-selector">
+            <label><i class="fas fa-calendar-alt"></i> Período:</label>
+            <div class="period-chips">
+                <a href="javascript:void(0)" 
+                   class="period-chip <?= $periodo_id === 'todos' ? 'active' : '' ?>" 
+                   onclick="cambiarPeriodo('todos')"
+                   data-period-id="todos">
+                    Todos
+                </a>
+                <?php foreach ($periodos as $p): ?>
+                <a href="javascript:void(0)" 
+                   class="period-chip <?= $p['id'] == $periodo_id ? 'active' : '' ?>" 
+                   onclick="cambiarPeriodo('<?= $p['id'] ?>')"
+                   data-period-id="<?= $p['id'] ?>">
+                    <?= htmlspecialchars($p['nombre']) ?>
+                </a>
+                <?php endforeach; ?>
+            </div>
+        </div>
+        <?php endif; ?>
+
         <!-- Panel único de estudiantes con certificados integrados -->
         <div class="content-panel">
             <!-- Acciones masivas -->
@@ -635,7 +651,7 @@
                     <div class="preview-image-wrapper">
                         <div id="previewLoading" style="padding: 60px; color: #7f8c8d;">
                             <i class="fas fa-spinner fa-spin fa-2x"></i>
-                            <p>Cargando certificado...</p>
+                            <p id="previewLoadingText">Cargando certificado...</p>
                         </div>
                         <img id="previewImage" class="preview-image" style="display: none;" alt="Certificado">
                     </div>
@@ -803,17 +819,87 @@
         </div>
     </div>
 
+    <?php if (!$isEmbedded): ?>
+    <!-- Modal: Info Certificado Ampliada -->
+    <div class="modal-overlay" id="modalInfoCertificado">
+        <div class="modal" onclick="event.stopPropagation()" style="width: 95%; max-width: 1100px; padding: 0; border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; max-height: 90vh;">
+            <div class="modal-header" style="background-color: #3498db; padding: 15px 20px; margin: 0; flex-shrink: 0; display: flex; justify-content: space-between; align-items: center;">
+                <h3 style="color: white; margin: 0; font-size: 18px;"><i class="fas fa-certificate" style="color: #f1c40f;"></i> Detalles de Certificación</h3>
+                <button class="modal-close" onclick="cerrarModal(null, 'modalInfoCertificado')" style="background: rgba(255,255,255,0.2); color: white; border: none; font-size: 20px; cursor: pointer; border-radius: 50%; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;">&times;</button>
+            </div>
+            <div style="padding: 0; display: flex; flex-direction: row; flex: 1; overflow: hidden; background: #f8f9fa;">
+                <!-- Panel lateral: Info -->
+                <div style="flex: 1; padding: 25px; border-right: 1px solid #e2e8f0; overflow-y: auto; background: white; max-width: 320px;">
+                    <div style="text-align: center; margin-bottom: 20px;">
+                        <h4 style="margin: 0; color: #2c3e50; font-size: 18px; font-weight: 600;" id="infoCertNombre">...</h4>
+                        <p style="margin: 4px 0 0 0; color: #7f8c8d; font-size: 14px;" id="infoCertCedula">...</p>
+                    </div>
+                    
+                    <div style="background: #f8f9fa; border-radius: 8px; padding: 15px; margin-bottom: 20px; border: 1px solid #e9ecef;">
+                        <div style="margin-bottom: 12px;">
+                            <span style="font-size: 11px; color: #95a5a6; text-transform: uppercase; font-weight: bold; letter-spacing: 0.5px; display: block; margin-bottom: 3px;">Código Oficial</span>
+                            <div style="font-family: 'Courier New', monospace; background: white; padding: 6px 10px; border-radius: 4px; border: 1px dashed #cbd5e1; color: #2c3e50; font-weight: 600; font-size: 16px;" id="infoCertCodigo">...</div>
+                        </div>
+                        <div style="margin-bottom: 12px;">
+                            <span style="font-size: 11px; color: #95a5a6; text-transform: uppercase; font-weight: bold; letter-spacing: 0.5px; display: block; margin-bottom: 3px;">Generado el</span>
+                            <div style="color: #34495e; font-size: 14px;" id="infoCertFecha">...</div>
+                        </div>
+                        <div>
+                            <span style="font-size: 11px; color: #95a5a6; text-transform: uppercase; font-weight: bold; letter-spacing: 0.5px; display: block; margin-bottom: 3px;">Categoría</span>
+                            <div style="color: #34495e; font-size: 14px; font-weight: 500;"><span id="infoCertCategoria">...</span></div>
+                        </div>
+                    </div>
+                    
+                    <div style="text-align: center; margin-bottom: 20px; padding: 15px; border: 1px dashed #cbd5e1; border-radius: 8px; background: #fff;">
+                        <span style="font-size: 11px; color: #95a5a6; text-transform: uppercase; font-weight: bold; letter-spacing: 0.5px; display: block; margin-bottom: 10px;">Código QR de Verificación</span>
+                        <div style="background: white; display: inline-block; padding: 5px; border-radius: 4px; border: 1px solid #e2e8f0; display: flex; justify-content: center;">
+                            <img id="infoCertQR" src="" alt="QR" style="width: 140px; height: 140px; object-fit: contain;">
+                        </div>
+                    </div>
+                    
+                    <div id="infoCertDestacadoBadge" style="display: none; background: #fff3cd; color: #856404; padding: 10px 15px; border-radius: 8px; border: 1px solid #ffeeba; margin-top: auto; text-align: center; font-weight: 500; font-size: 14px;">
+                        <i class="fas fa-star" style="color: #f1c40f; margin-right: 5px;"></i> Estudiante Destacado
+                    </div>
+                </div>
+                
+                <!-- Panel derecho: Iframe Preview -->
+                <div style="flex: 2; position: relative; background: #eef2f5; display: flex; flex-direction: column;">
+                    <div style="flex: 1; padding: 20px; display: flex; justify-content: center; align-items: flex-start; overflow-y: auto;">
+                        <div style="width: 100%; max-width: 800px; background: white; box-shadow: 0 10px 25px rgba(0,0,0,0.1); border-radius: 4px; overflow: hidden; position: relative; display: flex; flex-direction: column;">
+                            <!-- Mantenemos aspecto ratio forzado del A4 landscape aprox -->
+                            <div style="padding-top: 70.7%; position: relative; width: 100%;">
+                                <div id="infoCertPreviewLoader" style="position: absolute; inset: 0; background: rgba(255,255,255,0.9); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 10;">
+                                    <i class="fas fa-circle-notch fa-spin" style="font-size: 2.5rem; color: #3498db; margin-bottom: 15px;"></i>
+                                    <span style="color: #2c3e50; font-weight: 500;" id="infoCertPreviewLoaderText">Generando visualización previa...</span>
+                                </div>
+                                <img id="infoCertPreviewImg" src="" style="position: absolute; top:0; left:0; width: 100%; height: 100%; object-fit: contain; z-index: 5; display: none;" alt="Previsualización de Plantilla" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div style="padding: 15px 25px; background: #f8f9fa; border-top: 1px solid #e2e8f0; display: flex; justify-content: flex-end; gap: 12px; border-radius: 0 0 12px 12px;">
+                <button type="button" class="btn btn-secondary" onclick="cerrarModal(null, 'modalInfoCertificado')" style="border: 1px solid #cbd5e1; background: white; color: #64748b; font-weight: 500; cursor: pointer; padding: 10px 20px; border-radius: 6px;">Cerrar</button>
+                <div style="flex: 1;"></div>
+                <button onclick="descargarDesdeInfoModal('imagen')" class="btn" style="background: #3498db; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: 600; display: inline-flex; align-items: center; gap: 8px;"><i class="fas fa-image"></i> Descargar Imagen PNG</button>
+                <button onclick="descargarDesdeInfoModal('pdf')" class="btn" style="background: #e74c3c; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: 600; display: inline-flex; align-items: center; gap: 8px;"><i class="fas fa-file-pdf"></i> Descargar Original PDF</button>
+            </div>
+        </div>
+    </div>
+    <?php endif; ?>
+
     <!-- Scripts -->
     <script>
         // Configuración inicial desde PHP
         const categoriaId = <?= $categoria_id ?>;
         const grupoId = <?= $grupo_id ?>;
-        const periodoId = <?= json_encode($periodo_id) ?>;
+        let periodoId = <?= json_encode($periodo_id) ?>;
         const esAdmin = <?= $esAdmin ? 'true' : 'false' ?>;
+        const isEmbeddedView = <?= $isEmbedded ? 'true' : 'false' ?>;
         const categoriaNombre = <?= json_encode($categoria['nombre']) ?>;
         const grupoNombre = <?= json_encode($categoria['grupo_nombre']) ?>;
         let currentPreviewCode = null;
     </script>
-    <script src="<?= BASE_URL ?>/js/estudiantes/gestion.js"></script>
+    <script src="<?= BASE_URL ?>/js/estudiantes/gestion.js?v=<?= time() ?>"></script>
 </body>
 </html>

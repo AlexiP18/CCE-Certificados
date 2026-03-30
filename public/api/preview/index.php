@@ -507,21 +507,23 @@ try {
             }
         }
 
-        // 2) Si la categoría usa plantilla propia y aún no resolvimos plantilla, buscar activa
-        if ($usarConfigPropia && (empty($plantillaPath) || !file_exists($plantillaPath))) {
-            // Buscar plantilla especificada o activa en categoria_plantillas
-            if (!$plantillaIdNumerico && $hasCategoriaPlantillas) {
-                $stmtPlantilla = $pdo->prepare("SELECT * FROM categoria_plantillas WHERE categoria_id = ? AND es_activa = 1 LIMIT 1");
-                $stmtPlantilla->execute([$id]);
-                $plantillaActiva = $stmtPlantilla->fetch(PDO::FETCH_ASSOC);
-            } else {
-                $plantillaActiva = null;
-            }
+        // 2) Priorizar plantilla activa de categoría cuando exista (compatibilidad con datos mixtos),
+        // incluso si usar_plantilla_propia está en 0.
+        if ((empty($plantillaPath) || !file_exists($plantillaPath)) && !$plantillaIdNumerico && $hasCategoriaPlantillas) {
+            $stmtPlantilla = $pdo->prepare("SELECT * FROM categoria_plantillas WHERE categoria_id = ? AND es_activa = 1 LIMIT 1");
+            $stmtPlantilla->execute([$id]);
+            $plantillaActivaCategoria = $stmtPlantilla->fetch(PDO::FETCH_ASSOC);
             
-            if ($plantillaActiva) {
-                $plantillaPath = resolveAssetPath('uploads/categorias/' . $id . '/' . $plantillaActiva['archivo']);
-                $plantillaConfigActiva = $plantillaActiva;
-            } elseif (!empty($cat['plantilla_archivo'])) {
+            if ($plantillaActivaCategoria) {
+                $plantillaPath = resolveAssetPath('uploads/categorias/' . $id . '/' . $plantillaActivaCategoria['archivo']);
+                $plantillaConfigActiva = $plantillaActivaCategoria;
+                $usarConfigPropia = true;
+            }
+        }
+
+        // 3) Si aún estamos en modo propio y no resolvimos plantilla, intentar fallback legacy de categoría
+        if ($usarConfigPropia && (empty($plantillaPath) || !file_exists($plantillaPath))) {
+            if (!empty($cat['plantilla_archivo'])) {
                 // Fallback legacy de categoría.
                 // Debe seguir la misma convención que Certificate.php:
                 //   uploads/categorias/{plantilla_archivo}
@@ -545,7 +547,7 @@ try {
             }
         }
         
-        // Si no usa plantilla propia o no encontró, buscar del grupo
+        // 4) Si no encontró plantilla de categoría, buscar del grupo
         if (empty($plantillaPath) || !file_exists($plantillaPath)) {
             // Buscar plantilla especificada o activa del grupo
             $grupoPlantillaActiva = null;
@@ -913,7 +915,21 @@ try {
         $grupoIdParaEstudiante = $cat['grupo_id'];
     }
     
-    if ($grupoIdParaEstudiante) {
+    $estudianteIdPedido = isset($_POST['estudiante_id']) && intval($_POST['estudiante_id']) > 0 ? intval($_POST['estudiante_id']) : null;
+    
+    if ($estudianteIdPedido) {
+        // Buscar el estudiante específico
+        $stmtEstudiante = $pdo->prepare("
+            SELECT e.nombre, c.nombre as categoria_nombre
+            FROM estudiantes e
+            INNER JOIN categoria_estudiantes ce ON e.id = ce.estudiante_id
+            INNER JOIN categorias c ON ce.categoria_id = c.id
+            WHERE e.id = ?
+            LIMIT 1
+        ");
+        $stmtEstudiante->execute([$estudianteIdPedido]);
+        $primerEstudiante = $stmtEstudiante->fetch(PDO::FETCH_ASSOC);
+    } elseif ($grupoIdParaEstudiante) {
         // Buscar el primer estudiante del grupo (usando tabla intermedia categoria_estudiantes)
         $stmtEstudiante = $pdo->prepare("
             SELECT e.nombre, c.nombre as categoria_nombre
@@ -926,8 +942,9 @@ try {
         ");
         $stmtEstudiante->execute([$grupoIdParaEstudiante]);
         $primerEstudiante = $stmtEstudiante->fetch(PDO::FETCH_ASSOC);
-        
-        if ($primerEstudiante) {
+    }
+    
+    if (isset($primerEstudiante) && $primerEstudiante) {
             // Aplicar formato de nombre según configuración
             $formatoNombre = $certConfig['formato_nombre'] ?? 'mayusculas';
             $nombreFormateado = trim($primerEstudiante['nombre']);
@@ -952,11 +969,17 @@ try {
         } else {
             error_log("API Preview - No hay estudiantes en el grupo, usando datos por defecto");
         }
-    }
     
     $razonEjemplo = 'Por su destacada participación en el taller de ejemplo';
-    $fechaEjemplo = date('d/m/Y');
-    $codigoEjemplo = 'CCE-PREVIEW01';
+    
+    // Si se pasan datos reales por POST (ej. desde el modal info), usarlos
+    if (isset($_POST['fecha_certificado']) && !empty($_POST['fecha_certificado']) && $_POST['fecha_certificado'] !== 'null') {
+        $fechaEjemplo = date('d/m/Y', strtotime($_POST['fecha_certificado']));
+    } else {
+        $fechaEjemplo = date('d/m/Y');
+    }
+    
+    $codigoEjemplo = $_POST['codigo_certificado'] ?? 'CCE-PREVIEW01';
     
     // Función helper para obtener ruta de fuente (mejorada para buscar en BD)
     // Función helper para obtener ruta de fuente (mejorada para buscar en BD)
@@ -1246,30 +1269,57 @@ try {
         );
     }
     
-    // Agregar marcador QR para previsualización (no QR real por estudiante)
+    // Agregar código QR real o marcador de previsualización
     if (in_array('qr', $variablesHabilitadas)) {
         $qrSize = max(48, (int)$certConfig['tamanio_qr']);
         $qrX = (int)$certConfig['posicion_qr_x'];
         $qrY = (int)$certConfig['posicion_qr_y'];
 
-        $img->rectangle(
-            $qrX,
-            $qrY,
-            $qrX + $qrSize,
-            $qrY + $qrSize,
-            function($draw) {
-                $draw->background('rgba(30, 64, 175, 0.10)');
-                $draw->border(2, '#1e40af');
+        $qrRealGenerado = false;
+        
+        if (isset($_POST['codigo_certificado']) && !empty($_POST['codigo_certificado'])) {
+            try {
+                $options = new \chillerlan\QRCode\QROptions([
+                    'outputType' => \chillerlan\QRCode\QRCode::OUTPUT_IMAGE_PNG,
+                    'eccLevel'   => \chillerlan\QRCode\QRCode::ECC_L,
+                    'scale'      => 5,
+                    'imageBase64'=> false
+                ]);
+                $qrcode = new \chillerlan\QRCode\QRCode($options);
+                $urlQr = BASE_URL . "/certificados/buscar.php?codigo=" . $_POST['codigo_certificado'];
+                $qrRaw = $qrcode->render($urlQr);
+                
+                $qrImg = Image::make($qrRaw);
+                // Escalar al tamaño exacto de la plantilla
+                $qrImg->resize($qrSize, $qrSize);
+                $img->insert($qrImg, 'top-left', $qrX, $qrY);
+                $qrRealGenerado = true;
+            } catch (Exception $e) {
+                error_log("API Preview - Error dibujando QR real en lienzo: " . $e->getMessage());
             }
-        );
+        }
+        
+        // Si no se pudo generar el QR real (o no enviaron código), se dibuja el marcador
+        if (!$qrRealGenerado) {
+            $img->rectangle(
+                $qrX,
+                $qrY,
+                $qrX + $qrSize,
+                $qrY + $qrSize,
+                function($draw) {
+                    $draw->background('rgba(30, 64, 175, 0.10)');
+                    $draw->border(2, '#1e40af');
+                }
+            );
 
-        $labelSize = max(14, min(28, (int)round($qrSize * 0.22)));
-        $img->text('QR', $qrX + ($qrSize / 2), $qrY + ($qrSize / 2), function($font) use ($labelSize) {
-            $font->size($labelSize);
-            $font->color('#1e40af');
-            $font->align('center');
-            $font->valign('middle');
-        });
+            $labelSize = max(14, min(28, (int)round($qrSize * 0.22)));
+            $img->text('QR', $qrX + ($qrSize / 2), $qrY + ($qrSize / 2), function($font) use ($labelSize) {
+                $font->size($labelSize);
+                $font->color('#1e40af');
+                $font->align('center');
+                $font->valign('middle');
+            });
+        }
     }
     
     // Agregar FIRMA (firmaPath ya fue resuelto arriba)

@@ -384,8 +384,9 @@ function renderFilaEstudiante(tbody, est, rowClass = '', hasMenores = false, rep
     if (rowClass) tr.className = rowClass;
 
     const checked = seleccionados.includes(est.id);
-    const isAprobado = est.certificado_codigo ? true : false;
-    const isGenerado = isAprobado && est.certificado_archivo_pdf ? true : false;
+    const isAprobado = !!est.certificado_codigo;
+    // Un certificado con código ya está generado; el archivo físico puede regenerarse al vuelo.
+    const isGenerado = !!est.certificado_codigo;
 
     let certStatus = '<span class="cert-status cert-none">Pendiente</span>';
     let tooltip = '';
@@ -416,16 +417,9 @@ function renderFilaEstudiante(tbody, est, rowClass = '', hasMenores = false, rep
                 <i class="fas fa-user-times"></i>
             </button>
             ${isGenerado ? `
-            <div style="position: relative; display: inline-block;">
-                <button class="btn-icon btn-view" title="Opciones del Certificado" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'block' ? 'none' : 'block'; event.stopPropagation();">
-                    <i class="fas fa-ellipsis-v" style="padding: 0 5px;"></i>
-                </button>
-                <div class="dropdown-menu-cert" style="display: none; position: absolute; right: 0; bottom: 100%; background: white; border-radius: 8px; box-shadow: 0 -4px 15px rgba(0,0,0,0.15); z-index: 1000; min-width: 150px; margin-bottom: 5px; border: 1px solid #eee;">
-                    <a href="#" onclick="previsualizarCertificado('${est.certificado_codigo}'); event.preventDefault();" style="display: block; padding: 10px 15px; color: #2c3e50; text-decoration: none; border-bottom: 1px solid #f8f9fa;"><i class="fas fa-eye" style="width: 20px; color: #9b59b6;"></i> Visualizar</a>
-                    <a href="#" onclick="descargarCertificado('${est.certificado_codigo}', 'pdf'); event.preventDefault();" style="display: block; padding: 10px 15px; color: #2c3e50; text-decoration: none; border-bottom: 1px solid #f8f9fa;"><i class="fas fa-file-pdf" style="width: 20px; color: #e74c3c;"></i> Descargar PDF</a>
-                    <a href="#" onclick="descargarCertificado('${est.certificado_codigo}', 'imagen'); event.preventDefault();" style="display: block; padding: 10px 15px; color: #2c3e50; text-decoration: none;"><i class="fas fa-image" style="width: 20px; color: #3498db;"></i> Descargar Imagen</a>
-                </div>
-            </div>
+            <button class="btn-icon btn-view" title="Visualización de Certificado" onclick="abrirModalInfoCertificadoDesdeFila(${est.id}, '${String(est.certificado_codigo || '').replace(/'/g, "\\'")}')">
+                <i class="fas fa-eye"></i>
+            </button>
             ` : (isAprobado ? `
             <button class="btn-icon btn-secondary" style="background-color: #f39c12; color: white;" title="Desaprobar" onclick="desaprobarEstudiante(${est.id}, '${est.nombre.replace(/'/g, "\\'")}')">
                 <i class="fas fa-undo"></i>
@@ -487,8 +481,9 @@ function renderFilaMenor(tbody, menor, repUniqueId = '') {
     }
 
     const checked = seleccionados.includes(menor.id);
-    const isAprobado = menor.certificado_codigo ? true : false;
-    const isGenerado = isAprobado && menor.certificado_archivo_pdf ? true : false;
+    const isAprobado = !!menor.certificado_codigo;
+    // Un certificado con código ya está generado; el archivo físico puede regenerarse al vuelo.
+    const isGenerado = !!menor.certificado_codigo;
 
     let certStatus = '<span class="cert-status cert-none">Pendiente</span>';
     let tooltip = '';
@@ -519,16 +514,9 @@ function renderFilaMenor(tbody, menor, repUniqueId = '') {
                 <i class="fas fa-user-times"></i>
             </button>
             ${isGenerado ? `
-            <div style="position: relative; display: inline-block;">
-                <button class="btn-icon btn-view" title="Opciones del Certificado" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'block' ? 'none' : 'block'; event.stopPropagation();">
-                    <i class="fas fa-ellipsis-v" style="padding: 0 5px;"></i>
-                </button>
-                <div class="dropdown-menu-cert" style="display: none; position: absolute; right: 0; bottom: 100%; background: white; border-radius: 8px; box-shadow: 0 -4px 15px rgba(0,0,0,0.15); z-index: 1000; min-width: 150px; margin-bottom: 5px; border: 1px solid #eee;">
-                    <a href="#" onclick="previsualizarCertificado('${menor.certificado_codigo}'); event.preventDefault();" style="display: block; padding: 10px 15px; color: #2c3e50; text-decoration: none; border-bottom: 1px solid #f8f9fa;"><i class="fas fa-eye" style="width: 20px; color: #9b59b6;"></i> Visualizar</a>
-                    <a href="#" onclick="descargarCertificado('${menor.certificado_codigo}', 'pdf'); event.preventDefault();" style="display: block; padding: 10px 15px; color: #2c3e50; text-decoration: none; border-bottom: 1px solid #f8f9fa;"><i class="fas fa-file-pdf" style="width: 20px; color: #e74c3c;"></i> Descargar PDF</a>
-                    <a href="#" onclick="descargarCertificado('${menor.certificado_codigo}', 'imagen'); event.preventDefault();" style="display: block; padding: 10px 15px; color: #2c3e50; text-decoration: none;"><i class="fas fa-image" style="width: 20px; color: #3498db;"></i> Descargar Imagen</a>
-                </div>
-            </div>
+            <button class="btn-icon btn-view" title="Visualización de Certificado" onclick="abrirModalInfoCertificadoDesdeFila(${menor.id}, '${String(menor.certificado_codigo || '').replace(/'/g, "\\'")}')">
+                <i class="fas fa-eye"></i>
+            </button>
             ` : (isAprobado ? `
             <button class="btn-icon btn-secondary" style="background-color: #f39c12; color: white;" title="Desaprobar" onclick="desaprobarEstudiante(${menor.id}, '${menor.nombre.replace(/'/g, "\\'")}')">
                 <i class="fas fa-undo"></i>
@@ -778,11 +766,11 @@ function actualizarContadorSeleccionados() {
         bulkActions.classList.add('active');
 
         // Verificar estados para mostrar botones pertinentes
-        let hayGenerado = false; // Solo true si TIENE el archivo físico PDF
+        let hayGenerado = false;
 
         seleccionados.forEach(id => {
             const est = estudiantes.find(e => e.id == id);
-            if (est && est.certificado_codigo && est.certificado_archivo_pdf) {
+            if (est && est.certificado_codigo) {
                 hayGenerado = true;
             }
         });
@@ -2750,6 +2738,185 @@ function generarTodosCertificados() {
 
 // --- VISUALIZACIÓN Y DESCARGA ---
 
+function formatearFechaDetalleCertificado(fechaRaw) {
+    if (!fechaRaw) return '--';
+    const fecha = new Date(fechaRaw);
+    if (Number.isNaN(fecha.getTime())) return String(fechaRaw);
+
+    const dd = String(fecha.getDate()).padStart(2, '0');
+    const mm = String(fecha.getMonth() + 1).padStart(2, '0');
+    const yyyy = fecha.getFullYear();
+    const hh = String(fecha.getHours()).padStart(2, '0');
+    const mi = String(fecha.getMinutes()).padStart(2, '0');
+    return `${dd}/${mm}/${yyyy} ${hh}:${mi}`;
+}
+
+async function intentarFallbackPreviewBase64(codigo, imageEl, loaderEl = null, loaderTextEl = null) {
+    try {
+        const resp = await fetch(`../api/certificados/index.php?action=get_image&code=${encodeURIComponent(codigo)}&t=${Date.now()}`);
+        const json = await resp.json();
+        if (json?.success && json?.image) {
+            return await cargarImagenPreview(imageEl, json.image, loaderEl);
+        }
+        if (loaderTextEl && json?.message) loaderTextEl.textContent = json.message;
+    } catch (e) {
+        console.warn('Fallback preview base64 falló:', e);
+    }
+
+    if (loaderTextEl) loaderTextEl.textContent = 'No se pudo cargar la previsualización';
+    return false;
+}
+
+function cargarImagenPreview(imageEl, src, loaderEl = null) {
+    return new Promise((resolve) => {
+        if (!imageEl || !src) {
+            resolve(false);
+            return;
+        }
+
+        imageEl.onload = () => {
+            if (loaderEl) loaderEl.style.display = 'none';
+            imageEl.style.display = 'block';
+            resolve(true);
+        };
+        imageEl.onerror = () => resolve(false);
+        imageEl.src = src;
+    });
+}
+
+async function intentarPreviewDesdePlantilla(estudianteId, fechaCertificado, codigoCertificado, imageEl, loaderEl = null, loaderTextEl = null) {
+    if (typeof categoriaId === 'undefined' || !categoriaId) return false;
+
+    try {
+        const formData = new FormData();
+        formData.append('tipo', 'categoria');
+        formData.append('id', String(categoriaId));
+        formData.append('use_form_data', '0');
+        if (estudianteId) formData.append('estudiante_id', String(estudianteId));
+        if (fechaCertificado) formData.append('fecha_certificado', String(fechaCertificado));
+        if (codigoCertificado) formData.append('codigo_certificado', String(codigoCertificado));
+
+        const resp = await fetch(`../api/preview/index.php?v=${Date.now()}_${Math.random().toString(36).slice(2, 8)}`, {
+            method: 'POST',
+            body: formData
+        });
+        const json = await resp.json();
+
+        if (json?.success && json?.preview_url) {
+            return await cargarImagenPreview(imageEl, `${json.preview_url}?v=${Date.now()}`, loaderEl);
+        }
+
+        if (loaderTextEl && json?.message) loaderTextEl.textContent = json.message;
+    } catch (e) {
+        console.warn('Fallback preview por plantilla falló:', e);
+    }
+
+    return false;
+}
+
+function abrirModalInfoCertificadoDesdeFila(estudianteId, codigo) {
+    if (!codigo) {
+        showNotification('No se encontró el código del certificado', 'warning');
+        return;
+    }
+
+    const est = estudiantes.find(e => String(e.id) === String(estudianteId)) || {};
+
+    // Si estamos en iframe embebido, delegar apertura del modal al padre.
+    const runningInFrame = window.parent && window.parent !== window;
+    const embeddedByFlag = (typeof isEmbeddedView !== 'undefined') && Boolean(isEmbeddedView);
+    const embeddedByUrl = new URLSearchParams(window.location.search).get('embedded') === 'true';
+    const shouldDelegateToParent = runningInFrame && (embeddedByFlag || embeddedByUrl);
+
+    if (shouldDelegateToParent) {
+        try {
+            window.parent.postMessage({
+                type: 'cce:open-cert-modal',
+                certificado: {
+                    estudiante_id: estudianteId,
+                    codigo: String(codigo),
+                    nombre: est.nombre || '—',
+                    cedula: est.cedula || '—',
+                    categoria_id: (typeof categoriaId !== 'undefined' && categoriaId) ? Number(categoriaId) : null,
+                    categoria: (typeof categoriaNombre !== 'undefined' && categoriaNombre) ? categoriaNombre : 'Sin categoría',
+                    fecha: est.certificado_fecha_creacion || est.certificado_fecha || '',
+                    es_destacado: Number(est.es_destacado) === 1
+                }
+            }, '*');
+        } catch (err) {
+            console.warn('No se pudo delegar modal al padre:', err);
+        }
+        return;
+    }
+
+    currentPreviewCode = codigo;
+
+    const modal = document.getElementById('modalInfoCertificado');
+    if (!modal) {
+        showNotification('No se encontró el modal de información del certificado', 'error');
+        return;
+    }
+
+    const nombre = est.nombre || '—';
+    const cedula = est.cedula || '—';
+    const fechaCert = est.certificado_fecha_creacion || est.certificado_fecha || '';
+    const categoria = (typeof categoriaNombre !== 'undefined' && categoriaNombre) ? categoriaNombre : 'Sin categoría';
+
+    const elNombre = document.getElementById('infoCertNombre');
+    const elCedula = document.getElementById('infoCertCedula');
+    const elCodigo = document.getElementById('infoCertCodigo');
+    const elFecha = document.getElementById('infoCertFecha');
+    const elCategoria = document.getElementById('infoCertCategoria');
+    const elQR = document.getElementById('infoCertQR');
+    const elDestacado = document.getElementById('infoCertDestacadoBadge');
+    const elLoader = document.getElementById('infoCertPreviewLoader');
+    const elLoaderText = document.getElementById('infoCertPreviewLoaderText');
+    const elPreview = document.getElementById('infoCertPreviewImg');
+
+    if (elNombre) elNombre.textContent = nombre;
+    if (elCedula) elCedula.textContent = cedula;
+    if (elCodigo) elCodigo.textContent = codigo;
+    if (elFecha) elFecha.textContent = formatearFechaDetalleCertificado(fechaCert);
+    if (elCategoria) elCategoria.textContent = categoria;
+
+    if (elQR) {
+        elQR.src = `../api/certificados/qr.php?codigo=${encodeURIComponent(codigo)}&t=${Date.now()}`;
+    }
+
+    if (elDestacado) {
+        elDestacado.style.display = Number(est.es_destacado) === 1 ? 'block' : 'none';
+    }
+
+    if (elLoaderText) elLoaderText.textContent = 'Cargando previsualización...';
+    if (elLoader) elLoader.style.display = 'flex';
+    if (elPreview) {
+        elPreview.style.display = 'none';
+        (async () => {
+            let ok = await intentarPreviewDesdePlantilla(
+                estudianteId,
+                est.certificado_fecha || est.certificado_fecha_creacion,
+                codigo,
+                elPreview,
+                elLoader,
+                elLoaderText
+            );
+            if (!ok) {
+                if (elLoaderText) elLoaderText.textContent = 'Intentando carga por certificado...';
+                ok = await intentarFallbackPreviewBase64(codigo, elPreview, elLoader, elLoaderText);
+            }
+            if (!ok) {
+                if (elLoaderText) elLoaderText.textContent = 'Intentando carga directa...';
+                ok = await cargarImagenPreview(elPreview, construirUrlCertificadoPorCodigo(codigo, 'imagen', true), elLoader);
+            }
+            if (!ok && elLoaderText) {
+                elLoaderText.textContent = 'No se pudo cargar la previsualización';
+            }
+        })();
+    }
+
+    modal.classList.add('active');
+}
+
 function previsualizarCertificado(codigo) {
     if (!codigo) return;
 
@@ -2780,13 +2947,30 @@ function previsualizarCertificado(codigo) {
                     document.getElementById('previewRazonContainer').style.display = 'none';
                 }
 
-                // Cargar imagen
-                const urlImg = `ver_certificado.php?codigo=${codigo}&tipo=imagen&t=${new Date().getTime()}`;
-                img.onload = () => {
-                    loading.style.display = 'none';
-                    img.style.display = 'block';
-                };
-                img.src = urlImg;
+                // Cargar imagen desde el endpoint vigente
+                const loaderText = document.getElementById('previewLoadingText');
+                (async () => {
+                    let ok = await intentarPreviewDesdePlantilla(
+                        info?.estudiante_id || null,
+                        info?.fecha_emision || null,
+                        codigo,
+                        img,
+                        loading,
+                        loaderText
+                    );
+                    if (!ok) {
+                        if (loaderText) loaderText.textContent = 'Intentando carga por certificado...';
+                        ok = await intentarFallbackPreviewBase64(codigo, img, loading, loaderText);
+                    }
+                    if (!ok) {
+                        if (loaderText) loaderText.textContent = 'Intentando carga directa...';
+                        ok = await cargarImagenPreview(img, construirUrlCertificadoPorCodigo(codigo, 'imagen', true), loading);
+                    }
+                    if (!ok) {
+                        loading.style.display = 'none';
+                        showNotification('No se pudo cargar la previsualización', 'warning');
+                    }
+                })();
 
                 modal.classList.add('active');
             } else {
@@ -2798,14 +2982,46 @@ function previsualizarCertificado(codigo) {
         });
 }
 
+function construirUrlCertificadoPorCodigo(codigo, tipo = 'pdf', inline = false) {
+    if (!codigo) return '';
+
+    const tipoNorm = String(tipo || 'pdf').toLowerCase();
+    const action = (tipoNorm === 'imagen' || tipoNorm === 'png' || tipoNorm === 'image')
+        ? 'descargar_imagen'
+        : 'descargar_pdf';
+
+    const params = new URLSearchParams();
+    params.set('action', action);
+    params.set('codigo', String(codigo));
+    params.set('t', String(Date.now()));
+    if (inline) params.set('inline', '1');
+
+    return `../api/certificados/generar.php?${params.toString()}`;
+}
+
 function descargarCertificado(codigo, tipo) {
-    window.open(`ver_certificado.php?codigo=${codigo}&tipo=${tipo}&descargar=1`, '_blank');
+    const url = construirUrlCertificadoPorCodigo(codigo, tipo, false);
+    if (!url) return;
+    window.open(url, '_blank');
 }
 
 function descargarDesdePreview(tipo) {
     if (currentPreviewCode) {
         descargarCertificado(currentPreviewCode, tipo);
     }
+}
+
+function descargarDesdeInfoModal(tipo) {
+    const codigoEl = document.getElementById('infoCertCodigo');
+    const codigoDom = codigoEl ? String(codigoEl.textContent || '').trim() : '';
+    const codigo = (codigoDom && codigoDom !== '...') ? codigoDom : currentPreviewCode;
+
+    if (!codigo) {
+        showNotification('No se encontró el código del certificado', 'warning');
+        return;
+    }
+
+    descargarCertificado(codigo, tipo);
 }
 
 function descargarCertificadosSeleccionados(tipo) {

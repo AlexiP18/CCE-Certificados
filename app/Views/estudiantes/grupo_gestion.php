@@ -81,12 +81,30 @@
                     <h3 id="totalMenores">0</h3>
                     <p>Menores de Edad</p>
                 </div>
-            </div>
+        </div> <!-- End of stat-card -->
+    </div> <!-- End of stats-row -->
+
+    <!-- Tabs Section -->
+    <div class="group-tabs-container">
+            <button class="group-tab-btn active" data-target="tab-todos" onclick="switchGroupTab('tab-todos', this)">
+                <i class="fas fa-list"></i> Todos los Estudiantes
+            </button>
+            <?php 
+                $defaultPeriodo = !empty($periodos) ? $periodos[0]['id'] : '';
+                foreach ($categorias as $cat): 
+            ?>
+            <button class="group-tab-btn" data-target="tab-cat-<?= $cat['id'] ?>" onclick="switchGroupTab('tab-cat-<?= $cat['id'] ?>', this)">
+                <?= htmlspecialchars(($cat['icono'] ?? '') . ' ' . $cat['nombre']) ?>
+            </button>
+            <?php endforeach; ?>
         </div>
 
-        <!-- Filtros -->
-        <div class="filters-section">
-            <div class="filters-row">
+        <div class="group-tabs-content">
+            <!-- Pestaña Todos -->
+            <div id="tab-todos" class="group-tab-pane active">
+                <!-- Filtros -->
+                <div class="filters-section">
+                    <div class="filters-row">
                 <div class="filter-group" style="flex: 2;">
                     <label><i class="fas fa-search"></i> Buscar</label>
                     <div class="search-input-wrapper">
@@ -123,7 +141,7 @@
                     <i class="fas fa-check-circle"></i> 0 seleccionados
                 </span>
                 <div class="actions-group">
-                    <button type="button" id="btnGenerarLote" onclick="abrirModalGeneracionLote()" class="btn-bulk" style="background: white; color: var(--color-grupo); border:none; border-radius:8px; padding:10px 15px; cursor:pointer; font-weight:600; display:flex; align-items:center; gap:5px;">
+                    <button type="button" id="btnGenerarLote" onclick="abrirModalGeneracionSeleccionActual()" class="btn-bulk" disabled title="Primero selecciona una categoría en el filtro" style="background: white; color: var(--color-grupo); border:none; border-radius:8px; padding:10px 15px; cursor:not-allowed; opacity:.55; font-weight:600; display:flex; align-items:center; gap:5px;">
                         <i class="fas fa-certificate"></i> Generar Certificados
                     </button>
                     <button type="button" id="btnCancelarSeleccion" onclick="deseleccionarTodos()" class="btn-bulk" style="background: rgba(255,255,255,0.3); color: white; border:none; border-radius:8px; padding:10px 15px; cursor:pointer; font-weight:600; display:flex; align-items:center; gap:5px;">
@@ -212,7 +230,24 @@
                 </div>
             </div>
         </div>
-    </div>
+            </div> <!-- Cierra tab-todos -->
+
+            <!-- Pestañas de Categorías (Iframes) -->
+            <?php foreach ($categorias as $cat): ?>
+            <div id="tab-cat-<?= $cat['id'] ?>" class="group-tab-pane" style="display: none;">
+                <div class="iframe-loader" id="loader-cat-<?= $cat['id'] ?>" style="text-align: center; padding: 60px; color: #7f8c8d;">
+                    <i class="fas fa-spinner fa-spin fa-3x"></i><br><br><span style="margin-top:20px;display:block;font-size:16px;">Cargando interfaz de gestión...</span>
+                </div>
+                <!-- El iframe se cargará dinámicamente o puede dejarse aquí. -->
+                <iframe data-src="<?= $basePath ?>/categorias/gestion.php?categoria_id=<?= $cat['id'] ?>&periodo_id=<?= $defaultPeriodo ?>&embedded=true" 
+                        id="iframe-cat-<?= $cat['id'] ?>" 
+                        style="width: 100%; height: calc(100vh - 150px); border: none; display: none; background: transparent; overflow-y: scroll;" 
+                        onload="document.getElementById('loader-cat-<?= $cat['id'] ?>').style.display='none'; this.style.display='block';">
+                </iframe>
+            </div>
+            <?php endforeach; ?>
+        </div> <!-- Cierra group-tabs-content -->
+    </div> <!-- Cierra container principal -->
 
     <!-- Modal Generación por Lote -->
     <div id="modalGeneracionLote" class="modal" onclick="cerrarModal(event, 'modalGeneracionLote')">
@@ -235,12 +270,7 @@
                 </div>
                 <div class="gen-lote-tab-content active" id="gen-lote-tab-lista">
                     <div class="gen-lote-lista">
-                        <div class="gen-lote-head">
-                            <div>
-                                <strong>Estudiantes y categorías listos para generar</strong>
-                                <p class="gen-muted" id="genLoteResumenText">Cargando...</p>
-                            </div>
-                        </div>
+
 
                         <div id="genLoteListTabsContainer"></div>
 
@@ -250,33 +280,36 @@
                                 <span><span id="selectedCountGenLote">0</span> filas marcadas</span>
                             </div>
                             <div class="bulk-buttons">
-                                <button class="btn-bulk btn-bulk-cancel" onclick="quitarSeleccionadosGeneracionLote()" style="background: #e74c3c; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-size: 13px;">
+                                <button class="btn-bulk btn-bulk-cancel" onclick="quitarSeleccionadosGeneracionLote()">
                                     <i class="fas fa-user-times"></i> Quitar del lote
                                 </button>
                             </div>
                         </div>
 
-                        <div class="gen-lote-tools" style="display: flex; gap: 10px; margin: 0 14px 12px;">
-                            <div class="search-input-wrapper" style="border: 1px solid #ccc; border-radius: 8px; overflow: hidden; display: flex; align-items: center; padding: 0 10px; background: white; flex: 1;">
-                                <i class="fas fa-search" style="color: #7f8c8d;"></i>
-                                <input type="text" id="searchInputGenLote" placeholder="Buscar por nombre o cédula..." style="border: none; padding: 10px; width: 100%; outline: none;" oninput="filtrarGeneracionLote()">
+                        <div class="search-bar" style="margin: 0 14px 12px; display: flex; gap: 8px; flex-wrap: wrap;">
+                            <div style="flex: 2; min-width: 200px; position: relative;">
+                                <i class="fas fa-search" style="position: absolute; left: 15px; top: 50%; transform: translateY(-50%); color: #7f8c8d;"></i>
+                                <input type="text" class="search-input" id="searchInputGenLote" placeholder="Buscar por nombre o cédula..." style="width: 100%; padding-left: 40px;" oninput="filtrarGeneracionLote()">
                             </div>
 
-                            <div class="filter-group-gen-lote" style="width: 200px;">
-                                <select id="filterPeriodoGenLote" onchange="generacionLotePeriodoFiltro = this.value; currentPageGenLote = 1; renderGeneracionLoteTabla();" style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 8px; outline: none; background: white; font-family: inherit; color: #475569; appearance: auto;">
-                                    <option value="">Todos los períodos</option>
-                                </select>
+                            <div class="filter-group-gen-lote" style="flex: 1; min-width: 150px;">
+                                <div class="custom-select-wrapper" style="position: relative;">
+                                    <i class="fas fa-calendar-alt" style="position: absolute; left: 15px; top: 50%; transform: translateY(-50%); color: #7f8c8d;"></i>
+                                    <select id="filterPeriodoGenLote" class="search-input" onchange="cambiarPeriodoGeneracionLote(this.value)" style="width: 100%; padding-left: 40px; appearance: auto;">
+                                        <option value="">Sin períodos</option>
+                                    </select>
+                                </div>
                             </div>
 
-                            <div class="dropdown-filter" style="position: relative;">
+                            <div class="dropdown-filter">
                                 <button class="btn btn-outline" onclick="toggleDropdownFiltroGenLote()" id="btnFiltroGenLote">
                                     <i class="fas fa-filter"></i> <span id="filtroTextoGenLote">Todos</span> <i class="fas fa-caret-down" style="margin-left: 5px;"></i>
                                 </button>
-                                <div class="dropdown-filter-menu" id="dropdownFiltroGenLote" style="display: none; position: absolute; top: calc(100% + 5px); right: 0; left: auto; background: white; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-radius: 8px; border: 1px solid #eee; min-width: 200px; z-index: 1000; overflow: hidden;">
-                                    <a onclick="aplicarFiltroGeneracionLote('todos')" class="active" style="display: block; padding: 12px 15px; color: #2c3e50; text-decoration: none; border-bottom: 1px solid #eee; cursor: pointer;"><i class="fas fa-users" style="width: 20px; color: #3498db;"></i> Todos</a>
-                                    <a onclick="aplicarFiltroGeneracionLote('representante')" style="display: block; padding: 12px 15px; color: #2c3e50; text-decoration: none; border-bottom: 1px solid #eee; cursor: pointer;"><i class="fas fa-users" style="width: 20px; color: #2ecc71;"></i> Con Representante</a>
-                                    <a onclick="aplicarFiltroGeneracionLote('mayores')" style="display: block; padding: 12px 15px; color: #2c3e50; text-decoration: none; border-bottom: 1px solid #eee; cursor: pointer;"><i class="fas fa-user-graduate" style="width: 20px; color: #9b59b6;"></i> Mayores de edad</a>
-                                    <a onclick="aplicarFiltroGeneracionLote('destacados')" style="display: block; padding: 12px 15px; color: #2c3e50; text-decoration: none; cursor: pointer;"><i class="fas fa-star" style="width: 20px; color: #f1c40f;"></i> Destacados</a>
+                                <div class="dropdown-filter-menu" id="dropdownFiltroGenLote">
+                                    <a onclick="aplicarFiltroGeneracionLote('todos')" class="active"><i class="fas fa-users" style="width: 20px; color: #3498db;"></i> Todos</a>
+                                    <a onclick="aplicarFiltroGeneracionLote('representante')"><i class="fas fa-user-tie" style="width: 20px; color: #2ecc71;"></i> Con Representante</a>
+                                    <a onclick="aplicarFiltroGeneracionLote('mayores')"><i class="fas fa-user-graduate" style="width: 20px; color: #9b59b6;"></i> Mayores de edad</a>
+                                    <a onclick="aplicarFiltroGeneracionLote('destacados')"><i class="fas fa-star" style="width: 20px; color: #f1c40f;"></i> Destacados</a>
                                 </div>
                             </div>
                         </div>
@@ -301,13 +334,13 @@
                             </table>
                         </div>
 
-                        <div class="pagination-footer" id="paginationFooterGenLote" style="display: none; flex-wrap: nowrap !important; white-space: nowrap !important; justify-content: space-between; align-items: center; padding: 10px 14px 6px; min-width: 760px;">
-                            <div class="pagination-info" style="white-space: nowrap !important; flex-shrink: 0; margin-right: 15px;">
+                        <div class="pagination-footer" id="paginationFooterGenLote" style="display: none;">
+                            <div class="pagination-info">
                                 Mostrando <span id="pagStartGenLote">0</span> - <span id="pagEndGenLote">0</span> de <span id="pagTotalGenLote">0</span> registros
                             </div>
-                            <div class="pagination-controls" style="flex-wrap: nowrap !important; white-space: nowrap !important; flex-shrink: 0; display: flex; align-items: center; gap: 15px;">
-                                <div style="display: flex; align-items: center; gap: 5px;">
-                                    <label style="margin: 0;">Filas por página:</label>
+                            <div class="pagination-controls">
+                                <div>
+                                    <label>Filas por página:</label>
                                     <select id="rowsPerPageGenLote" onchange="cambiarFilasPorPaginaGeneracionLote(this.value)">
                                         <option value="10" selected>10</option>
                                         <option value="25">25</option>
@@ -348,10 +381,10 @@
                     <div style="color: #3498db;" title="Seleccionados Con Representante"><i class="fas fa-user-tie"></i> <span id="genLoteRepresentantes">0</span></div>
                 </div>
                 <div style="display:flex; gap:10px;">
-                    <button type="button" class="btn btn-secondary" style="padding: 12px 24px;" onclick="cerrarModal(null, 'modalGeneracionLote')">
+                    <button type="button" class="btn btn-secondary" onclick="cerrarModal(null, 'modalGeneracionLote')">
                         <i class="fas fa-times"></i> Cancelar
                     </button>
-                    <button type="button" id="btnConfirmGeneracionLote" class="btn" style="background: linear-gradient(135deg, var(--color-grupo), var(--color-grupo)); color: white; padding: 12px 24px; font-weight: 600;" onclick="confirmarGeneracionLote()">
+                    <button type="button" id="btnConfirmGeneracionLote" class="btn btn-primary" onclick="confirmarGeneracionLote()">
                         <i class="fas fa-cogs"></i> Generar Certificados
                     </button>
                 </div>
@@ -535,6 +568,73 @@
             </div>
             <div class="modal-body" id="modalReferenciasBody" style="padding: 25px;">
                 <!-- Contenido dinámico -->
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modal: Info Certificado Ampliada (Delegado desde Iframe) -->
+    <div class="modal" id="modalInfoCertificado" onclick="cerrarModal(event, 'modalInfoCertificado')">
+        <div class="modal-content" onclick="event.stopPropagation()" style="width: 95%; max-width: 1100px; padding: 0; border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; max-height: 90vh;">
+            <div class="modal-header" style="background-color: var(--color-grupo); padding: 15px 20px; margin: 0; flex-shrink: 0; display: flex; justify-content: space-between; align-items: center;">
+                <h3 style="color: white; margin: 0; font-size: 18px;"><i class="fas fa-certificate" style="color: #f1c40f;"></i> Detalles de Certificación</h3>
+                <button class="modal-close" onclick="cerrarModal(null, 'modalInfoCertificado')" style="background: rgba(255,255,255,0.2); color: white; border: none; font-size: 20px; cursor: pointer; border-radius: 50%; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;">&times;</button>
+            </div>
+            <div class="modal-body" style="padding: 0; display: flex; flex-direction: row; flex: 1; overflow: hidden; background: #f8f9fa;">
+                <!-- Panel lateral: Info -->
+                <div style="flex: 1; padding: 25px; border-right: 1px solid #e2e8f0; overflow-y: auto; background: white; max-width: 320px;">
+                    <div style="text-align: center; margin-bottom: 20px;">
+                        <h4 style="margin: 0; color: #2c3e50; font-size: 18px; font-weight: 600;" id="infoCertNombre">...</h4>
+                        <p style="margin: 4px 0 0 0; color: #7f8c8d; font-size: 14px;" id="infoCertCedula">...</p>
+                    </div>
+                    
+                    <div style="background: #f8f9fa; border-radius: 8px; padding: 15px; margin-bottom: 20px; border: 1px solid #e9ecef;">
+                        <div style="margin-bottom: 12px;">
+                            <span style="font-size: 11px; color: #95a5a6; text-transform: uppercase; font-weight: bold; letter-spacing: 0.5px; display: block; margin-bottom: 3px;">Código Oficial</span>
+                            <div style="font-family: 'Courier New', monospace; background: white; padding: 6px 10px; border-radius: 4px; border: 1px dashed #cbd5e1; color: #2c3e50; font-weight: 600; font-size: 16px;" id="infoCertCodigo">...</div>
+                        </div>
+                        <div style="margin-bottom: 12px;">
+                            <span style="font-size: 11px; color: #95a5a6; text-transform: uppercase; font-weight: bold; letter-spacing: 0.5px; display: block; margin-bottom: 3px;">Generado el</span>
+                            <div style="color: #34495e; font-size: 14px;" id="infoCertFecha">...</div>
+                        </div>
+                        <div>
+                            <span style="font-size: 11px; color: #95a5a6; text-transform: uppercase; font-weight: bold; letter-spacing: 0.5px; display: block; margin-bottom: 3px;">Categoría</span>
+                            <div style="color: #34495e; font-size: 14px; font-weight: 500;"><span id="infoCertCategoria">...</span></div>
+                        </div>
+                    </div>
+                    
+                    <div style="text-align: center; margin-bottom: 20px; padding: 15px; border: 1px dashed #cbd5e1; border-radius: 8px; background: #fff;">
+                        <span style="font-size: 11px; color: #95a5a6; text-transform: uppercase; font-weight: bold; letter-spacing: 0.5px; display: block; margin-bottom: 10px;">Código QR de Verificación</span>
+                        <div style="background: white; display: inline-block; padding: 5px; border-radius: 4px; border: 1px solid #e2e8f0; display: flex; justify-content: center;">
+                            <img id="infoCertQR" src="" alt="QR" style="width: 140px; height: 140px; object-fit: contain;">
+                        </div>
+                    </div>
+                    
+                    <div id="infoCertDestacadoBadge" style="display: none; background: #fff3cd; color: #856404; padding: 10px 15px; border-radius: 8px; border: 1px solid #ffeeba; margin-top: auto; text-align: center; font-weight: 500; font-size: 14px;">
+                        <i class="fas fa-star" style="color: #f1c40f; margin-right: 5px;"></i> Estudiante Destacado
+                    </div>
+                </div>
+                
+                <!-- Panel derecho: Iframe Preview -->
+                <div style="flex: 2; position: relative; background: #eef2f5; display: flex; flex-direction: column;">
+                    <div style="flex: 1; padding: 20px; display: flex; justify-content: center; align-items: flex-start; overflow-y: auto;">
+                        <div style="width: 100%; max-width: 800px; background: white; box-shadow: 0 10px 25px rgba(0,0,0,0.1); border-radius: 4px; overflow: hidden; position: relative; display: flex; flex-direction: column;">
+                            <!-- Mantenemos aspecto ratio forzado del A4 landscape aprox -->
+                            <div style="padding-top: 70.7%; position: relative; width: 100%;">
+                                <div id="infoCertPreviewLoader" style="position: absolute; inset: 0; background: rgba(255,255,255,0.9); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 10;">
+                                    <i class="fas fa-circle-notch fa-spin" style="font-size: 2.5rem; color: #3498db; margin-bottom: 15px;"></i>
+                                    <span style="color: #2c3e50; font-weight: 500;" id="infoCertPreviewLoaderText">Generando visualización previa...</span>
+                                </div>
+                                <img id="infoCertPreviewImg" src="" style="position: absolute; top:0; left:0; width: 100%; height: 100%; object-fit: contain; z-index: 5; display: none;" alt="Previsualización de Plantilla" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer" style="padding: 15px 25px; background: #f8f9fa; border-top: 1px solid #e2e8f0; display: flex; justify-content: flex-end; gap: 12px;">
+                <button type="button" class="btn btn-secondary" onclick="cerrarModal(null, 'modalInfoCertificado')" style="border: 1px solid #cbd5e1; background: white; color: #64748b; font-weight: 500;">Cerrar</button>
+                <div style="flex: 1;"></div>
+                <button onclick="descargarDesdeInfoModalPadre('imagen')" class="btn" style="background: #3498db; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: 600; display: inline-flex; align-items: center; gap: 8px;"><i class="fas fa-image"></i> Descargar Imagen PNG</button>
+                <button onclick="descargarDesdeInfoModalPadre('pdf')" class="btn" style="background: #e74c3c; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: 600; display: inline-flex; align-items: center; gap: 8px;"><i class="fas fa-file-pdf"></i> Descargar Original PDF</button>
             </div>
         </div>
     </div>

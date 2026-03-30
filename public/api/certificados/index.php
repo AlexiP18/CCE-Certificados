@@ -20,6 +20,21 @@ Auth::requireAuth();
 
 $pdo = getConnection();
 
+/**
+ * Resuelve la ruta absoluta de un archivo dentro de /public/uploads.
+ * Acepta formatos almacenados como "cert_xxx.ext" o "uploads/cert_xxx.ext".
+ */
+function resolveUploadsAbsolutePath($archivo) {
+    $archivo = trim((string)$archivo);
+    if ($archivo === '') return '';
+
+    if (strpos($archivo, 'uploads/') === 0) {
+        $archivo = substr($archivo, strlen('uploads/'));
+    }
+
+    return dirname(dirname(dirname(__DIR__))) . '/uploads/' . ltrim($archivo, '/');
+}
+
 // Obtener acción
 $action = $_POST['action'] ?? $_GET['action'] ?? '';
 
@@ -82,7 +97,7 @@ try {
             
             if ($cert) {
                 // Verificar si tiene imagen y si existe el archivo
-                $tieneImagen = !empty($cert['archivo_imagen']) && file_exists('../uploads/' . $cert['archivo_imagen']);
+                $tieneImagen = !empty($cert['archivo_imagen']) && file_exists(resolveUploadsAbsolutePath($cert['archivo_imagen']));
                 $cert['tiene_imagen'] = $tieneImagen;
                 
                 echo json_encode(['success' => true, 'certificado' => $cert]);
@@ -118,7 +133,7 @@ try {
                 }
                 
                 // Verificar si existe la imagen
-                $imagePath = __DIR__ . '/../uploads/' . ($cert['archivo_imagen'] ?? '');
+                $imagePath = resolveUploadsAbsolutePath($cert['archivo_imagen'] ?? '');
                 
                 if (!empty($cert['archivo_imagen']) && file_exists($imagePath)) {
                     // Devolver la imagen existente como base64
@@ -175,13 +190,15 @@ try {
             }
             
             // Eliminar archivo PDF si existe
-            if (!empty($cert['archivo_pdf']) && file_exists('../uploads/' . $cert['archivo_pdf'])) {
-                unlink('../uploads/' . $cert['archivo_pdf']);
+            $pdfPath = resolveUploadsAbsolutePath($cert['archivo_pdf'] ?? '');
+            if (!empty($cert['archivo_pdf']) && file_exists($pdfPath)) {
+                unlink($pdfPath);
             }
             
             // Eliminar archivo de imagen si existe
-            if (!empty($cert['archivo_imagen']) && file_exists('../uploads/' . $cert['archivo_imagen'])) {
-                unlink('../uploads/' . $cert['archivo_imagen']);
+            $imgPath = resolveUploadsAbsolutePath($cert['archivo_imagen'] ?? '');
+            if (!empty($cert['archivo_imagen']) && file_exists($imgPath)) {
+                unlink($imgPath);
             }
             
             // Eliminar registro de la base de datos

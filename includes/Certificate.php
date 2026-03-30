@@ -28,6 +28,50 @@ class Certificate {
         
         $this->loadConfig();
     }
+
+    /**
+     * Resuelve una ruta de archivo de assets/plantillas/firma/stickers
+     * buscando en esquemas antiguos y nuevos:
+     * - /uploads/...
+     * - /public/uploads/...
+     * - rutas absolutas o relativas ya completas
+     */
+    private function resolveUploadsAssetPath($path) {
+        $path = trim((string)$path);
+        if ($path === '') return null;
+
+        $path = str_replace('\\', '/', $path);
+        $projectRoot = dirname(__DIR__);
+        $publicRoot = $projectRoot . '/public';
+
+        $candidates = [];
+
+        // Ruta absoluta directa
+        if (strpos($path, '/') === 0) {
+            $candidates[] = $path;
+        }
+
+        $relative = ltrim($path, '/');
+        // Ruta relativa al proyecto (por si viene como public/uploads/...)
+        $candidates[] = $projectRoot . '/' . $relative;
+
+        if (strpos($relative, 'uploads/') === 0) {
+            $sub = substr($relative, strlen('uploads/'));
+            $candidates[] = $projectRoot . '/uploads/' . $sub;
+            $candidates[] = $publicRoot . '/uploads/' . $sub;
+        } else {
+            $candidates[] = $projectRoot . '/uploads/' . $relative;
+            $candidates[] = $publicRoot . '/uploads/' . $relative;
+        }
+
+        foreach (array_unique($candidates) as $candidate) {
+            if (is_file($candidate)) {
+                return $candidate;
+            }
+        }
+
+        return null;
+    }
     
     /**
      * Cargar configuración de plantilla activa (global)
@@ -295,25 +339,52 @@ class Certificate {
      * Cargar configuración específica de la categoría (tiene prioridad sobre el grupo)
      */
     private function loadCategoriaConfig($categoriaId) {
-        $stmt = $this->pdo->prepare("
-            SELECT c.*, g.plantilla as grupo_plantilla, g.firma_imagen as grupo_firma_imagen
-            FROM categorias c
-            INNER JOIN grupos g ON c.grupo_id = g.id
-            WHERE c.id = ? AND c.activo = 1
-        ");
-        $stmt->execute([$categoriaId]);
-        $categoria = $stmt->fetch();
+        // Compatibilidad entre esquemas: algunas instalaciones no tienen
+        // columnas legacy en grupos (ej. plantilla, firma_imagen).
+        try {
+            $stmt = $this->pdo->prepare("
+                SELECT c.*, g.plantilla as grupo_plantilla, g.firma_imagen as grupo_firma_imagen
+                FROM categorias c
+                INNER JOIN grupos g ON c.grupo_id = g.id
+                WHERE c.id = ? AND c.activo = 1
+            ");
+            $stmt->execute([$categoriaId]);
+            $categoria = $stmt->fetch();
+        } catch (\Throwable $e) {
+            error_log("loadCategoriaConfig fallback (schema): " . $e->getMessage());
+            $stmt = $this->pdo->prepare("
+                SELECT c.*, g.id as grupo_ref_id, g.nombre as grupo_ref_nombre
+                FROM categorias c
+                INNER JOIN grupos g ON c.grupo_id = g.id
+                WHERE c.id = ? AND c.activo = 1
+            ");
+            $stmt->execute([$categoriaId]);
+            $categoria = $stmt->fetch();
+        }
         
         if ($categoria) {
+            if (!array_key_exists('grupo_plantilla', $categoria)) {
+                $categoria['grupo_plantilla'] = null;
+            }
+            if (!array_key_exists('grupo_firma_imagen', $categoria)) {
+                $categoria['grupo_firma_imagen'] = null;
+            }
             // Guardar info de la categoría para variables de razón
             $this->categoriaInfo = $categoria;
         }
 
-        // NUEVO: Verificar primero si hay plantilla activa en categoria_plantillas (Sistema nuevo)
-        if ($categoria && $categoria['usar_plantilla_propia'] == 1) {
-            $stmt = $this->pdo->prepare("SELECT * FROM categoria_plantillas WHERE categoria_id = ? AND es_activa = 1 LIMIT 1");
-            $stmt->execute([$categoriaId]);
-            $plantillaActiva = $stmt->fetch();
+        // Verificar primero si hay plantilla activa en categoria_plantillas (sistema actual).
+        // Se prioriza la plantilla activa aunque usar_plantilla_propia sea 0
+        // para mantener compatibilidad con datos existentes.
+        if ($categoria) {
+            $plantillaActiva = null;
+            try {
+                $stmt = $this->pdo->prepare("SELECT * FROM categoria_plantillas WHERE categoria_id = ? AND es_activa = 1 LIMIT 1");
+                $stmt->execute([$categoriaId]);
+                $plantillaActiva = $stmt->fetch();
+            } catch (\Throwable $e) {
+                error_log("categoria_plantillas no disponible: " . $e->getMessage());
+            }
 
             if ($plantillaActiva) {
                  // Usar plantilla del nuevo sistema
@@ -359,7 +430,16 @@ class Certificate {
                  
                  // Firma
                  if (!empty($plantillaActiva['firma_imagen'])) {
-                     $this->config['firma_imagen'] = 'categorias/' . $categoriaId . '/firmas/' . $plantillaActiva['firma_imagen']; 
+                     $firmaImagen = ltrim((string)$plantillaActiva['firma_imagen'], '/');
+                     if (
+                        strpos($firmaImagen, 'uploads/') === 0
+                        || strpos($firmaImagen, 'categorias/') === 0
+                        || strpos($firmaImagen, 'public/uploads/') === 0
+                     ) {
+                        $this->config['firma_imagen'] = $firmaImagen;
+                     } else {
+                        $this->config['firma_imagen'] = 'categorias/' . $categoriaId . '/firmas/' . $firmaImagen;
+                     }
                  } elseif (!empty($plantillaActiva['firma_nombre'])) {
                      $this->config['firma_nombre'] = $plantillaActiva['firma_nombre'];
                      if (!empty($plantillaActiva['firma_cargo'])) $this->config['firma_cargo'] = $plantillaActiva['firma_cargo'];
@@ -392,8 +472,11 @@ class Certificate {
             // Verificar si la categoría tiene una plantilla propia VÁLIDA (que exista físicamente)
             $tieneTemplateValida = false;
             if (isset($categoria['plantilla_archivo']) && $categoria['plantilla_archivo'] !== '' && $categoria['plantilla_archivo'] !== null) {
-                $categoriaTemplatePath = dirname(__DIR__) . '/uploads/categorias/' . $categoria['plantilla_archivo'];
-                if (file_exists($categoriaTemplatePath)) {
+                $categoriaTemplatePath = $this->resolveUploadsAssetPath('categorias/' . $categoria['plantilla_archivo']);
+                if (!$categoriaTemplatePath) {
+                    $categoriaTemplatePath = $this->resolveUploadsAssetPath($categoria['plantilla_archivo']);
+                }
+                if ($categoriaTemplatePath && file_exists($categoriaTemplatePath)) {
                     $this->config['archivo_plantilla'] = 'categorias/' . $categoria['plantilla_archivo'];
                     $this->config['plantilla_desde_uploads'] = true;
                     $tieneTemplateValida = true;
@@ -755,15 +838,15 @@ class Certificate {
     private function generateImage($data, $codigo) {
         // Determinar ruta de la plantilla
         if (isset($this->config['plantilla_desde_uploads']) && $this->config['plantilla_desde_uploads']) {
-            // Plantilla del slider (desde uploads)
-            $templatePath = dirname(__DIR__) . '/uploads/' . $this->config['archivo_plantilla'];
+            // Plantilla del slider (compatibilidad: uploads y public/uploads)
+            $templatePath = $this->resolveUploadsAssetPath($this->config['archivo_plantilla']);
         } else {
             // Plantilla tradicional (desde assets/templates)
             $templatePath = dirname(__DIR__) . '/assets/templates/' . $this->config['archivo_plantilla'];
         }
         
         // Verificar que existe la plantilla
-        if (!file_exists($templatePath)) {
+        if (!$templatePath || !file_exists($templatePath)) {
             throw new \Exception("Plantilla no encontrada: " . $this->config['archivo_plantilla']);
         }
         
@@ -940,9 +1023,13 @@ class Certificate {
         
         // Insertar imagen de firma si está habilitada y existe
         if (in_array('firma', $variablesHabilitadas) && !empty($this->config['firma_imagen'])) {
-            // Buscar firma primero en assets/templates/ (categorías) y luego en assets/firmas/ (grupos)
+            // Buscar firma en uploads/public/uploads y luego fallback en assets
             $firmaFileName = $this->config['firma_imagen'];
-            $firmaPath = dirname(__DIR__) . '/assets/templates/' . $firmaFileName;
+            $firmaPath = $this->resolveUploadsAssetPath($firmaFileName);
+            
+            if (!$firmaPath || !file_exists($firmaPath)) {
+                $firmaPath = dirname(__DIR__) . '/assets/templates/' . ltrim($firmaFileName, '/');
+            }
             
             if (!file_exists($firmaPath)) {
                 $firmaPath = dirname(__DIR__) . '/assets/firmas/' . $firmaFileName;
@@ -1109,7 +1196,10 @@ class Certificate {
         // Determinar ruta del sticker
         if ($tipo === 'imagen' && !empty($this->config['destacado_imagen'])) {
             // Imagen personalizada
-            $stickerPath = dirname(__DIR__) . '/uploads/stickers/' . $this->config['destacado_imagen'];
+            $stickerPath = $this->resolveUploadsAssetPath('stickers/' . $this->config['destacado_imagen']);
+            if (!$stickerPath) {
+                $stickerPath = $this->resolveUploadsAssetPath($this->config['destacado_imagen']);
+            }
             error_log("Usando imagen personalizada: $stickerPath");
         } else {
             // Icono predeterminado
@@ -1887,11 +1977,16 @@ class Certificate {
             
             // Buscar si el estudiante está marcado como destacado
             $esDestacado = false;
-            $stmt = $this->pdo->prepare("SELECT destacado FROM estudiantes WHERE nombre = ? LIMIT 1");
-            $stmt->execute([$cert['nombre']]);
-            $estudiante = $stmt->fetch();
-            if ($estudiante) {
-                $esDestacado = (bool)$estudiante['destacado'];
+            try {
+                $stmt = $this->pdo->prepare("SELECT destacado FROM estudiantes WHERE nombre = ? LIMIT 1");
+                $stmt->execute([$cert['nombre']]);
+                $estudiante = $stmt->fetch();
+                if ($estudiante && array_key_exists('destacado', $estudiante)) {
+                    $esDestacado = (bool)$estudiante['destacado'];
+                }
+            } catch (\Throwable $e) {
+                // Compatibilidad con esquemas donde no existe la columna "destacado".
+                $esDestacado = false;
             }
             
             // Preparar datos
@@ -1904,8 +1999,9 @@ class Certificate {
                 'es_destacado' => $esDestacado
             ];
             
-            // Regenerar imagen
+            // Regenerar imagen y PDF para mantener ambos artefactos consistentes
             $imagePath = $this->generateImage($data, $codigo);
+            $pdfPath = $this->generatePDF($imagePath, $codigo);
             
             // Actualizar historial de fechas de generación
             $fechasGeneracion = [];
@@ -1917,14 +2013,15 @@ class Certificate {
                 'razon' => $razonRegeneracion ?: 'Regeneración manual'
             ];
             
-            // Actualizar registro en BD con nueva ruta y fechas
-            $stmt = $this->pdo->prepare("UPDATE certificados SET archivo_imagen = ?, fechas_generacion = ? WHERE codigo = ?");
-            $stmt->execute([basename($imagePath), json_encode($fechasGeneracion), $codigo]);
+            // Actualizar registro en BD con nuevas rutas y fechas
+            $stmt = $this->pdo->prepare("UPDATE certificados SET archivo_imagen = ?, archivo_pdf = ?, fechas_generacion = ? WHERE codigo = ?");
+            $stmt->execute([basename($imagePath), basename($pdfPath), json_encode($fechasGeneracion), $codigo]);
             
             return [
                 'success' => true,
                 'codigo' => $codigo,
-                'imagen_path' => $imagePath
+                'imagen_path' => $imagePath,
+                'pdf_path' => $pdfPath
             ];
             
         } catch (\Exception $e) {

@@ -41,6 +41,23 @@ function buildUploadsPublicUrl($archivoImagen) {
 }
 
 /**
+ * Resuelve la ruta absoluta de un archivo dentro de /public/uploads.
+ * Acepta valores guardados como:
+ * - "cert_xxx.png"
+ * - "uploads/cert_xxx.png"
+ */
+function resolveUploadsAbsolutePath($archivo) {
+    $archivo = trim((string)$archivo);
+    if ($archivo === '') return '';
+
+    if (strpos($archivo, 'uploads/') === 0) {
+        $archivo = substr($archivo, strlen('uploads/'));
+    }
+
+    return dirname(dirname(dirname(__DIR__))) . '/uploads/' . ltrim($archivo, '/');
+}
+
+/**
  * Compatibilidad: en esquemas nuevos existe aprobacion explicita.
  * Si las columnas no existen aun, este update se ignora sin romper flujo.
  */
@@ -172,7 +189,14 @@ try {
             
             // Verificar plantilla de categoría
             if ($categoria_id) {
-                if ($existeCategoriaPlantillas) {
+                // Verificar si la categoría usa su propia plantilla
+                $stmt = $pdo->prepare("SELECT usar_plantilla_propia FROM categorias WHERE id = ?");
+                $stmt->execute([$categoria_id]);
+                $catUsaPropia = $stmt->fetchColumn();
+                // Si la columna es NULL o 1, asume true (por defecto o activada). Si es explícitamente 0 (false), entonces no usa propia.
+                $usaPropia = ($catUsaPropia === false || $catUsaPropia === null || (int)$catUsaPropia === 1);
+                
+                if ($usaPropia && $existeCategoriaPlantillas) {
                     $stmt = $pdo->prepare("SELECT id, archivo, es_activa FROM categoria_plantillas WHERE categoria_id = ? AND es_activa = 1 LIMIT 1");
                     $stmt->execute([$categoria_id]);
                     $resultado['plantilla_categoria'] = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -1137,6 +1161,7 @@ try {
         case 'descargar_pdf':
             // Descargar PDF de un certificado por código
             $codigo = $data['codigo'] ?? $_GET['codigo'] ?? '';
+            $inline = (string)($data['inline'] ?? $_GET['inline'] ?? '0') === '1';
             
             if (empty($codigo)) {
                 throw new Exception('Código de certificado no proporcionado');
@@ -1154,7 +1179,7 @@ try {
             $certificate = new \CCE\Certificate($pdo);
             
             // Verificar si existe el archivo PDF
-            $pdfPath = __DIR__ . '/../uploads/' . ($cert['archivo_pdf'] ?? '');
+            $pdfPath = resolveUploadsAbsolutePath($cert['archivo_pdf'] ?? '');
             
             if (!$cert['archivo_pdf'] || !file_exists($pdfPath)) {
                 // Regenerar el certificado
@@ -1168,7 +1193,7 @@ try {
             
             // Enviar archivo
             header('Content-Type: application/pdf');
-            header('Content-Disposition: attachment; filename="' . $codigo . '.pdf"');
+            header('Content-Disposition: ' . ($inline ? 'inline' : 'attachment') . '; filename="' . $codigo . '.pdf"');
             header('Content-Length: ' . filesize($pdfPath));
             readfile($pdfPath);
             exit;
@@ -1176,6 +1201,7 @@ try {
         case 'descargar_imagen':
             // Descargar imagen de un certificado por código
             $codigo = $data['codigo'] ?? $_GET['codigo'] ?? '';
+            $inline = (string)($data['inline'] ?? $_GET['inline'] ?? '0') === '1';
             
             if (empty($codigo)) {
                 throw new Exception('Código de certificado no proporcionado');
@@ -1193,7 +1219,7 @@ try {
             $certificate = new \CCE\Certificate($pdo);
             
             // Verificar si existe el archivo de imagen
-            $imgPath = __DIR__ . '/../uploads/' . ($cert['archivo_imagen'] ?? '');
+            $imgPath = resolveUploadsAbsolutePath($cert['archivo_imagen'] ?? '');
             
             if (!$cert['archivo_imagen'] || !file_exists($imgPath)) {
                 // Regenerar el certificado
@@ -1207,7 +1233,7 @@ try {
             
             // Enviar archivo
             header('Content-Type: image/png');
-            header('Content-Disposition: attachment; filename="' . $codigo . '.png"');
+            header('Content-Disposition: ' . ($inline ? 'inline' : 'attachment') . '; filename="' . $codigo . '.png"');
             header('Content-Length: ' . filesize($imgPath));
             readfile($imgPath);
             exit;
