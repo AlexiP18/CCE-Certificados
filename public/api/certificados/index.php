@@ -19,6 +19,7 @@ header('Content-Type: application/json');
 Auth::requireAuth();
 
 $pdo = getConnection();
+$usuario = Auth::user();
 
 /**
  * Resuelve la ruta absoluta de un archivo dentro de /public/uploads.
@@ -147,7 +148,14 @@ try {
                 
                 // Regenerar el certificado si no existe imagen
                 ob_start();
-                $result = $certificate->regenerate($code);
+                $result = $certificate->regenerate(
+                    $code,
+                    '',
+                    [
+                        'usuario_id' => isset($usuario['id']) ? (int)$usuario['id'] : null,
+                        'usuario_nombre' => (string)($usuario['nombre_completo'] ?? $usuario['username'] ?? '')
+                    ]
+                );
                 ob_end_clean();
                 
                 if ($result && isset($result['success']) && $result['success'] && isset($result['imagen_path'])) {
@@ -271,7 +279,14 @@ try {
                 $certificate = new \CCE\Certificate($pdo);
                 
                 ob_start();
-                $result = $certificate->regenerate($codigo);
+                $result = $certificate->regenerate(
+                    $codigo,
+                    '',
+                    [
+                        'usuario_id' => isset($usuario['id']) ? (int)$usuario['id'] : null,
+                        'usuario_nombre' => (string)($usuario['nombre_completo'] ?? $usuario['username'] ?? '')
+                    ]
+                );
                 ob_end_clean();
                 
                 if ($result && isset($result['success']) && $result['success']) {

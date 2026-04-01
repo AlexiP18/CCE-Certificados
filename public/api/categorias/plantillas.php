@@ -488,7 +488,7 @@ switch ($action) {
                 $_POST['alineacion_razon'] ?? 'justified',
                 $_POST['posicion_destacado_x'] ?? 50,
                 $_POST['posicion_destacado_y'] ?? 50,
-                $_POST['tamanio_destacado'] ?? 100,
+                $_POST['destacado_tamanio'] ?? ($_POST['tamanio_destacado'] ?? 100),
                 $_POST['destacado_tipo'] ?? 'icono',
                 $_POST['destacado_icono'] ?? 'estrella',
                 $_POST['destacado_imagen'] ?? null,

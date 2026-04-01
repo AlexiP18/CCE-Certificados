@@ -199,6 +199,10 @@ async function fetchConfig() {
                     cfg.posicion_destacado_x = cfg.destacado_posicion_x;
                     cfg.posicion_destacado_y = cfg.destacado_posicion_y;
                 }
+                if ((cfg.destacado_tamanio === undefined || cfg.destacado_tamanio === null || cfg.destacado_tamanio === '')
+                    && cfg.tamanio_destacado !== undefined && cfg.tamanio_destacado !== null && cfg.tamanio_destacado !== '') {
+                    cfg.destacado_tamanio = cfg.tamanio_destacado;
+                }
                 cfg.plantilla_id = cfg.id;
                 mergeConfig(cfg);
             }
@@ -1169,6 +1173,10 @@ async function saveConfig() {
 
             if (k === 'variables_habilitadas') {
                 formData.append(k, JSON.stringify(State.config[k]));
+            } else if (k === 'destacado_tamanio') {
+                // Compatibilidad con endpoints legacy que esperan "tamanio_destacado"
+                formData.append('destacado_tamanio', State.config[k]);
+                formData.append('tamanio_destacado', State.config[k]);
             } else if (k === 'firma_imagen') {
                 // Send the filename (text), not a data URL
                 const val = State.config[k];

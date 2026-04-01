@@ -177,7 +177,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         case 'listar_matriculados':
             // Listar estudiantes matriculados con información de certificados
             $categoria_id = $_GET['categoria_id'] ?? 0;
-            $periodo_id = $_GET['periodo_id'] ?? null;
+            $periodo_id_raw = $_GET['periodo_id'] ?? null;
+            $periodo_todos = (is_string($periodo_id_raw) && strtolower(trim($periodo_id_raw)) === 'todos');
+            $periodo_id = $periodo_todos ? null : $periodo_id_raw;
+            $solo_aprobados = (int)($_GET['solo_aprobados'] ?? 0) === 1;
             
             if (!$categoria_id) {
                 echo json_encode(['success' => false, 'message' => 'ID de categoría requerido']);
@@ -200,25 +203,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                       rep.nombre as representante_nombre, rep.cedula as representante_cedula,
                       rep.celular as representante_celular, rep.email as representante_email, rep.fecha_nacimiento as representante_fecha_nacimiento,
                       e.representante_id,
-                      cert.codigo as certificado_codigo, cert.fecha as certificado_fecha, cert.id as certificado_id,
+                      CASE
+                          WHEN (
+                              NULLIF(TRIM(cert.archivo_pdf), '') IS NOT NULL
+                              OR NULLIF(TRIM(cert.archivo_imagen), '') IS NOT NULL
+                          ) THEN cert.codigo
+                          ELSE NULL
+                      END as certificado_codigo,
+                      cert.fecha as certificado_fecha,
+                      cert.id as certificado_id,
                       cert.estado as certificado_estado, cert.razon as certificado_razon,
                       cert.fecha_creacion as certificado_fecha_creacion, cert.archivo_pdf as certificado_archivo_pdf,
                       cert.archivo_imagen as certificado_archivo_imagen,
+                      cert.fechas_generacion as certificado_fechas_generacion,
+                      cert.aprobado as certificado_aprobado,
+                      cert.aprobado_por as certificado_aprobado_por,
+                      cert.fecha_aprobacion as certificado_fecha_aprobacion,
+                      ua.nombre_completo as certificado_aprobado_por_nombre,
                       (SELECT COUNT(*) FROM estudiantes_referencias er WHERE er.estudiante_id = e.id) as tiene_referencias
                 FROM categoria_estudiantes ce
                 INNER JOIN estudiantes e ON ce.estudiante_id = e.id
                 LEFT JOIN estudiantes rep ON e.representante_id = rep.id
-                LEFT JOIN certificados cert ON cert.nombre = e.nombre AND cert.categoria_id = ? AND cert.grupo_id = ? AND cert.periodo_id <=> ?
+                LEFT JOIN certificados cert ON cert.nombre = e.nombre AND cert.categoria_id = ? AND cert.grupo_id = ? AND cert.periodo_id <=> ce.periodo_id
+                LEFT JOIN usuarios ua ON cert.aprobado_por = ua.id
                 WHERE ce.categoria_id = ?
             ";
             
-            $params = [$categoria_id, $grupo_id, $periodo_id, $categoria_id];
+            $params = [$categoria_id, $grupo_id, $categoria_id];
             
-            if ($periodo_id) {
+            if ($periodo_todos) {
+                // Sin filtro de período: traer todos los períodos de la categoría.
+            } else if ($periodo_id) {
                 $sql .= " AND ce.periodo_id = ?";
                 $params[] = $periodo_id;
             } else {
                 $sql .= " AND ce.periodo_id IS NULL";
+            }
+
+            if ($solo_aprobados) {
+                // En vistas embebidas del grupo solo mostrar estudiantes con certificado aprobado/generado.
+                $sql .= " AND cert.id IS NOT NULL";
             }
             
             $sql .= " ORDER BY e.nombre ASC";

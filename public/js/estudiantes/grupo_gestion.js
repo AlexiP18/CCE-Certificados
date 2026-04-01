@@ -28,6 +28,12 @@ let totalPagesGenLote = 1;
 let lastFilteredGenLote = [];
 let filtroCategoriaAnterior = '';
 let filtroPeriodoAnterior = '';
+let generacionLoteOcultarFiltroPeriodo = false;
+let generacionLoteCategoriaContextoId = null;
+let editCertificadosCache = [];
+let infoEstudianteCategorias = [];
+let infoEstudianteCertificados = [];
+let infoEstudianteDescargaCodigo = '';
 
 document.addEventListener('DOMContentLoaded', () => {
     actualizarModoFiltro();
@@ -104,6 +110,52 @@ function switchGroupTab(tabId, btn = null) {
             iframe.style.display = 'block';
         }
     }
+}
+
+function obtenerCategoriaActivaEnTabs() {
+    const paneActivo = document.querySelector('.group-tab-pane.active');
+    if (!paneActivo) return null;
+
+    const match = String(paneActivo.id || '').match(/^tab-cat-(\d+)$/);
+    if (!match) return null;
+
+    const categoriaId = Number(match[1]);
+    return Number.isFinite(categoriaId) && categoriaId > 0 ? categoriaId : null;
+}
+
+function construirUrlConCacheBuster(rawUrl) {
+    const base = String(rawUrl || '').trim();
+    if (!base) return '';
+
+    try {
+        const url = new URL(base, window.location.href);
+        url.searchParams.set('_refresh', String(Date.now()));
+        return url.pathname + url.search + url.hash;
+    } catch (e) {
+        const sep = base.includes('?') ? '&' : '?';
+        return `${base}${sep}_refresh=${Date.now()}`;
+    }
+}
+
+function refrescarSlideCategoria(categoriaId = null) {
+    const categoriaNum = normalizarCategoriaForzada(categoriaId) || obtenerCategoriaActivaEnTabs();
+    if (!categoriaNum) return false;
+
+    const iframe = document.getElementById(`iframe-cat-${categoriaNum}`);
+    const loader = document.getElementById(`loader-cat-${categoriaNum}`);
+    if (!iframe) return false;
+
+    const srcActual = iframe.getAttribute('src');
+    const srcBase = srcActual || iframe.getAttribute('data-src') || '';
+    if (!String(srcBase).trim()) return false;
+
+    const nextSrc = construirUrlConCacheBuster(srcBase);
+    if (!nextSrc) return false;
+
+    if (loader) loader.style.display = 'block';
+    iframe.style.display = 'none';
+    iframe.setAttribute('src', nextSrc);
+    return true;
 }
 
 // ========== PAGINATION ==========
@@ -312,6 +364,7 @@ function prepararJerarquia(lista) {
 function renderTabla() {
     const tbody = document.getElementById('estudiantesBody');
     const footer = document.getElementById('paginationFooter');
+    const colspanTabla = 9;
 
     const totalItems = datosPaginados.length;
     let inicio = 0;
@@ -337,7 +390,7 @@ function renderTabla() {
     if (totalItems === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="8" class="empty-state" style="text-align:center; padding: 40px;">
+                <td colspan="${colspanTabla}" class="empty-state" style="text-align:center; padding: 40px;">
                     <i class="fas fa-inbox" style="font-size: 40px; color: #cbd5e0; margin-bottom: 10px;"></i>
                     <h3 style="margin: 0; color: #7f8c8d;">No se encontraron estudiantes</h3>
                     <p style="margin: 5px 0 0; color: #95a5a6;">Intenta con otros filtros de búsqueda</p>
@@ -451,7 +504,9 @@ function buildCeldasDatos(est) {
                 });
             }
         });
-        categoriasHtml = Object.values(catsGrouped).map(cat => {
+        categoriasHtml = Object.values(catsGrouped)
+            .sort((a, b) => String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es', { sensitivity: 'base', numeric: true }))
+            .map(cat => {
             cat.periodos.sort((a,b) => a.fecha < b.fecha ? -1 : 1);
             
             const tieneDestacado = cat.periodos.some(p => p.es_destacado);
@@ -476,6 +531,37 @@ function buildCeldasDatos(est) {
         }).join('<br>');
     }
 
+    // Períodos (solo para contexto "Todos" de categoría)
+    let periodosHtml = '<span style="color:#95a5a6;">-</span>';
+    if (est.categorias && est.categorias.length > 0) {
+        const periodosMap = {};
+        est.categorias.forEach(c => {
+            const key = c.periodo_id == null ? `null:${c.periodo || ''}` : String(c.periodo_id);
+            if (!periodosMap[key]) {
+                periodosMap[key] = {
+                    nombre: c.periodo || 'Sin período',
+                    fecha: c.fecha_inicio || '9999-12-31',
+                    es_destacado: false
+                };
+            }
+            const destacado = c.es_destacado == 1 || c.es_destacado === '1' || c.es_destacado === true;
+            if (destacado) periodosMap[key].es_destacado = true;
+        });
+
+        periodosHtml = Object.values(periodosMap)
+            .sort((a, b) => {
+                const fa = String(a.fecha || '9999-12-31');
+                const fb = String(b.fecha || '9999-12-31');
+                if (fa !== fb) return fa < fb ? -1 : 1;
+                return String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es', { sensitivity: 'base', numeric: true });
+            })
+            .map(p => {
+                const iconoEstrella = p.es_destacado ? ' <i class="fas fa-star"></i>' : '';
+                return `<span class="badge badge-categoria" style="display:inline-flex;width:fit-content;">${escapeHtml(p.nombre)}${iconoEstrella}</span>`;
+            })
+            .join('<br>');
+    }
+
     // Contacto
     const esMenor = est.es_menor == 1;
     let contactoHtml = '<div style="display:flex;flex-direction:column;gap:4px;align-items:flex-start;">';
@@ -494,7 +580,7 @@ function buildCeldasDatos(est) {
     }
     contactoHtml += '</div>';
 
-    return { edadHtml, fechaRegistroHtml, categoriasHtml, contactoHtml, historialHtml };
+    return { edadHtml, fechaRegistroHtml, categoriasHtml, periodosHtml, contactoHtml, historialHtml };
 }
 
 function buildEstudianteRowHtml(est, repUniqueId, hasMenores, representantesCedulas) {
@@ -513,6 +599,10 @@ function buildEstudianteRowHtml(est, repUniqueId, hasMenores, representantesCedu
         : '';
 
     const { edadHtml, fechaRegistroHtml, categoriasHtml, contactoHtml, historialHtml } = buildCeldasDatos(est);
+    const generarHabilitado = esContextoGeneracionEspecifico();
+    const botonGenerar = generarHabilitado
+        ? `<button class="btn-icon btn-view" onclick="abrirModalGeneracionLote([${est.id}])" title="Generar Certificados" style="color:#00348a;background:#e8f0fe;"><i class="fas fa-certificate"></i></button>`
+        : `<button class="btn-icon btn-view" disabled title="Selecciona categoría y período específico para generar" style="color:#9ca3af;background:#f3f4f6;cursor:not-allowed;"><i class="fas fa-certificate"></i></button>`;
 
     return `
         <tr class="${rowClass.trim()}">
@@ -541,7 +631,8 @@ function buildEstudianteRowHtml(est, repUniqueId, hasMenores, representantesCedu
             <td style="text-align:center;">${historialHtml}</td>
             <td class="sticky-col sticky-right" style="text-align:right;">
                 <div class="actions-cell" style="justify-content:flex-end;">
-                    <button class="btn-icon btn-view" onclick="abrirModalGeneracionLote([${est.id}])" title="Generar Certificados" style="color:#00348a;background:#e8f0fe;"><i class="fas fa-certificate"></i></button>
+                    ${botonGenerar}
+                    <button class="btn-icon btn-view" onclick="verInfoEstudiante(${est.id})" title="Ver información"><i class="fas fa-eye"></i></button>
                     <button class="btn-icon btn-edit" onclick="editarEstudiante(${est.id})" title="Editar"><i class="fas fa-edit"></i></button>
                     <button class="btn-icon btn-delete" onclick="eliminarEstudiante(${est.id})" title="Quitar"><i class="fas fa-user-minus"></i></button>
                 </div>
@@ -555,6 +646,10 @@ function buildMenorRowHtml(est, repUniqueId) {
     const isSelected = estudiantesSeleccionados.has(String(est.id));
 
     const { edadHtml, fechaRegistroHtml, categoriasHtml, contactoHtml, historialHtml } = buildCeldasDatos(est);
+    const generarHabilitado = esContextoGeneracionEspecifico();
+    const botonGenerar = generarHabilitado
+        ? `<button class="btn-icon btn-view" onclick="abrirModalGeneracionLote([${est.id}])" title="Generar Certificados" style="color:#00348a;background:#e8f0fe;"><i class="fas fa-certificate"></i></button>`
+        : `<button class="btn-icon btn-view" disabled title="Selecciona categoría y período específico para generar" style="color:#9ca3af;background:#f3f4f6;cursor:not-allowed;"><i class="fas fa-certificate"></i></button>`;
 
     const rowClass = (isSelected ? 'row-selected ' : '') + `estudiante-menor menor-de-${repUniqueId}`;
 
@@ -585,7 +680,8 @@ function buildMenorRowHtml(est, repUniqueId) {
             <td style="text-align:center;">${historialHtml}</td>
             <td class="sticky-col sticky-right" style="text-align:right;">
                 <div class="actions-cell" style="justify-content:flex-end;">
-                    <button class="btn-icon btn-view" onclick="abrirModalGeneracionLote([${est.id}])" title="Generar Certificados" style="color:#00348a;background:#e8f0fe;"><i class="fas fa-certificate"></i></button>
+                    ${botonGenerar}
+                    <button class="btn-icon btn-view" onclick="verInfoEstudiante(${est.id})" title="Ver información"><i class="fas fa-eye"></i></button>
                     <button class="btn-icon btn-edit" onclick="editarEstudiante(${est.id})" title="Editar"><i class="fas fa-edit"></i></button>
                     <button class="btn-icon btn-delete" onclick="eliminarEstudiante(${est.id})" title="Quitar"><i class="fas fa-user-minus"></i></button>
                 </div>
@@ -621,6 +717,9 @@ function buildRepresentanteVirtualRowHtml(fila, repUniqueId) {
     const accionesHtml = fila.representante_id
         ? `
             <div class="actions-cell" style="justify-content:flex-end;">
+                <button class="btn-icon btn-view" onclick="verInfoEstudiante(${fila.representante_id})" title="Ver información">
+                    <i class="fas fa-eye"></i>
+                </button>
                 <button class="btn-icon btn-edit" onclick="editarEstudiante(${fila.representante_id})" title="Editar Representante">
                     <i class="fas fa-edit"></i>
                 </button>
@@ -675,6 +774,456 @@ function toggleMenores(repUniqueId) {
     if (toggleEl) {
         toggleEl.classList.toggle('fa-chevron-down', !isHidden);
         toggleEl.classList.toggle('fa-chevron-right', isHidden);
+    }
+}
+
+function parseCategoriasDesdeEnrollmentDataGrupo(enrollmentRaw) {
+    const raw = String(enrollmentRaw || '').trim();
+    if (!raw) return [];
+
+    const categorias = [];
+    raw.split('||').forEach(chunk => {
+        const p = chunk.split('##');
+        if (p.length < 11) return;
+
+        const grupoIdChunk = String(p[0] || '').trim();
+        if (grupoIdChunk && String(grupoIdChunk) !== String(grupoId)) return;
+
+        categorias.push({
+            id: p[4] ? Number(p[4]) : null,
+            nombre: p[5] || 'Sin categoría',
+            icono: p[6] || '📁',
+            color: p[2] || '#3498db',
+            periodo: p[7] || 'Sin período',
+            periodo_id: null,
+            es_destacado: Number(p[8] || 0) === 1,
+            fecha_inicio: p[9] || '0000-00-00',
+            fecha_matricula: p[10] || '',
+            estado: '',
+            cert_aprobado: 0,
+            cert_generado: 0
+        });
+    });
+
+    return categorias;
+}
+
+function agruparCategoriasParaInfoModal(categoriasRaw, certificadosRaw) {
+    const categorias = Array.isArray(categoriasRaw) ? categoriasRaw.slice() : [];
+    const certificados = Array.isArray(certificadosRaw) ? certificadosRaw : [];
+
+    // Asegurar que categorías/períodos presentes en certificados también aparezcan en el modal.
+    certificados.forEach(cert => {
+        const categoriaId = cert?.categoria_id != null ? Number(cert.categoria_id) : null;
+        const categoriaNombre = String(cert?.categoria_nombre || '').trim() || 'Sin categoría';
+        const periodoId = cert?.periodo_id != null ? Number(cert.periodo_id) : null;
+        const periodoNombre = String(cert?.periodo_nombre || '').trim() || 'Sin período';
+
+        const yaExiste = categorias.some(cat =>
+            String(cat?.id ?? '') === String(categoriaId ?? '')
+            && String(cat?.periodo_id ?? 'null') === String(periodoId ?? 'null')
+            && String(cat?.periodo || '').trim().toLowerCase() === periodoNombre.toLowerCase()
+        );
+        if (yaExiste) return;
+
+        categorias.push({
+            id: categoriaId,
+            nombre: categoriaNombre,
+            icono: cert?.categoria_icono || '📁',
+            color: cert?.categoria_color || '#3498db',
+            periodo: periodoNombre,
+            periodo_id: periodoId,
+            es_destacado: Number(cert?.es_destacado || 0) === 1,
+            fecha_inicio: cert?.periodo_fecha_inicio || '0000-00-00',
+            fecha_matricula: '',
+            estado: '',
+            cert_aprobado: 1,
+            cert_generado: 1
+        });
+    });
+
+    const certByKey = new Map();
+    const certByName = new Map();
+    certificados.forEach(cert => {
+        const catId = cert?.categoria_id != null ? String(cert.categoria_id) : '';
+        const perId = cert?.periodo_id != null ? String(cert.periodo_id) : 'null';
+        const key = `${catId}__${perId}`;
+        if (!certByKey.has(key)) certByKey.set(key, cert);
+
+        const perName = String(cert?.periodo_nombre || '').trim().toLowerCase();
+        if (catId && perName) {
+            const keyName = `${catId}__${perName}`;
+            if (!certByName.has(keyName)) certByName.set(keyName, cert);
+        }
+    });
+
+    const map = {};
+    categorias.forEach(cat => {
+        const key = String(cat.id || cat.nombre || '').trim().toLowerCase() || 'sin_categoria';
+        if (!map[key]) {
+            map[key] = {
+                key,
+                id: cat.id || null,
+                nombre: cat.nombre || 'Sin categoría',
+                icono: cat.icono || '📁',
+                color: cat.color || '#3498db',
+                periodos: [],
+                _periodosMap: {}
+            };
+        }
+
+        const periodoNombre = cat.periodo || 'Sin período';
+        const periodoId = cat.periodo_id != null ? cat.periodo_id : null;
+        const periodoKey = `${periodoId == null ? 'null' : periodoId}::${periodoNombre}`;
+        let periodo = map[key]._periodosMap[periodoKey];
+        if (!periodo) {
+            periodo = {
+                periodo_id: periodoId,
+                nombre: periodoNombre,
+                fecha_inicio: cat.fecha_inicio || '0000-00-00',
+                fecha_matricula: cat.fecha_matricula || '',
+                estado: String(cat.estado || '').trim() || 'activo',
+                es_destacado: Number(cat.es_destacado || 0) === 1,
+                cert_aprobado: Number(cat.cert_aprobado || 0) === 1,
+                cert_generado: Number(cat.cert_generado || 0) === 1,
+                certificado: null
+            };
+            map[key].periodos.push(periodo);
+            map[key]._periodosMap[periodoKey] = periodo;
+        } else {
+            if (Number(cat.es_destacado || 0) === 1) periodo.es_destacado = true;
+            if (Number(cat.cert_aprobado || 0) === 1) periodo.cert_aprobado = true;
+            if (Number(cat.cert_generado || 0) === 1) periodo.cert_generado = true;
+            if (!periodo.fecha_matricula && cat.fecha_matricula) periodo.fecha_matricula = cat.fecha_matricula;
+            if ((!periodo.fecha_inicio || periodo.fecha_inicio === '0000-00-00') && cat.fecha_inicio) periodo.fecha_inicio = cat.fecha_inicio;
+        }
+    });
+
+    const categoriasOut = Object.values(map).map(cat => {
+        cat.periodos.forEach(periodo => {
+            const catId = cat.id != null ? String(cat.id) : '';
+            const perId = periodo.periodo_id != null ? String(periodo.periodo_id) : 'null';
+            const certByExact = certByKey.get(`${catId}__${perId}`);
+            const certByPeriodoNombre = certByName.get(`${catId}__${String(periodo.nombre || '').trim().toLowerCase()}`);
+            const cert = certByExact || certByPeriodoNombre || null;
+            if (cert) {
+                periodo.certificado = cert;
+                periodo.cert_aprobado = true;
+                const hasRenderedFiles = Boolean(String(cert?.archivo_pdf || '').trim() || String(cert?.archivo_imagen || '').trim());
+                periodo.cert_generado = Boolean(periodo.cert_generado || hasRenderedFiles);
+            }
+        });
+
+        cat.periodos.sort((a, b) => {
+            const fa = String(a.fecha_inicio || '0000-00-00');
+            const fb = String(b.fecha_inicio || '0000-00-00');
+            if (fa !== fb) return fa < fb ? -1 : 1;
+            return String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es', { sensitivity: 'base' });
+        });
+
+        delete cat._periodosMap;
+        return cat;
+    }).sort((a, b) => String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es', { sensitivity: 'base' }));
+
+    return categoriasOut;
+}
+
+function getEstadoCertificadoPeriodo(periodo) {
+    if (periodo?.cert_generado) return { label: 'Generado', css: 'is-generado' };
+    if (periodo?.cert_aprobado) return { label: 'Aprobado', css: 'is-aprobado' };
+    return { label: 'Pendiente', css: 'is-pendiente' };
+}
+
+function actualizarFooterInfoEstudiante(codigo = '', puedeDescargar = false) {
+    const btnPdf = document.getElementById('infoEstudianteBtnPdf');
+    const btnPng = document.getElementById('infoEstudianteBtnPng');
+    const code = String(codigo || '').trim();
+    const enabled = Boolean(puedeDescargar && code);
+    infoEstudianteDescargaCodigo = enabled ? code : '';
+
+    [btnPdf, btnPng].forEach(btn => {
+        if (!btn) return;
+        btn.disabled = !enabled;
+        btn.style.opacity = enabled ? '1' : '.55';
+        btn.style.cursor = enabled ? 'pointer' : 'not-allowed';
+        btn.title = enabled ? 'Descargar certificado generado' : 'Disponible solo cuando el certificado esté en estado Generado';
+    });
+}
+
+function descargarInfoEstudianteModal(tipo = 'pdf') {
+    const code = String(infoEstudianteDescargaCodigo || '').trim();
+    if (!code) {
+        mostrarNotificacion('Este período no tiene certificado generado para descargar', 'warning');
+        return;
+    }
+    descargarCertificadoDesdeResumen(code, tipo);
+}
+
+function renderInfoEstudianteModal(estudiante, categorias, certificados) {
+    const tabs = document.getElementById('infoEstudianteTabs');
+    const slides = document.getElementById('infoEstudianteSlides');
+    const nombreEl = document.getElementById('infoEstudianteNombre');
+    const cedulaEl = document.getElementById('infoEstudianteCedula');
+    const totalCatsEl = document.getElementById('infoEstudianteTotalCategorias');
+    const totalPersEl = document.getElementById('infoEstudianteTotalPeriodos');
+
+    if (!tabs || !slides) return;
+
+    if (nombreEl) nombreEl.textContent = estudiante?.nombre || 'Estudiante';
+    if (cedulaEl) cedulaEl.textContent = estudiante?.cedula ? `Cédula: ${estudiante.cedula}` : 'Cédula: —';
+
+    const totalPeriodos = categorias.reduce((acc, cat) => acc + (Array.isArray(cat.periodos) ? cat.periodos.length : 0), 0);
+    if (totalCatsEl) totalCatsEl.textContent = String(categorias.length);
+    if (totalPersEl) totalPersEl.textContent = String(totalPeriodos);
+
+    if (!categorias.length) {
+        tabs.innerHTML = '';
+        slides.innerHTML = '<div class="edit-categorias-empty" style="padding: 26px;"><i class="fas fa-folder-open"></i> Este estudiante no tiene categorías registradas en este grupo.</div>';
+        actualizarFooterInfoEstudiante('', false);
+        return;
+    }
+
+    const tabHtml = categorias.map((cat, index) => {
+        const active = index === 0 ? 'active' : '';
+        return `
+            <button type="button" class="info-estudiante-tab ${active}" onclick="switchInfoEstudianteCategoria(${index}, this)">
+                <span>${renderIconoCategoriaModal(cat.icono)}</span>
+                <span>${escapeHtml(cat.nombre)}</span>
+                <span class="info-estudiante-tab-count">${Array.isArray(cat.periodos) ? cat.periodos.length : 0}</span>
+            </button>
+        `;
+    }).join('');
+    tabs.innerHTML = tabHtml;
+
+    const slideHtml = categorias.map((cat, index) => {
+        const active = index === 0 ? 'active' : '';
+        const periodos = Array.isArray(cat.periodos) ? cat.periodos : [];
+        const periodosHtml = periodos.map((periodo, periodIndex) => {
+            const activeBadge = periodIndex === 0 ? 'active' : '';
+            const tieneCert = !!String(periodo?.certificado?.codigo || '').trim();
+            return `
+                <button type="button" class="info-periodo-badge ${activeBadge}" data-period-index="${periodIndex}" onclick="switchInfoPeriodoBadge(${index}, ${periodIndex}, this)">
+                    <i class="far fa-calendar-alt"></i>
+                    <span>${escapeHtml(periodo.nombre || 'Sin período')}</span>
+                    ${periodo.es_destacado ? '<i class="fas fa-star info-periodo-badge-star"></i>' : ''}
+                    ${tieneCert ? '<i class="fas fa-certificate info-periodo-badge-cert"></i>' : ''}
+                </button>
+            `;
+        }).join('');
+
+        return `
+            <section class="info-estudiante-slide ${active}" data-slide-index="${index}">
+                <div class="info-periodo-badges-wrap">
+                    ${periodosHtml || '<div class="edit-categorias-empty"><i class="fas fa-calendar-times"></i> No hay períodos registrados para esta categoría.</div>'}
+                </div>
+                <div class="info-periodo-detail" id="infoPeriodoDetail-${index}">
+                    <div class="edit-categorias-empty"><i class="fas fa-spinner fa-spin"></i> Cargando período...</div>
+                </div>
+            </section>
+        `;
+    }).join('');
+
+    slides.innerHTML = slideHtml;
+    switchInfoEstudianteCategoria(0, tabs.querySelector('.info-estudiante-tab.active') || tabs.querySelector('.info-estudiante-tab'));
+}
+
+function switchInfoEstudianteCategoria(index, btn) {
+    const idx = Number(index);
+    if (!Number.isFinite(idx) || idx < 0) return;
+
+    document.querySelectorAll('#infoEstudianteTabs .info-estudiante-tab').forEach(tab => tab.classList.remove('active'));
+    document.querySelectorAll('#infoEstudianteSlides .info-estudiante-slide').forEach(slide => slide.classList.remove('active'));
+
+    if (btn) btn.classList.add('active');
+    const slide = document.querySelector(`#infoEstudianteSlides .info-estudiante-slide[data-slide-index="${idx}"]`);
+    if (!slide) return;
+
+    slide.classList.add('active');
+    const selectedBadge = slide.querySelector('.info-periodo-badge.active') || slide.querySelector('.info-periodo-badge');
+    if (selectedBadge) {
+        const selectedPeriodIndex = Number(selectedBadge.dataset.periodIndex || 0);
+        switchInfoPeriodoBadge(idx, Number.isFinite(selectedPeriodIndex) ? selectedPeriodIndex : 0, selectedBadge);
+    } else {
+        actualizarFooterInfoEstudiante('', false);
+        const detail = document.getElementById(`infoPeriodoDetail-${idx}`);
+        if (detail) {
+            detail.innerHTML = '<div class="edit-categorias-empty"><i class="fas fa-calendar-times"></i> No hay períodos registrados para esta categoría.</div>';
+        }
+    }
+}
+
+function switchInfoPeriodoBadge(catIndex, periodIndex, btn) {
+    const cIdx = Number(catIndex);
+    const pIdx = Number(periodIndex);
+    if (!Number.isFinite(cIdx) || cIdx < 0 || !Number.isFinite(pIdx) || pIdx < 0) return;
+
+    const slide = document.querySelector(`#infoEstudianteSlides .info-estudiante-slide[data-slide-index="${cIdx}"]`);
+    if (!slide) return;
+    slide.querySelectorAll('.info-periodo-badge').forEach(badge => badge.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+
+    renderInfoPeriodoDetalle(cIdx, pIdx);
+}
+
+async function renderInfoPeriodoDetalle(catIndex, periodIndex) {
+    const detail = document.getElementById(`infoPeriodoDetail-${catIndex}`);
+    if (!detail) return;
+
+    const categoria = Array.isArray(infoEstudianteCategorias) ? infoEstudianteCategorias[catIndex] : null;
+    const periodos = Array.isArray(categoria?.periodos) ? categoria.periodos : [];
+    const periodo = periodos[periodIndex] || null;
+    if (!categoria || !periodo) {
+        detail.innerHTML = '<div class="edit-categorias-empty"><i class="fas fa-calendar-times"></i> Información de período no disponible.</div>';
+        return;
+    }
+
+    const estadoCert = getEstadoCertificadoPeriodo(periodo);
+    const cert = periodo.certificado || null;
+    const codigoCert = String(cert?.codigo || '').trim();
+    const hasRenderedFiles = Boolean(String(cert?.archivo_pdf || '').trim() || String(cert?.archivo_imagen || '').trim());
+    const puedeDescargar = Boolean(codigoCert && (periodo?.cert_generado || hasRenderedFiles));
+    const puedePrevisualizar = puedeDescargar;
+    actualizarFooterInfoEstudiante(codigoCert, puedeDescargar);
+    const certFecha = formatearFechaModalGrupo(cert?.fecha || '');
+    const previewImgId = `infoPeriodoPreviewImg-${catIndex}-${periodIndex}`;
+    const previewLoaderId = `infoPeriodoPreviewLoader-${catIndex}-${periodIndex}`;
+    const previewTextId = `infoPeriodoPreviewText-${catIndex}-${periodIndex}`;
+
+    detail.innerHTML = `
+        <article class="info-periodo-card">
+            <div class="info-periodo-layout">
+                <div class="info-periodo-layout-left">
+                    <div class="info-periodo-header">
+                        <span class="info-periodo-name"><i class="far fa-calendar-alt"></i> ${escapeHtml(periodo.nombre || 'Sin período')}</span>
+                        ${periodo.es_destacado ? '<span class="info-periodo-star"><i class="fas fa-star"></i> Destacado</span>' : ''}
+                    </div>
+                    <div class="info-periodo-stack">
+                        <div class="info-periodo-row">
+                            <span class="info-periodo-row-label">Inicio del período</span>
+                            <strong class="info-periodo-row-value">${escapeHtml(formatearFechaModalGrupo(periodo.fecha_inicio || ''))}</strong>
+                        </div>
+                        <div class="info-periodo-row">
+                            <span class="info-periodo-row-label">Fecha de matrícula</span>
+                            <strong class="info-periodo-row-value">${escapeHtml(formatearFechaModalGrupo(periodo.fecha_matricula || ''))}</strong>
+                        </div>
+                        <div class="info-periodo-row">
+                            <span class="info-periodo-row-label">Estado de matrícula</span>
+                            <strong class="info-periodo-row-value">${escapeHtml(String(periodo.estado || 'activo'))}</strong>
+                        </div>
+                        <div class="info-periodo-row">
+                            <span class="info-periodo-row-label">Estado de certificado</span>
+                            <strong class="info-periodo-row-value"><span class="info-cert-status ${estadoCert.css}">${estadoCert.label}</span></strong>
+                        </div>
+                        <div class="info-periodo-row">
+                            <span class="info-periodo-row-label">Código del certificado</span>
+                            <strong class="info-periodo-row-value">${escapeHtml(codigoCert || 'Sin certificado generado')}</strong>
+                        </div>
+                        <div class="info-periodo-row">
+                            <span class="info-periodo-row-label">Fecha de generación</span>
+                            <strong class="info-periodo-row-value">${escapeHtml(certFecha || '—')}</strong>
+                        </div>
+                    </div>
+                </div>
+                <div class="info-periodo-layout-right">
+                    <div class="info-preview-card">
+                        <div id="${previewLoaderId}" class="info-preview-loader" style="${puedePrevisualizar ? '' : 'display:none;'}">
+                            <i class="fas ${puedePrevisualizar ? 'fa-circle-notch fa-spin' : 'fa-image'}"></i>
+                            <span id="${previewTextId}">${puedePrevisualizar ? 'Cargando previsualización...' : 'La previsualización se habilita cuando el certificado esté Generado.'}</span>
+                        </div>
+                        <img id="${previewImgId}" alt="Preview de plantilla" style="${puedePrevisualizar ? '' : 'display:none;'}" />
+                        ${puedePrevisualizar ? '' : '<div class="edit-categorias-empty" style="padding: 18px; margin: 0;"><i class="fas fa-eye-slash"></i> Sin previsualización para estado Pendiente/Aprobado.</div>'}
+                    </div>
+                </div>
+            </div>
+        </article>
+    `;
+
+    const imageEl = document.getElementById(previewImgId);
+    const loaderEl = document.getElementById(previewLoaderId);
+    const loaderTextEl = document.getElementById(previewTextId);
+    if (!imageEl || !loaderEl || !puedePrevisualizar) return;
+
+    const estudianteId = Number(document.getElementById('infoEstudianteModal')?.dataset.estudianteId || 0);
+    const certContext = {
+        estudiante_id: estudianteId || null,
+        categoria_id: categoria?.id || null,
+        periodo_id: periodo?.periodo_id ?? (cert?.periodo_id ?? null),
+        fecha: cert?.fecha || '',
+        codigo: codigoCert || '',
+        es_destacado: periodo?.es_destacado || Number(cert?.es_destacado || 0) === 1
+    };
+
+    let ok = await intentarPreviewDesdePlantillaPadre(certContext, imageEl, loaderEl, loaderTextEl);
+    if (!ok && codigoCert) {
+        if (loaderTextEl) loaderTextEl.textContent = 'Intentando carga por certificado...';
+        ok = await cargarImagenModalCertPadre(imageEl, construirUrlDescargaCertificado(codigoCert, 'imagen', true), loaderEl);
+    }
+    if (!ok && codigoCert) {
+        if (loaderTextEl) loaderTextEl.textContent = 'Intentando carga alternativa...';
+        ok = await intentarFallbackPreviewBase64Padre(codigoCert, imageEl, loaderEl, loaderTextEl);
+    }
+    if (!ok && loaderTextEl) {
+        loaderTextEl.textContent = 'No se pudo cargar la previsualización';
+    }
+}
+
+async function verInfoEstudiante(id) {
+    const estudianteId = Number(id || 0);
+    if (!estudianteId) {
+        mostrarNotificacion('No se pudo identificar al estudiante', 'warning');
+        return;
+    }
+
+    const modal = document.getElementById('infoEstudianteModal');
+    const tabs = document.getElementById('infoEstudianteTabs');
+    const slides = document.getElementById('infoEstudianteSlides');
+    if (!modal || !tabs || !slides) return;
+
+    modal.dataset.estudianteId = String(estudianteId);
+    infoEstudianteCategorias = [];
+    actualizarFooterInfoEstudiante('', false);
+    tabs.innerHTML = '';
+    slides.innerHTML = '<div class="edit-categorias-empty" style="padding: 26px;"><i class="fas fa-spinner fa-spin"></i> Cargando información...</div>';
+    modal.classList.add('active');
+
+    try {
+        let estudiante = estudiantesData.find(e => String(e.id) === String(estudianteId)) || null;
+
+        const response = await fetch(`../api/estudiantes/index.php?action=get_details&id=${encodeURIComponent(estudianteId)}&t=${Date.now()}`);
+        const data = await response.json();
+        if (!response.ok || !data?.success) {
+            throw new Error(data?.message || 'No se pudo cargar el detalle del estudiante');
+        }
+
+        const certificados = Array.isArray(data.certificados) ? data.certificados : [];
+        infoEstudianteCertificados = certificados.map(cert => ({
+            ...cert,
+            estudiante_id: estudianteId,
+            estudiante_nombre: estudiante?.nombre || data?.estudiante?.nombre || '',
+            estudiante_cedula: estudiante?.cedula || data?.estudiante?.cedula || ''
+        }));
+        editCertificadosCache = infoEstudianteCertificados;
+
+        if (!estudiante) {
+            const estDetalle = data?.estudiante || {};
+            estudiante = {
+                id: estudianteId,
+                nombre: estDetalle?.nombre || 'Estudiante',
+                cedula: estDetalle?.cedula || '',
+                categorias: parseCategoriasDesdeEnrollmentDataGrupo(estDetalle?.enrollment_data || '')
+            };
+        } else if (!Array.isArray(estudiante.categorias) || !estudiante.categorias.length) {
+            estudiante.categorias = parseCategoriasDesdeEnrollmentDataGrupo(data?.estudiante?.enrollment_data || '');
+        }
+
+        infoEstudianteCategorias = agruparCategoriasParaInfoModal(estudiante?.categorias || [], infoEstudianteCertificados);
+        renderInfoEstudianteModal(estudiante, infoEstudianteCategorias, infoEstudianteCertificados);
+    } catch (error) {
+        console.error(error);
+        infoEstudianteCategorias = [];
+        actualizarFooterInfoEstudiante('', false);
+        tabs.innerHTML = '';
+        slides.innerHTML = `<div class="edit-categorias-empty" style="padding: 26px;"><i class="fas fa-exclamation-triangle"></i> ${escapeHtml(error.message || 'No se pudo cargar la información')}</div>`;
     }
 }
 
@@ -767,17 +1316,30 @@ function tieneFiltroCategoriaSeleccionado() {
     return String(categoriaId).trim() !== '';
 }
 
+function tieneFiltroPeriodoSeleccionado() {
+    const periodoId = document.getElementById('filterPeriodo')?.value || '';
+    return String(periodoId).trim() !== '';
+}
+
+function mostrarColumnaPeriodosEnTablaTodos() {
+    return false;
+}
+
+function esContextoGeneracionEspecifico() {
+    return tieneFiltroCategoriaSeleccionado() && tieneFiltroPeriodoSeleccionado();
+}
+
 function actualizarEstadoBotonGenerarLote() {
     const btn = document.getElementById('btnGenerarLote');
     if (!btn) return;
 
-    const habilitado = tieneFiltroCategoriaSeleccionado();
+    const habilitado = esContextoGeneracionEspecifico();
     btn.disabled = !habilitado;
     btn.style.opacity = habilitado ? '1' : '0.55';
     btn.style.cursor = habilitado ? 'pointer' : 'not-allowed';
     btn.title = habilitado
         ? 'Generar certificados para los estudiantes seleccionados'
-        : 'Primero selecciona una categoría en el filtro';
+        : 'Selecciona categoría y período específico para generar certificados';
 }
 
 function deseleccionarTodos() {
@@ -791,9 +1353,13 @@ function deseleccionarTodos() {
     updateBulkActionsBar();
 }
 
-function obtenerItemsGenerables(estudianteIds) {
-    const categoriaId = document.getElementById('filterCategoria')?.value || '';
-    const periodoId = document.getElementById('filterPeriodo')?.value || '';
+function obtenerItemsGenerables(estudianteIds, categoriaOverride = null, periodoOverride = null, usarFiltrosPantalla = true) {
+    const categoriaId = categoriaOverride != null
+        ? String(categoriaOverride).trim()
+        : (usarFiltrosPantalla ? String(document.getElementById('filterCategoria')?.value || '').trim() : '');
+    const periodoId = periodoOverride != null
+        ? String(periodoOverride).trim()
+        : (usarFiltrosPantalla ? String(document.getElementById('filterPeriodo')?.value || '').trim() : '');
     const items = [];
     const seen = new Set();
 
@@ -807,7 +1373,6 @@ function obtenerItemsGenerables(estudianteIds) {
 
             const aprobado = Number(cat.cert_aprobado) === 1;
             const generado = Number(cat.cert_generado) === 1;
-            if (!aprobado || generado) return;
 
             const key = `${est.id}_${cat.id}_${cat.periodo_id == null ? 'null' : cat.periodo_id}`;
             if (seen.has(key)) return;
@@ -825,8 +1390,264 @@ function obtenerItemsGenerables(estudianteIds) {
                 periodo_id: cat.periodo_id,
                 periodo_nombre: cat.periodo || 'Sin período',
                 periodo_fecha_inicio: cat.fecha_inicio || '',
-                es_destacado: Number(cat.es_destacado) === 1
+                es_destacado: Number(cat.es_destacado) === 1,
+                cert_aprobado: aprobado,
+                cert_generado: generado
             });
+        });
+    });
+
+    return items;
+}
+
+async function refrescarEstudiantesDataSilencioso() {
+    try {
+        const response = await fetch(`../api/estudiantes/index.php?action=listar_grupo&grupo_id=${grupoId}&t=${Date.now()}`);
+        const data = await response.json();
+        if (response.ok && data && data.success && Array.isArray(data.estudiantes)) {
+            estudiantesData = data.estudiantes;
+            return true;
+        }
+    } catch (e) {
+        console.warn('No se pudo refrescar lista de estudiantes para generación por lote:', e);
+    }
+    return false;
+}
+
+function normalizarCategoriaForzada(valor) {
+    if (valor == null) return null;
+    const raw = String(valor).trim();
+    if (!raw) return null;
+    const num = Number(raw);
+    if (!Number.isFinite(num) || num <= 0) return null;
+    return num;
+}
+
+function normalizarPeriodoForzado(valor) {
+    if (valor == null) return null;
+    const raw = String(valor).trim();
+    if (!raw || raw.toLowerCase() === 'todos' || raw === '0') return null;
+    const num = Number(raw);
+    if (!Number.isFinite(num) || num <= 0) return null;
+    return num;
+}
+
+function payloadCertEstaAprobado(payload = {}) {
+    if (!payload || typeof payload !== 'object') return false;
+    if (Number(payload.certificado_aprobado || 0) === 1) return true;
+    if (Number(payload.certificado_id || 0) > 0) return true;
+    if (String(payload.certificado_fecha_aprobacion || '').trim() !== '') return true;
+    return false;
+}
+
+function payloadCertEstaGenerado(payload = {}) {
+    if (!payload || typeof payload !== 'object') return false;
+    const pdf = String(payload.certificado_archivo_pdf || '').trim();
+    const imagen = String(payload.certificado_archivo_imagen || '').trim();
+    return pdf !== '' || imagen !== '';
+}
+
+function normalizarHistorialGeneracionCert(raw) {
+    if (Array.isArray(raw)) return raw;
+    if (typeof raw !== 'string') return [];
+    const text = raw.trim();
+    if (!text) return [];
+    try {
+        const parsed = JSON.parse(text);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+        return [];
+    }
+}
+
+function obtenerUltimaGeneracionCert(raw) {
+    const historial = normalizarHistorialGeneracionCert(raw);
+    if (!historial.length) return null;
+    const last = historial[historial.length - 1];
+    if (typeof last === 'string') {
+        return { fecha: last, razon: '', usuario: '' };
+    }
+    if (last && typeof last === 'object') {
+        return {
+            fecha: String(last.fecha || '').trim(),
+            razon: String(last.razon || '').trim(),
+            usuario: String(last.usuario || '').trim()
+        };
+    }
+    return null;
+}
+
+function obtenerDetalleCategoriaDesdeCache(estudianteId, categoriaId, periodoId) {
+    const est = estudiantesData.find(e => String(e.id) === String(estudianteId));
+    if (!est || !Array.isArray(est.categorias)) return null;
+
+    const periodoKey = periodoId == null ? 'null' : String(periodoId);
+    return est.categorias.find(cat => {
+        if (String(cat.id) !== String(categoriaId)) return false;
+        const catPeriodoKey = cat.periodo_id == null ? 'null' : String(cat.periodo_id);
+        return catPeriodoKey === periodoKey;
+    }) || null;
+}
+
+async function construirItemsGenerablesDesdeCategoriaApi(estudianteIds, categoriaId, periodoId = null) {
+    const categoriaNum = normalizarCategoriaForzada(categoriaId);
+    if (!categoriaNum || !Array.isArray(estudianteIds) || !estudianteIds.length) return [];
+
+    const params = new URLSearchParams({
+        action: 'listar_matriculados',
+        categoria_id: String(categoriaNum)
+    });
+    const periodoNum = normalizarPeriodoForzado(periodoId);
+    if (periodoNum) params.set('periodo_id', String(periodoNum));
+
+    try {
+        const resp = await fetch(`../api/categorias/estudiantes.php?${params.toString()}`);
+        const data = await resp.json();
+        if (!resp.ok || !data?.success || !Array.isArray(data.estudiantes)) {
+            return [];
+        }
+
+        const categoriaMeta = Array.isArray(categoriasGrupo)
+            ? categoriasGrupo.find(c => String(c.id) === String(categoriaNum))
+            : null;
+        const categoriaNombre = categoriaMeta?.nombre || `Categoría ${categoriaNum}`;
+        const idsSet = new Set(estudianteIds.map(id => String(id)));
+        const seen = new Set();
+        const items = [];
+
+        data.estudiantes.forEach(est => {
+            const estId = String(est.id ?? est.estudiante_id ?? '').trim();
+            if (!estId || !idsSet.has(estId)) return;
+
+            const estPeriodoId = est.periodo_id != null ? est.periodo_id : periodoNum;
+            const key = `${estId}_${categoriaNum}_${estPeriodoId == null ? 'null' : estPeriodoId}`;
+            if (seen.has(key)) return;
+            seen.add(key);
+
+            const detalleCache = obtenerDetalleCategoriaDesdeCache(estId, categoriaNum, estPeriodoId);
+            const aprobado = Number(detalleCache?.cert_aprobado || 0) === 1 || payloadCertEstaAprobado(est);
+            const generado = Number(detalleCache?.cert_generado || 0) === 1 || payloadCertEstaGenerado(est);
+
+            items.push({
+                key,
+                estudiante_id: Number(estId),
+                estudiante_nombre: est.nombre || `Estudiante ${estId}`,
+                estudiante_cedula: est.cedula || '',
+                es_menor: Number(est.es_menor) === 1,
+                representante_cedula: est.representante_cedula || '',
+                categoria_id: categoriaNum,
+                categoria_nombre: categoriaNombre,
+                periodo_id: estPeriodoId,
+                periodo_nombre: detalleCache?.periodo || 'Sin período',
+                periodo_fecha_inicio: detalleCache?.fecha_inicio || '',
+                es_destacado: Number(est.es_destacado ?? detalleCache?.es_destacado ?? 0) === 1,
+                cert_aprobado: aprobado,
+                cert_generado: generado
+            });
+        });
+
+        return items;
+    } catch (e) {
+        console.warn('Fallback de generación por lote desde API de categoría falló:', e);
+        return [];
+    }
+}
+
+function construirItemsGenerablesDesdePayload(estudianteIds, categoriaId, periodoId = null, seleccionadosData = [], periodoNombre = '') {
+    const categoriaInferidaDesdePayload = (() => {
+        if (!Array.isArray(seleccionadosData) || !seleccionadosData.length) return null;
+        const first = seleccionadosData.find(i => i && i.categoria_id != null);
+        return first ? normalizarCategoriaForzada(first.categoria_id) : null;
+    })();
+    const periodoInferidoDesdePayload = (() => {
+        if (!Array.isArray(seleccionadosData) || !seleccionadosData.length) return null;
+        const first = seleccionadosData.find(i => i && i.periodo_id != null);
+        return first ? normalizarPeriodoForzado(first.periodo_id) : null;
+    })();
+
+    const categoriaNum = normalizarCategoriaForzada(categoriaId) || categoriaInferidaDesdePayload;
+    const periodoNorm = normalizarPeriodoForzado(periodoId) ?? periodoInferidoDesdePayload;
+    if (!categoriaNum || !Array.isArray(estudianteIds) || !estudianteIds.length) return [];
+
+    const categoriaMeta = Array.isArray(categoriasGrupo)
+        ? categoriasGrupo.find(c => String(c.id) === String(categoriaNum))
+        : null;
+    const categoriaNombre = categoriaMeta?.nombre || `Categoría ${categoriaNum}`;
+    const byId = new Map((Array.isArray(seleccionadosData) ? seleccionadosData : []).map(item => [String(item?.id ?? ''), item || {}]));
+    const seen = new Set();
+    const items = [];
+
+    estudianteIds.forEach(estIdRaw => {
+        const estId = String(estIdRaw || '').trim();
+        if (!estId) return;
+
+        const data = byId.get(estId) || {};
+        const detalleCache = obtenerDetalleCategoriaDesdeCache(estId, categoriaNum, periodoNorm);
+        const key = `${estId}_${categoriaNum}_${periodoNorm == null ? 'null' : periodoNorm}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+
+        const aprobado = Number(detalleCache?.cert_aprobado || 0) === 1 || payloadCertEstaAprobado(data);
+        const generado = Number(detalleCache?.cert_generado || 0) === 1 || payloadCertEstaGenerado(data);
+
+        items.push({
+            key,
+            estudiante_id: Number(estId),
+            estudiante_nombre: data.nombre || `Estudiante ${estId}`,
+            estudiante_cedula: data.cedula || '',
+            es_menor: Number(data.es_menor) === 1,
+            representante_cedula: data.representante_cedula || '',
+            categoria_id: categoriaNum,
+            categoria_nombre: categoriaNombre,
+            periodo_id: periodoNorm,
+            periodo_nombre: detalleCache?.periodo || String(periodoNombre || '').trim() || 'Período seleccionado',
+            periodo_fecha_inicio: detalleCache?.fecha_inicio || '',
+            es_destacado: Number(data.es_destacado ?? detalleCache?.es_destacado ?? 0) === 1,
+            cert_aprobado: aprobado,
+            cert_generado: generado
+        });
+    });
+
+    return items;
+}
+
+function construirItemsFallbackMinimo(estudianteIds, categoriaId, periodoId = null, seleccionadosData = [], periodoNombre = '') {
+    if (!Array.isArray(estudianteIds) || !estudianteIds.length) return [];
+    const categoriaNum = normalizarCategoriaForzada(categoriaId);
+    if (!categoriaNum) return [];
+
+    const categoriaMeta = Array.isArray(categoriasGrupo)
+        ? categoriasGrupo.find(c => String(c.id) === String(categoriaNum))
+        : null;
+    const categoriaNombre = categoriaMeta?.nombre || `Categoría ${categoriaNum}`;
+    const periodoNorm = normalizarPeriodoForzado(periodoId);
+    const byId = new Map((Array.isArray(seleccionadosData) ? seleccionadosData : []).map(item => [String(item?.id ?? ''), item || {}]));
+    const seen = new Set();
+    const items = [];
+
+    estudianteIds.forEach(estIdRaw => {
+        const estId = String(estIdRaw || '').trim();
+        if (!estId) return;
+        const key = `${estId}_${categoriaNum}_${periodoNorm == null ? 'null' : periodoNorm}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+
+        const d = byId.get(estId) || {};
+        items.push({
+            key,
+            estudiante_id: Number(estId),
+            estudiante_nombre: d.nombre || `Estudiante ${estId}`,
+            estudiante_cedula: d.cedula || '',
+            es_menor: Number(d.es_menor) === 1,
+            representante_cedula: d.representante_cedula || '',
+            categoria_id: categoriaNum,
+            categoria_nombre: categoriaNombre,
+            periodo_id: periodoNorm,
+            periodo_nombre: String(periodoNombre || '').trim() || 'Período seleccionado',
+            periodo_fecha_inicio: '',
+            es_destacado: Number(d.es_destacado || 0) === 1,
+            cert_aprobado: payloadCertEstaAprobado(d),
+            cert_generado: payloadCertEstaGenerado(d)
         });
     });
 
@@ -876,6 +1697,21 @@ function obtenerPeriodosGeneracionLote() {
 function prepararFiltroPeriodoGeneracionLote(defaultPeriodo = '') {
     const container = document.getElementById('genLoteListTabsContainer');
     const select = document.getElementById('filterPeriodoGenLote');
+    const filtroWrap = select ? select.closest('.filter-group-gen-lote') : null;
+
+    if (generacionLoteOcultarFiltroPeriodo) {
+        generacionLotePeriodoFiltro = '';
+        if (container) container.innerHTML = '';
+        if (filtroWrap) filtroWrap.style.display = 'none';
+        if (select) {
+            select.innerHTML = '<option value="">Sin filtro</option>';
+            select.value = '';
+            select.disabled = true;
+        }
+        return [];
+    }
+
+    if (filtroWrap) filtroWrap.style.display = '';
     const periodos = obtenerPeriodosGeneracionLote();
 
     if (!periodos.length) {
@@ -944,7 +1780,7 @@ function cambiarPeriodoGeneracionLote(periodoId) {
 
 function getGeneracionLoteFiltrados() {
     const q = (generacionLoteBusqueda || '').toLowerCase().trim();
-    const periodoFiltro = String(generacionLotePeriodoFiltro || '').trim();
+    const periodoFiltro = generacionLoteOcultarFiltroPeriodo ? '' : String(generacionLotePeriodoFiltro || '').trim();
 
     return generacionLoteItems.filter(item => {
         if (periodoFiltro && getGenLotePeriodoKeyFromItem(item) !== periodoFiltro) {
@@ -986,17 +1822,17 @@ function updateBulkActionsBarGeneracionLote() {
 }
 
 function actualizarResumenGeneracionLoteFooter() {
-    const seleccionados = generacionLoteItems.filter(i => generacionLoteSeleccion.has(i.key));
+    const loteActual = Array.isArray(generacionLoteItems) ? generacionLoteItems : [];
 
     const totalEl = document.getElementById('genLoteCount');
     const destacadosEl = document.getElementById('genLoteDestacados');
     const menoresEl = document.getElementById('genLoteMenores');
     const representantesEl = document.getElementById('genLoteRepresentantes');
 
-    if (totalEl) totalEl.textContent = String(seleccionados.length);
-    if (destacadosEl) destacadosEl.textContent = String(seleccionados.filter(i => i.es_destacado).length);
-    if (menoresEl) menoresEl.textContent = String(seleccionados.filter(i => i.es_menor).length);
-    if (representantesEl) representantesEl.textContent = String(seleccionados.filter(i => String(i.representante_cedula || '').trim()).length);
+    if (totalEl) totalEl.textContent = String(loteActual.length);
+    if (destacadosEl) destacadosEl.textContent = String(loteActual.filter(i => i.es_destacado).length);
+    if (menoresEl) menoresEl.textContent = String(loteActual.filter(i => i.es_menor).length);
+    if (representantesEl) representantesEl.textContent = String(loteActual.filter(i => String(i.representante_cedula || '').trim()).length);
 }
 
 function updatePaginacionGeneracionLote(totalItems, pageItemsCount, startIdx, endIdx) {
@@ -1063,13 +1899,13 @@ function renderGeneracionLoteTabla() {
     const body = document.getElementById('genLoteBody');
     const resumen = document.getElementById('genLoteResumenText');
     const selectAll = document.getElementById('genLoteSelectAll');
-    if (!body || !resumen || !selectAll) return;
+    if (!body || !selectAll) return;
 
     const periodos = prepararFiltroPeriodoGeneracionLote();
 
     if (!generacionLoteItems.length) {
-        body.innerHTML = '<tr><td colspan="6" class="gen-empty">No hay estudiantes aprobados pendientes de generación para la selección actual.</td></tr>';
-        resumen.textContent = 'Sin elementos generables';
+        body.innerHTML = '<tr><td colspan="6" class="gen-empty">No hay estudiantes disponibles para la selección actual.</td></tr>';
+        if (resumen) resumen.textContent = 'Sin elementos generables';
         selectAll.checked = false;
         selectAll.indeterminate = false;
         updatePaginacionGeneracionLote(0, 0, 0, 0);
@@ -1086,7 +1922,7 @@ function renderGeneracionLoteTabla() {
 
     if (!filtrados.length) {
         body.innerHTML = '<tr><td colspan="6" class="gen-empty">No hay resultados con el filtro actual.</td></tr>';
-        resumen.textContent = `0 registro(s) en ${periodoLabel}`;
+        if (resumen) resumen.textContent = `0 registro(s) en ${periodoLabel}`;
         selectAll.checked = false;
         selectAll.indeterminate = false;
         updatePaginacionGeneracionLote(0, 0, 0, 0);
@@ -1127,7 +1963,7 @@ function renderGeneracionLoteTabla() {
     const total = generacionLoteItems.length;
     const selected = generacionLoteSeleccion.size;
     const selectedFiltrados = filtrados.filter(item => generacionLoteSeleccion.has(item.key)).length;
-    resumen.textContent = `${filtrados.length} registro(s) en ${periodoLabel} · ${total} en total`;
+    if (resumen) resumen.textContent = `${filtrados.length} registro(s) en ${periodoLabel} · ${total} en total`;
     selectAll.checked = selectedFiltrados > 0 && selectedFiltrados === filtrados.length;
     selectAll.indeterminate = selectedFiltrados > 0 && selectedFiltrados < filtrados.length;
     updatePaginacionGeneracionLote(filtrados.length, pageItems.length, pageItems.length ? start + 1 : 0, pageItems.length ? start + pageItems.length : 0);
@@ -1344,11 +2180,22 @@ async function cargarPreviewPlantillasGeneracion() {
     const container = document.getElementById('genLotePreviewPlantillas');
     if (!container) return;
 
+    const categoriaContexto = normalizarCategoriaForzada(generacionLoteCategoriaContextoId)
+        || (() => {
+            const unicas = Array.from(new Set(
+                (Array.isArray(generacionLoteItems) ? generacionLoteItems : [])
+                    .map(i => normalizarCategoriaForzada(i?.categoria_id))
+                    .filter(v => v != null)
+            ));
+            return unicas.length === 1 ? unicas[0] : null;
+        })();
+
     const categoriasMap = new Map();
     if (typeof categoriasGrupo !== 'undefined' && Array.isArray(categoriasGrupo)) {
         categoriasGrupo.forEach(cat => {
             const categoriaId = String(cat.id || '').trim();
             if (!categoriaId || categoriasMap.has(categoriaId)) return;
+            if (categoriaContexto && String(categoriaId) !== String(categoriaContexto)) return;
             categoriasMap.set(categoriaId, {
                 categoria_id: categoriaId,
                 categoria_nombre: cat.nombre || 'Sin categoría',
@@ -1363,6 +2210,7 @@ async function cargarPreviewPlantillasGeneracion() {
         generacionLoteItems.forEach(i => {
             const categoriaId = String(i.categoria_id || '').trim();
             if (!categoriaId || categoriasMap.has(categoriaId)) return;
+            if (categoriaContexto && String(categoriaId) !== String(categoriaContexto)) return;
             categoriasMap.set(categoriaId, {
                 categoria_id: categoriaId,
                 categoria_nombre: i.categoria_nombre || 'Sin categoría',
@@ -1370,11 +2218,6 @@ async function cargarPreviewPlantillasGeneracion() {
                 plantilla_archivo: i.plantilla_archivo || ''
             });
         });
-    }
-
-    if (categoriasMap.size === 0) {
-        container.innerHTML = '<div class="gen-empty">No hay categorías registradas para este grupo.</div>';
-        return;
     }
 
     container.innerHTML = '<div class="gen-empty">Cargando plantillas...</div>';
@@ -1400,28 +2243,25 @@ async function cargarPreviewPlantillasGeneracion() {
     const grupoDynamicPreviewUrl = await generarPreviewPlantillaUrl('grupo', grupoId, grupoPlantillaId);
     const grupoPreviewUrl = grupoSnapshotLocalUrl || grupoDynamicPreviewUrl || grupoSnapshotUrl;
 
-    const categoriasConPlantilla = diagnosticos.filter(({ categoria, data }) => {
-        const tieneDiagnostico = !!data?.plantilla_categoria?.archivo;
-        const categoriaMarcaPropia = Number(categoria?.usar_plantilla_propia || 0) === 1;
-        const categoriaArchivoPropio = String(categoria?.plantilla_archivo || '').trim() !== '';
-        return tieneDiagnostico || categoriaMarcaPropia || categoriaArchivoPropio;
-    });
-
-    const categoriasTabs = await Promise.all(categoriasConPlantilla.map(async ({ categoria, data }) => {
+    const categoriasTabs = [];
+    for (const { categoria, data } of diagnosticos) {
         const snap = data?.snapshot_categoria || null;
+        const tienePlantillaPersonalizada = !!String(data?.plantilla_categoria?.archivo || '').trim();
+        if (!tienePlantillaPersonalizada) continue;
+
         const snapshotUrl = snap?.url ? `${snap.url}?v=${Date.now()}` : null;
         const dynamicPreviewUrl = await generarPreviewPlantillaUrl('categoria', categoria.categoria_id, data?.plantilla_categoria?.id || null);
         const previewUrl = dynamicPreviewUrl || snapshotUrl;
 
-        return {
+        categoriasTabs.push({
             id: `gen-preview-pane-cat-${categoria.categoria_id}`,
             tipo: 'categoria',
             label: categoria.categoria_nombre,
             src: previewUrl,
             snapshotDate: snap?.fecha_creacion || null,
             hasSnapshot: !!snap
-        };
-    }));
+        });
+    }
 
     const previewTabs = [
         {
@@ -1510,8 +2350,8 @@ function obtenerIdsSeleccionadosEnTabla() {
 }
 
 function abrirModalGeneracionSeleccionActual() {
-    if (!tieneFiltroCategoriaSeleccionado()) {
-        mostrarNotificacion('Debes seleccionar una categoría en el filtro para generar certificados', 'warning');
+    if (!esContextoGeneracionEspecifico()) {
+        mostrarNotificacion('Debes seleccionar categoría y período específico para generar certificados', 'warning');
         return;
     }
 
@@ -1523,7 +2363,7 @@ function abrirModalGeneracionSeleccionActual() {
     abrirModalGeneracionLote(idsMarcados);
 }
 
-function abrirModalGeneracionLote(estudianteIds = null) {
+async function abrirModalGeneracionLote(estudianteIds = null, opciones = {}) {
     // Modo estricto: solo abrir con IDs explícitos (fila o selección actual).
     // Evita cualquier fallback que pueda terminar cargando todos.
     let idsBase = Array.isArray(estudianteIds)
@@ -1536,22 +2376,73 @@ function abrirModalGeneracionLote(estudianteIds = null) {
         return;
     }
 
+    const origenIframe = String(opciones?.origen || '').toLowerCase() === 'iframe';
+    generacionLoteOcultarFiltroPeriodo = origenIframe;
+    if (opciones?.refresh_data || origenIframe) {
+        await refrescarEstudiantesDataSilencioso();
+    }
+
+    const categoriaForzada = normalizarCategoriaForzada(opciones?.categoria_id)
+        || (() => {
+            if (!Array.isArray(opciones?.seleccionados_data)) return null;
+            const first = opciones.seleccionados_data.find(i => i && i.categoria_id != null);
+            return first ? normalizarCategoriaForzada(first.categoria_id) : null;
+        })();
+    const periodoForzado = normalizarPeriodoForzado(opciones?.periodo_id);
+    const usarFiltrosPantalla = !(origenIframe || opciones?.ignorar_filtros_pantalla);
+
+    if (origenIframe && !categoriaForzada) {
+        mostrarNotificacion('No se pudo identificar la categoría seleccionada para generar certificados', 'error');
+        return;
+    }
+
     const idsPermitidos = new Set(idsBase.map(id => String(id)));
-    generacionLoteItems = obtenerItemsGenerables(idsBase)
+    const itemsDesdePayload = (origenIframe && Array.isArray(opciones?.seleccionados_data) && opciones.seleccionados_data.length)
+        ? construirItemsGenerablesDesdePayload(idsBase, categoriaForzada, periodoForzado, opciones.seleccionados_data, opciones?.periodo_nombre || '')
+        : [];
+
+    generacionLoteItems = (itemsDesdePayload.length ? itemsDesdePayload : obtenerItemsGenerables(idsBase, categoriaForzada, periodoForzado, usarFiltrosPantalla))
         .filter(item => idsPermitidos.has(String(item.estudiante_id)));
+
+    if (origenIframe && !generacionLoteItems.length && categoriaForzada) {
+        const fallbackItems = await construirItemsGenerablesDesdeCategoriaApi(idsBase, categoriaForzada, periodoForzado);
+        if (fallbackItems.length) {
+            generacionLoteItems = fallbackItems;
+        }
+    }
+
+    if (origenIframe && !generacionLoteItems.length && categoriaForzada) {
+        const fallbackMinimo = construirItemsFallbackMinimo(
+            idsBase,
+            categoriaForzada,
+            periodoForzado,
+            opciones?.seleccionados_data || [],
+            opciones?.periodo_nombre || ''
+        );
+        if (fallbackMinimo.length) {
+            generacionLoteItems = fallbackMinimo;
+        }
+    }
+
+    const categoriasUnicasLote = Array.from(new Set(
+        generacionLoteItems
+            .map(item => normalizarCategoriaForzada(item?.categoria_id))
+            .filter(v => v != null)
+    ));
+    const categoriaDesdeFiltro = normalizarCategoriaForzada(document.getElementById('filterCategoria')?.value || null);
+    generacionLoteCategoriaContextoId = categoriaForzada
+        || (categoriasUnicasLote.length === 1 ? categoriasUnicasLote[0] : null)
+        || categoriaDesdeFiltro
+        || null;
+
     generacionLotePeriodoFiltro = '';
-    const periodoPreferido = String(document.getElementById('filterPeriodo')?.value || '').trim();
+    const periodoPreferido = periodoForzado != null
+        ? String(periodoForzado).trim()
+        : String(document.getElementById('filterPeriodo')?.value || '').trim();
     prepararFiltroPeriodoGeneracionLote(periodoPreferido);
 
-    if (generacionLotePeriodoFiltro) {
-        generacionLoteSeleccion = new Set(
-            generacionLoteItems
-                .filter(item => getGenLotePeriodoKeyFromItem(item) === String(generacionLotePeriodoFiltro))
-                .map(i => i.key)
-        );
-    } else {
-        generacionLoteSeleccion = new Set(generacionLoteItems.map(i => i.key));
-    }
+    // Los checkboxes solo se usan para "Quitar del lote", por eso iniciamos sin selección.
+    generacionLoteSeleccion = new Set();
 
     generacionLoteFiltro = 'todos';
     generacionLoteBusqueda = '';
@@ -1593,17 +2484,18 @@ document.addEventListener('click', function (e) {
 
 async function confirmarGeneracionLote() {
     const btn = document.getElementById('btnConfirmGeneracionLote');
-    const seleccionados = generacionLoteItems.filter(i => generacionLoteSeleccion.has(i.key));
+    const loteActual = Array.isArray(generacionLoteItems) ? generacionLoteItems : [];
+    const categoriaContextoAlGenerar = generacionLoteCategoriaContextoId;
 
-    if (!seleccionados.length) {
-        mostrarNotificacion('No hay elementos seleccionados para generar', 'error');
+    if (!loteActual.length) {
+        mostrarNotificacion('No hay estudiantes en el lote para generar', 'error');
         return;
     }
 
     const fecha = new Date().toISOString().slice(0, 10);
     const lotes = new Map();
 
-    seleccionados.forEach(item => {
+    loteActual.forEach(item => {
         const key = `${item.categoria_id}_${item.periodo_id == null ? 'null' : item.periodo_id}`;
         if (!lotes.has(key)) {
             lotes.set(key, {
@@ -1664,6 +2556,13 @@ async function confirmarGeneracionLote() {
         cerrarModal(null, 'modalGeneracionLote');
         deseleccionarTodos();
         await cargarEstudiantes();
+
+        if (totalExitosos > 0) {
+            const refrescoOk = refrescarSlideCategoria(categoriaContextoAlGenerar);
+            if (!refrescoOk) {
+                window.location.reload();
+            }
+        }
     } catch (error) {
         console.error(error);
         mostrarNotificacion('Error al generar certificados por lote', 'error');
@@ -1741,16 +2640,12 @@ async function verCertificados(estudianteId) {
                         try { return d.split(' ')[0].split('-').reverse().join('/'); } catch (e) { return d; }
                     };
 
-                    let ultimaGen = formatDate(cert.fecha);
-                    if (cert.fechas_generacion) {
-                        try {
-                            const fechas = JSON.parse(cert.fechas_generacion);
-                            if (Array.isArray(fechas) && fechas.length > 0) ultimaGen = formatDate(fechas[fechas.length - 1]);
-                        } catch (e) { }
-                    }
+                    const ultimaGenInfo = obtenerUltimaGeneracionCert(cert.fechas_generacion);
+                    const ultimaGen = formatDate(ultimaGenInfo?.fecha || cert.fecha_creacion || cert.fecha);
+                    const usuarioGen = String(ultimaGenInfo?.usuario || '').trim() || 'Sistema';
 
                     const matriculaDate = data.estudiante.fecha_creacion ? formatDate(data.estudiante.fecha_creacion) : '--/--/----';
-                    const genDate = formatDate(cert.fecha);
+                    const genDate = formatDate(cert.fecha_creacion || cert.fecha);
 
                     const catColor = cert.categoria_color || '#e67e22';
                     const iconClass = cert.categoria_icono || 'fas fa-certificate';
@@ -1782,6 +2677,10 @@ async function verCertificados(estudianteId) {
                                 <div class="cert-detail-row">
                                     <div class="cert-detail-label">Ultima Generación</div>
                                     <div class="cert-detail-value"><i class="fas fa-history"></i> ${ultimaGen}</div>
+                                </div>
+                                <div class="cert-detail-row">
+                                    <div class="cert-detail-label">Generado por</div>
+                                    <div class="cert-detail-value"><i class="fas fa-user-circle"></i> ${escapeHtml(usuarioGen)}</div>
                                 </div>
                             </div>
                             <div class="cert-code-footer">${cert.codigo}</div>
@@ -2001,6 +2900,152 @@ function renderResumenCategoriasModalGrupo(categoriasRaw) {
     container.innerHTML = html;
 }
 
+function abrirCertificadosDesdeEdicion() {
+    const estudianteId = Number(document.getElementById('edit_estudiante_id')?.value || 0);
+    if (!estudianteId) {
+        mostrarNotificacion('No se pudo identificar al estudiante', 'warning');
+        return;
+    }
+    verCertificados(estudianteId);
+}
+
+function descargarCertificadoDesdeResumen(codigo, tipo = 'pdf') {
+    const code = String(codigo || '').trim();
+    if (!code) return;
+    const url = construirUrlDescargaCertificado(code, tipo, false);
+    if (!url) return;
+    window.open(url, '_blank');
+}
+
+function abrirDetalleCertificadoDesdeResumen(codigo) {
+    const code = String(codigo || '').trim();
+    if (!code) return;
+
+    const cert = editCertificadosCache.find(c => String(c.codigo || '').trim() === code) || {};
+    const estudianteId = Number(document.getElementById('edit_estudiante_id')?.value || cert.estudiante_id || 0);
+    const nombre = String(document.getElementById('edit_nombre')?.value || cert.estudiante_nombre || '').trim() || '—';
+    const cedula = String(document.getElementById('edit_cedula')?.value || cert.estudiante_cedula || '').trim() || '—';
+    const destacadoInput = document.getElementById('edit_destacado');
+    const esDestacado = cert.es_destacado != null
+        ? Number(cert.es_destacado) === 1
+        : (destacadoInput ? destacadoInput.checked : false);
+
+    abrirModalInfoCertificadoPadre({
+        estudiante_id: estudianteId || null,
+        codigo: code,
+        nombre,
+        cedula,
+        categoria_id: cert.categoria_id != null ? Number(cert.categoria_id) : null,
+        periodo_id: cert.periodo_id != null ? Number(cert.periodo_id) : null,
+        categoria: cert.categoria_nombre || 'Sin categoría',
+        fecha: cert.fecha || '',
+        es_destacado: esDestacado
+    });
+}
+
+function renderResumenCertificadosModalGrupo(certificadosRaw, est = {}, estudianteId = null) {
+    const container = document.getElementById('editCertificadosResumenGroup');
+    if (!container) return;
+
+    const seenCodes = new Set();
+    const certificados = (Array.isArray(certificadosRaw) ? certificadosRaw : []).filter(cert => {
+        const key = String(cert?.codigo || cert?.id || '').trim();
+        if (!key) return true;
+        if (seenCodes.has(key)) return false;
+        seenCodes.add(key);
+        return true;
+    });
+
+    if (!certificados.length) {
+        container.innerHTML = '<div class="edit-categorias-empty"><i class="fas fa-file-circle-xmark"></i> Este estudiante aún no tiene certificados generados.</div>';
+        return;
+    }
+
+    certificados.sort((a, b) => {
+        const pa = String(a?.periodo_fecha_inicio || '0000-00-00');
+        const pb = String(b?.periodo_fecha_inicio || '0000-00-00');
+        if (pa !== pb) return pa < pb ? 1 : -1;
+        const fa = String(a?.fecha || '0000-00-00');
+        const fb = String(b?.fecha || '0000-00-00');
+        if (fa !== fb) return fa < fb ? 1 : -1;
+        return String(a?.categoria_nombre || '').localeCompare(String(b?.categoria_nombre || ''), 'es', { sensitivity: 'base' });
+    });
+
+    const html = certificados.map(cert => {
+        const codigo = String(cert.codigo || '').trim();
+        const categoria = cert.categoria_nombre || 'Sin categoría';
+        const periodo = cert.periodo_nombre || 'Sin período';
+        const fecha = formatearFechaModalGrupo(cert.fecha || '');
+        const safeCode = codeToInlineJsArg(codigo);
+        const icono = String(cert.categoria_icono || '').trim();
+        const iconoHtml = icono.includes('fa-') ? `<i class="${escapeHtml(icono)}"></i>` : escapeHtml(icono || '📜');
+
+        return `
+            <div class="edit-cert-item">
+                <div class="edit-cert-main">
+                    <div class="edit-cert-left">
+                        <div class="edit-cert-title">
+                            <span>${iconoHtml}</span>
+                            <span>${escapeHtml(categoria)}</span>
+                        </div>
+                        <div class="edit-cert-meta">
+                            <span><i class="far fa-calendar-alt"></i> ${escapeHtml(periodo)}</span>
+                            <span><i class="far fa-clock"></i> ${escapeHtml(fecha)}</span>
+                        </div>
+                        <div class="edit-cert-code">${escapeHtml(codigo || 'SIN-CÓDIGO')}</div>
+                    </div>
+                    <div class="edit-cert-actions">
+                        <button type="button" class="edit-cert-action" onclick="abrirDetalleCertificadoDesdeResumen('${safeCode}')" title="Ver detalle">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                        <button type="button" class="edit-cert-action" onclick="descargarCertificadoDesdeResumen('${safeCode}', 'pdf')" title="Descargar PDF">
+                            <i class="fas fa-file-pdf"></i>
+                        </button>
+                        <button type="button" class="edit-cert-action" onclick="descargarCertificadoDesdeResumen('${safeCode}', 'imagen')" title="Descargar PNG">
+                            <i class="fas fa-file-image"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    container.innerHTML = html;
+
+    function codeToInlineJsArg(rawCode) {
+        return String(rawCode || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    }
+}
+
+async function cargarResumenCertificadosModalGrupo(estudianteId, est = {}) {
+    const container = document.getElementById('editCertificadosResumenGroup');
+    if (!container) return;
+
+    editCertificadosCache = [];
+    container.innerHTML = '<div class="edit-categorias-empty"><i class="fas fa-spinner fa-spin"></i> Cargando certificados...</div>';
+
+    try {
+        const response = await fetch(`../api/estudiantes/index.php?action=get_details&id=${encodeURIComponent(estudianteId)}&t=${Date.now()}`);
+        const data = await response.json();
+
+        if (!response.ok || !data?.success) {
+            throw new Error(data?.message || 'No se pudo cargar la información de certificados');
+        }
+
+        const certificados = Array.isArray(data.certificados) ? data.certificados : [];
+        editCertificadosCache = certificados.map(cert => ({
+            ...cert,
+            estudiante_id: estudianteId,
+            estudiante_nombre: est?.nombre || '',
+            estudiante_cedula: est?.cedula || ''
+        }));
+        renderResumenCertificadosModalGrupo(editCertificadosCache, est, estudianteId);
+    } catch (error) {
+        console.error(error);
+        container.innerHTML = `<div class="edit-categorias-empty"><i class="fas fa-exclamation-triangle"></i> ${escapeHtml(error.message || 'No se pudo cargar certificados')}</div>`;
+    }
+}
+
 async function editarEstudiante(id) {
     let est = estudiantesData.find(e => String(e.id) === String(id));
 
@@ -2046,8 +3091,6 @@ async function editarEstudiante(id) {
     document.getElementById('edit_rep_celular').value = repCelular;
 
     document.getElementById('edit_rep_email').value = est.representante_email || '';
-    renderResumenCategoriasModalGrupo(est.categorias || []);
-
     document.getElementById('editEstudianteModal').classList.add('active');
 }
 
@@ -2324,17 +3367,29 @@ function abrirHistorial(fechasStr) {
     list.innerHTML = '';
 
     try {
-        const fechas = typeof fechasStr === 'string' ? JSON.parse(fechasStr) : fechasStr;
+        const fechas = normalizarHistorialGeneracionCert(fechasStr);
         if (!fechas || fechas.length === 0) {
             list.innerHTML = '<li class="history-item">Sin historial registrado</li>';
         } else {
             const fechasRev = Array.isArray(fechas) ? [...fechas].reverse() : [];
             fechasRev.forEach(f => {
-                let displayDate = f;
-                try { displayDate = f.split(' ')[0].split('-').reverse().join('/'); } catch (e) { }
+                const fechaRaw = (typeof f === 'string')
+                    ? f
+                    : String(f?.fecha || '').trim();
+                let displayDate = fechaRaw || '--/--/----';
+                try { displayDate = displayDate.split(' ')[0].split('-').reverse().join('/'); } catch (e) { }
+                const usuario = (typeof f === 'object' && f)
+                    ? String(f.usuario || '').trim()
+                    : '';
+                const razon = (typeof f === 'object' && f)
+                    ? String(f.razon || '').trim()
+                    : '';
+                const detalle = [usuario ? `Por: ${usuario}` : '', razon ? `Motivo: ${razon}` : '']
+                    .filter(Boolean)
+                    .join(' · ');
                 list.innerHTML += `
                     <li class="history-item">
-                        <span>Generado</span>
+                        <span>${detalle || 'Generado'}</span>
                         <strong>${displayDate}</strong>
                     </li>`;
             });
@@ -2456,6 +3511,12 @@ async function intentarPreviewDesdePlantillaPadre(cert = {}, imageEl, loaderEl =
         if (cert.estudiante_id) formData.append('estudiante_id', String(cert.estudiante_id));
         if (cert.fecha) formData.append('fecha_certificado', String(cert.fecha));
         if (cert.codigo) formData.append('codigo_certificado', String(cert.codigo));
+        if (cert.periodo_id !== null && cert.periodo_id !== undefined && String(cert.periodo_id).trim() !== '') {
+            formData.append('periodo_id', String(cert.periodo_id));
+        }
+        if (cert.es_destacado !== null && cert.es_destacado !== undefined) {
+            formData.append('es_destacado', cert.es_destacado ? '1' : '0');
+        }
 
         const resp = await fetch(`../api/preview/index.php?v=${Date.now()}_${Math.random().toString(36).slice(2, 8)}`, {
             method: 'POST',
@@ -2538,8 +3599,30 @@ async function abrirModalInfoCertificadoPadre(cert = {}) {
 window.addEventListener('message', function (event) {
     if (event.origin && event.origin !== window.location.origin) return;
     const payload = event.data || {};
-    if (payload.type !== 'cce:open-cert-modal' || !payload.certificado) return;
-    abrirModalInfoCertificadoPadre(payload.certificado);
+    if (payload.type === 'cce:open-cert-modal' && payload.certificado) {
+        abrirModalInfoCertificadoPadre(payload.certificado);
+        return;
+    }
+
+    if (payload.type === 'cce:open-generate-modal') {
+        const ids = Array.isArray(payload.seleccionados)
+            ? payload.seleccionados.map(id => String(id || '').trim()).filter(Boolean)
+            : [];
+        if (!ids.length) {
+            mostrarNotificacion('Selecciona al menos un estudiante para generar certificados', 'warning');
+            return;
+        }
+
+        abrirModalGeneracionLote(ids, {
+            categoria_id: payload.categoria_id != null ? payload.categoria_id : null,
+            periodo_id: payload.periodo_id != null ? payload.periodo_id : null,
+            seleccionados_data: Array.isArray(payload.seleccionados_data) ? payload.seleccionados_data : [],
+            periodo_nombre: payload.periodo_nombre || '',
+            origen: 'iframe',
+            refresh_data: true,
+            ignorar_filtros_pantalla: true
+        });
+    }
 });
 
 function descargarDesdeInfoModalPadre(tipo) {
@@ -2576,12 +3659,34 @@ function cerrarModal(event = null, modalId = null) {
         if (m) {
             m.classList.remove('active');
         }
+        if (modalId === 'modalGeneracionLote') {
+            generacionLoteOcultarFiltroPeriodo = false;
+            generacionLoteCategoriaContextoId = null;
+        }
+        if (modalId === 'infoEstudianteModal') {
+            infoEstudianteCategorias = [];
+            infoEstudianteCertificados = [];
+            infoEstudianteDescargaCodigo = '';
+            const tabs = document.getElementById('infoEstudianteTabs');
+            const slides = document.getElementById('infoEstudianteSlides');
+            const modalInfo = document.getElementById('infoEstudianteModal');
+            if (tabs) tabs.innerHTML = '';
+            if (slides) slides.innerHTML = '<div class="edit-categorias-empty" style="padding: 26px;"><i class="fas fa-spinner fa-spin"></i> Cargando información...</div>';
+            if (modalInfo) delete modalInfo.dataset.estudianteId;
+            actualizarFooterInfoEstudiante('', false);
+        }
         return;
     }
 
     document.querySelectorAll('.modal').forEach(m => {
         m.classList.remove('active');
     });
+    generacionLoteOcultarFiltroPeriodo = false;
+    generacionLoteCategoriaContextoId = null;
+    infoEstudianteCategorias = [];
+    infoEstudianteCertificados = [];
+    infoEstudianteDescargaCodigo = '';
+    actualizarFooterInfoEstudiante('', false);
 }
 
 function calcularEdad(fechaNacimiento) {

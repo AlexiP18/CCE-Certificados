@@ -119,7 +119,11 @@
                 </div>
                 <div class="bulk-buttons">
                     <button class="btn-bulk btn-bulk-primary" id="btnGenerarSeleccionados" onclick="generarCertificadosSeleccionados()" style="display: none;">
+                        <?php if ($isEmbedded): ?>
+                        <i class="fas fa-certificate"></i> Generar Certificados
+                        <?php else: ?>
                         <i class="fas fa-check-double"></i> Aprobar / Desaprobar
+                        <?php endif; ?>
                     </button>
                     <button class="btn-bulk btn-bulk-primary" id="btnDescargarPdfSeleccionados" onclick="descargarCertificadosSeleccionados('pdf')" style="display: none;">
                         <i class="fas fa-file-pdf"></i> Descargar PDF
@@ -127,12 +131,14 @@
                     <button class="btn-bulk btn-bulk-primary" id="btnDescargarImgSeleccionados" onclick="descargarCertificadosSeleccionados('imagen')" style="display: none;">
                         <i class="fas fa-image"></i> Descargar Imagen
                     </button>
+                    <?php if (!$isEmbedded): ?>
                     <button class="btn-bulk btn-bulk-primary" id="btnToggleDestacados" onclick="toggleDestacadosSeleccionados()" style="display: none; background: #f39c12; border-color: #f39c12;">
                         <i class="fas fa-star"></i> Marcar / Desmarcar
                     </button>
                     <button class="btn-bulk btn-bulk-primary" id="btnQuitarSeleccionados" onclick="confirmarQuitarSeleccionados()" style="display: none; background: #e74c3c; border-color: #e74c3c;">
                         <i class="fas fa-trash-alt"></i> Quitar
                     </button>
+                    <?php endif; ?>
                     <button class="btn-bulk btn-bulk-cancel" onclick="cancelarSeleccion()">
                         <i class="fas fa-times"></i> Cancelar
                     </button>
@@ -204,13 +210,14 @@
                             <th>Cédula</th>
                             <th class="col-fecha">F. Nacimiento</th>
                             <th>Contacto</th>
+                            <th id="thPeriodoTabla" style="display: none;">Períodos</th>
                             <th>Certificado</th>
                             <th>Acciones</th>
                         </tr>
                     </thead>
                     <tbody id="tablaEstudiantes">
                         <tr>
-                            <td colspan="7">
+                            <td colspan="<?= ($periodo_id === 'todos') ? '8' : '7' ?>">
                                 <div class="loading">
                                     <i class="fas fa-spinner"></i>
                                     <p>Cargando...</p>

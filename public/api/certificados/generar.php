@@ -19,8 +19,9 @@ Auth::requireAuth();
 
 // Usuario actual
 $usuario = Auth::user();
-// Nota: La generación del certificado ES la aprobación en sí misma
-// Por lo tanto siempre se crea con estado='activo'
+// Nota: Aprobación y generación son procesos distintos:
+// - Aprobación: habilita al estudiante para certificación
+// - Generación: crea código oficial, archivos y registra historial de generación
 
 $pdo = getConnection();
 
@@ -69,6 +70,76 @@ function marcarCertificadoAprobado(PDO $pdo, $certificadoId): void {
     } catch (Throwable $e) {
         // No-op para mantener compatibilidad con instalaciones sin columnas de aprobacion.
     }
+}
+
+/**
+ * Genera un código interno único para registros aprobados aún no generados.
+ * No es el código oficial del certificado final.
+ */
+function generarCodigoAprobacion(PDO $pdo): string {
+    do {
+        $codigo = 'APR-' . strtoupper(substr(md5(uniqid((string)mt_rand(), true)), 0, 10));
+        $stmt = $pdo->prepare("SELECT id FROM certificados WHERE codigo = ? LIMIT 1");
+        $stmt->execute([$codigo]);
+        $exists = (bool)$stmt->fetch(PDO::FETCH_ASSOC);
+    } while ($exists);
+    return $codigo;
+}
+
+/**
+ * Genera un código oficial CCE único.
+ */
+function generarCodigoCertificadoFinal(PDO $pdo, \CCE\Certificate $certificate): string {
+    do {
+        $codigo = $certificate->generateCode();
+        $stmt = $pdo->prepare("SELECT id FROM certificados WHERE codigo = ? LIMIT 1");
+        $stmt->execute([$codigo]);
+        $exists = (bool)$stmt->fetch(PDO::FETCH_ASSOC);
+    } while ($exists);
+    return $codigo;
+}
+
+/**
+ * Registra acción de aprobación/revocación en tabla de auditoría si existe.
+ */
+function registrarAccionAprobacion(PDO $pdo, int $certificadoId, ?int $usuarioId, string $accion = 'aprobar', ?string $comentario = null): void {
+    if ($certificadoId <= 0 || !$usuarioId) return;
+    try {
+        $stmt = $pdo->prepare("
+            INSERT INTO certificados_aprobaciones (certificado_id, usuario_id, accion, comentario)
+            VALUES (?, ?, ?, ?)
+        ");
+        $stmt->execute([$certificadoId, $usuarioId, $accion, $comentario]);
+    } catch (Throwable $e) {
+        // No-op para instalaciones sin esta tabla o con esquema distinto.
+    }
+}
+
+/**
+ * Normaliza historial de generaciones (acepta JSON string o arreglo).
+ */
+function normalizarHistorialGeneraciones($raw): array {
+    if (is_array($raw)) {
+        return $raw;
+    }
+    if (!is_string($raw) || trim($raw) === '') {
+        return [];
+    }
+    $decoded = json_decode($raw, true);
+    return is_array($decoded) ? $decoded : [];
+}
+
+/**
+ * Construye entrada de historial de generación con usuario.
+ */
+function construirEntradaGeneracion(array $usuario, string $razon = 'Generación inicial'): array {
+    $nombreUsuario = trim((string)($usuario['nombre_completo'] ?? $usuario['username'] ?? $usuario['nombre'] ?? ''));
+    return [
+        'fecha' => date('Y-m-d H:i:s'),
+        'razon' => $razon,
+        'usuario_id' => isset($usuario['id']) ? (int)$usuario['id'] : null,
+        'usuario' => $nombreUsuario !== '' ? $nombreUsuario : null
+    ];
 }
 
 // Inicializar $data
@@ -189,14 +260,19 @@ try {
             
             // Verificar plantilla de categoría
             if ($categoria_id) {
-                // Verificar si la categoría usa su propia plantilla
-                $stmt = $pdo->prepare("SELECT usar_plantilla_propia FROM categorias WHERE id = ?");
+                // Compatibilidad total: no asumir existencia de columnas legacy.
+                $stmt = $pdo->prepare("SELECT * FROM categorias WHERE id = ? LIMIT 1");
                 $stmt->execute([$categoria_id]);
-                $catUsaPropia = $stmt->fetchColumn();
-                // Si la columna es NULL o 1, asume true (por defecto o activada). Si es explícitamente 0 (false), entonces no usa propia.
-                $usaPropia = ($catUsaPropia === false || $catUsaPropia === null || (int)$catUsaPropia === 1);
-                
-                if ($usaPropia && $existeCategoriaPlantillas) {
+                $catLegacy = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
+                // Si la columna no existe, asumimos true para mantener comportamiento histórico.
+                $usaPropia = !array_key_exists('usar_plantilla_propia', $catLegacy)
+                    ? true
+                    : ((int)($catLegacy['usar_plantilla_propia'] ?? 0) === 1);
+
+                // Priorizar plantilla activa en categoria_plantillas cuando exista
+                // (aunque usar_plantilla_propia esté en 0 por datos mixtos).
+                if ($existeCategoriaPlantillas) {
                     $stmt = $pdo->prepare("SELECT id, archivo, es_activa FROM categoria_plantillas WHERE categoria_id = ? AND es_activa = 1 LIMIT 1");
                     $stmt->execute([$categoria_id]);
                     $resultado['plantilla_categoria'] = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -205,18 +281,9 @@ try {
                 // Compatibilidad legacy: algunas categorías usan plantilla_archivo en tabla categorias
                 // y no necesariamente tienen registro activo en categoria_plantillas.
                 if (!$resultado['plantilla_categoria']) {
-                    // IMPORTANTE: usar SELECT * para no romper en instalaciones donde
-                    // no existen columnas legacy específicas.
-                    $stmt = $pdo->prepare("SELECT * FROM categorias WHERE id = ? LIMIT 1");
-                    $stmt->execute([$categoria_id]);
-                    $catLegacy = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
-
-                    $usaPropiaLegacy = isset($catLegacy['usar_plantilla_propia'])
-                        ? ((int)$catLegacy['usar_plantilla_propia'] === 1)
-                        : true; // Si no existe la columna, asumimos legacy activa si hay archivo.
                     $archivoLegacy = trim((string)($catLegacy['plantilla_archivo'] ?? ''));
 
-                    if ($archivoLegacy !== '' && $usaPropiaLegacy) {
+                    if ($archivoLegacy !== '' && $usaPropia) {
                         $resultado['plantilla_categoria'] = [
                             'id' => null,
                             'archivo' => $archivoLegacy,
@@ -335,9 +402,20 @@ try {
                     ce.fecha_matricula,
                     ce.estado as estado_matricula,
                     cert.id as certificado_id,
-                    cert.codigo as certificado_codigo,
+                    CASE
+                        WHEN (
+                            NULLIF(TRIM(cert.archivo_pdf), '') IS NOT NULL
+                            OR NULLIF(TRIM(cert.archivo_imagen), '') IS NOT NULL
+                        ) THEN cert.codigo
+                        ELSE NULL
+                    END as certificado_codigo,
                     cert.fecha_creacion as certificado_fecha,
-                    cert.fechas_generacion as certificado_fechas_generacion
+                    cert.fechas_generacion as certificado_fechas_generacion,
+                    cert.archivo_pdf as certificado_archivo_pdf,
+                    cert.archivo_imagen as certificado_archivo_imagen,
+                    cert.aprobado as certificado_aprobado,
+                    cert.fecha_aprobacion as certificado_fecha_aprobacion,
+                    cert.aprobado_por as certificado_aprobado_por
                 FROM categoria_estudiantes ce
                 JOIN estudiantes e ON ce.estudiante_id = e.id
                 LEFT JOIN certificados cert ON cert.categoria_id = ce.categoria_id 
@@ -412,27 +490,59 @@ try {
                         $stmtDel->execute([$existente['id']]);
                         $desaprobados++;
                     } else {
-                        // No existe -> Aprobar (insertar en BD)
-                        $codigo = $certificate->generateCode();
-                        $fechasGeneracion = json_encode([date('Y-m-d H:i:s')]);
-                        
-                        $stmtIns = $pdo->prepare("
-                            INSERT INTO certificados (codigo, nombre, razon, fecha, grupo_id, categoria_id, periodo_id, estudiante_id, fechas_generacion, estado)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        ");
-                        $stmtIns->execute([
-                            $codigo,
-                            $estudiante['nombre'],
-                            'Por su participación',
-                            $fecha,
-                            $categoria['grupo_id'],
-                            $categoria_id,
-                            $periodo_id,
-                            $estudiante['id'],
-                            $fechasGeneracion,
-                            $estadoCertificado
-                        ]);
-                        marcarCertificadoAprobado($pdo, $pdo->lastInsertId());
+                        // No existe -> Aprobar (sin generar aún archivos/código oficial)
+                        $codigoInternoAprobacion = generarCodigoAprobacion($pdo);
+
+                        try {
+                            $stmtIns = $pdo->prepare("
+                                INSERT INTO certificados (
+                                    codigo, nombre, razon, fecha, grupo_id, categoria_id, periodo_id, estudiante_id, estado,
+                                    aprobado, aprobado_por, fecha_aprobacion, requiere_aprobacion
+                                )
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, NOW(), 0)
+                            ");
+                            $stmtIns->execute([
+                                $codigoInternoAprobacion,
+                                $estudiante['nombre'],
+                                'Por su participación',
+                                $fecha,
+                                $categoria['grupo_id'],
+                                $categoria_id,
+                                $periodo_id,
+                                $estudiante['id'],
+                                $estadoCertificado,
+                                $usuario['id'] ?? null
+                            ]);
+                        } catch (Throwable $e) {
+                            // Compatibilidad con esquemas sin columnas de aprobación explícita
+                            $stmtIns = $pdo->prepare("
+                                INSERT INTO certificados (
+                                    codigo, nombre, razon, fecha, grupo_id, categoria_id, periodo_id, estudiante_id, estado
+                                )
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            ");
+                            $stmtIns->execute([
+                                $codigoInternoAprobacion,
+                                $estudiante['nombre'],
+                                'Por su participación',
+                                $fecha,
+                                $categoria['grupo_id'],
+                                $categoria_id,
+                                $periodo_id,
+                                $estudiante['id'],
+                                $estadoCertificado
+                            ]);
+                            marcarCertificadoAprobado($pdo, $pdo->lastInsertId());
+                        }
+
+                        $certificadoId = (int)$pdo->lastInsertId();
+                        registrarAccionAprobacion(
+                            $pdo,
+                            $certificadoId,
+                            isset($usuario['id']) ? (int)$usuario['id'] : null,
+                            'aprobar',
+                            'Aprobación para certificación'
+                        );
                         $aprobados++;
                     }
                 } catch (Exception $e) {
@@ -461,7 +571,7 @@ try {
             $razon = $data['razon'] ?? null;
             $guardar_archivos = $data['guardar_archivos'] ?? false; // Por defecto NO guardar archivos
             $skip_template_check = $data['skip_template_check'] ?? false;
-            $estadoCertificado = 'activo'; // La generación ES la aprobación
+            $estadoCertificado = 'activo';
             
             if (empty($categoria_id)) {
                 throw new Exception('Falta el ID de categoría');
@@ -505,12 +615,41 @@ try {
                 }
             }
             
-            // 3. Verificar plantilla de categoría (si usa plantilla propia)
-            if ($categoria['usar_plantilla_propia'] == 1 && !empty($categoria['plantilla_archivo'])) {
-                $rutaCatPlantilla = dirname(__DIR__) . '/uploads/categorias/' . $categoria['plantilla_archivo'];
-                if (file_exists($rutaCatPlantilla)) {
-                    $tieneTemplate = true;
-                    $detalleValidacion[] = 'categoria';
+            // 3. Verificar plantilla activa de categoría (tabla categoria_plantillas)
+            try {
+                $stmtCatPlantilla = $pdo->prepare("SELECT id, archivo FROM categoria_plantillas WHERE categoria_id = ? AND es_activa = 1 LIMIT 1");
+                $stmtCatPlantilla->execute([$categoria_id]);
+                $plantillaCategoria = $stmtCatPlantilla->fetch(PDO::FETCH_ASSOC);
+
+                if ($plantillaCategoria && !empty($plantillaCategoria['archivo'])) {
+                    $rutaCatPlantilla = resolveUploadsAbsolutePath('categorias/' . $categoria_id . '/' . $plantillaCategoria['archivo']);
+                    if (file_exists($rutaCatPlantilla)) {
+                        $tieneTemplate = true;
+                        $detalleValidacion[] = 'categoria';
+                    }
+                }
+            } catch (Throwable $e) {
+                // No-op: mantener compatibilidad cuando no existe tabla categoria_plantillas.
+            }
+
+            // 4. Verificar plantilla legacy en categorias.plantilla_archivo
+            $usaPropiaLegacy = !array_key_exists('usar_plantilla_propia', $categoria)
+                ? true
+                : ((int)($categoria['usar_plantilla_propia'] ?? 0) === 1);
+            $archivoLegacyCategoria = trim((string)($categoria['plantilla_archivo'] ?? ''));
+
+            if ($usaPropiaLegacy && $archivoLegacyCategoria !== '') {
+                $candidatasLegacy = [
+                    resolveUploadsAbsolutePath('categorias/' . $categoria_id . '/' . $archivoLegacyCategoria),
+                    resolveUploadsAbsolutePath($archivoLegacyCategoria),
+                    dirname(__DIR__) . '/uploads/categorias/' . $archivoLegacyCategoria
+                ];
+                foreach ($candidatasLegacy as $rutaLegacy) {
+                    if ($rutaLegacy && file_exists($rutaLegacy)) {
+                        $tieneTemplate = true;
+                        $detalleValidacion[] = 'categoria_legacy';
+                        break;
+                    }
                 }
             }
             
@@ -528,10 +667,42 @@ try {
             }
             // ====== FIN VALIDACIÓN PREVIA ======
             
-            // Obtener estudiantes
+            // Obtener estudiantes + destacado por categoría/período (no global).
             $placeholders = str_repeat('?,', count($estudiantes_ids) - 1) . '?';
-            $stmt = $pdo->prepare("SELECT * FROM estudiantes WHERE id IN ($placeholders)");
-            $stmt->execute($estudiantes_ids);
+
+            $tieneColumnaDestacadoCategoria = false;
+            try {
+                $stmtCol = $pdo->query("SHOW COLUMNS FROM categoria_estudiantes LIKE 'es_destacado'");
+                $tieneColumnaDestacadoCategoria = $stmtCol && $stmtCol->fetch(PDO::FETCH_ASSOC);
+            } catch (Throwable $e) {
+                $tieneColumnaDestacadoCategoria = false;
+            }
+
+            if ($tieneColumnaDestacadoCategoria) {
+                $sqlEstudiantes = "
+                    SELECT e.*,
+                           (
+                               SELECT COALESCE(MAX(cex.es_destacado), 0)
+                               FROM categoria_estudiantes cex
+                               WHERE cex.estudiante_id = e.id
+                                 AND cex.categoria_id = ?
+                                 AND cex.periodo_id <=> ?
+                           ) AS es_destacado_categoria
+                    FROM estudiantes e
+                    WHERE e.id IN ($placeholders)
+                ";
+                $paramsEstudiantes = array_merge([$categoria_id, $periodo_id], $estudiantes_ids);
+            } else {
+                $sqlEstudiantes = "
+                    SELECT e.*, 0 AS es_destacado_categoria
+                    FROM estudiantes e
+                    WHERE e.id IN ($placeholders)
+                ";
+                $paramsEstudiantes = $estudiantes_ids;
+            }
+
+            $stmt = $pdo->prepare($sqlEstudiantes);
+            $stmt->execute($paramsEstudiantes);
             $estudiantes = $stmt->fetchAll(PDO::FETCH_ASSOC);
             
             $certificate = new \CCE\Certificate($pdo);
@@ -544,37 +715,138 @@ try {
                 try {
                     // Verificar si ya tiene certificado para ESE periodo
                     $stmt = $pdo->prepare("
-                        SELECT id, codigo, fechas_generacion FROM certificados 
+                        SELECT id, codigo, fechas_generacion, archivo_pdf, archivo_imagen, aprobado_por, fecha_aprobacion, razon, fecha
+                        FROM certificados 
                         WHERE categoria_id = ? AND nombre = ? AND grupo_id = ? AND periodo_id <=> ?
                     ");
                     $stmt->execute([$categoria_id, $estudiante['nombre'], $categoria['grupo_id'], $periodo_id]);
                     $existente = $stmt->fetch(PDO::FETCH_ASSOC);
                     
                     if ($existente) {
-                        // Regenerar el certificado y actualizar historial de fechas
-                        $resultRegen = $certificate->regenerate($existente['codigo']);
-                        
-                        if ($resultRegen['success']) {
-                            $resultados[] = [
-                                'estudiante_id' => $estudiante['id'],
-                                'nombre' => $estudiante['nombre'],
-                                'success' => true,
-                                'codigo' => $existente['codigo'],
-                                'ya_existia' => true,
-                                'regenerado' => true
-                            ];
+                        $codigoExistente = trim((string)($existente['codigo'] ?? ''));
+                        $tieneArchivosExistente = trim((string)($existente['archivo_pdf'] ?? '')) !== ''
+                            || trim((string)($existente['archivo_imagen'] ?? '')) !== '';
+
+                        if ($tieneArchivosExistente && $codigoExistente !== '') {
+                            // Ya generado antes -> regenerar archivos y anexar historial
+                            $resultRegen = $certificate->regenerate(
+                                $codigoExistente,
+                                '',
+                                [
+                                    'usuario_id' => isset($usuario['id']) ? (int)$usuario['id'] : null,
+                                    'usuario_nombre' => (string)($usuario['nombre_completo'] ?? $usuario['username'] ?? '')
+                                ]
+                            );
+
+                            if ($resultRegen['success']) {
+                                $resultados[] = [
+                                    'estudiante_id' => $estudiante['id'],
+                                    'nombre' => $estudiante['nombre'],
+                                    'success' => true,
+                                    'codigo' => $codigoExistente,
+                                    'ya_existia' => true,
+                                    'regenerado' => true
+                                ];
+                            } else {
+                                // Si falla la regeneración, al menos devolver el existente
+                                $resultados[] = [
+                                    'estudiante_id' => $estudiante['id'],
+                                    'nombre' => $estudiante['nombre'],
+                                    'success' => true,
+                                    'codigo' => $codigoExistente,
+                                    'ya_existia' => true,
+                                    'regenerado' => false,
+                                    'nota' => $resultRegen['error'] ?? 'No se pudo regenerar'
+                                ];
+                            }
                         } else {
-                            // Si falla la regeneración, al menos devolver el existente
-                            $resultados[] = [
-                                'estudiante_id' => $estudiante['id'],
-                                'nombre' => $estudiante['nombre'],
-                                'success' => true,
-                                'codigo' => $existente['codigo'],
-                                'ya_existia' => true,
-                                'regenerado' => false,
-                                'nota' => $resultRegen['error'] ?? 'No se pudo regenerar'
-                            ];
+                            // Existe como aprobado pero sin generar: generar ahora código oficial + archivos
+                            $pdo->beginTransaction();
+                            try {
+                                $codigoFinal = generarCodigoCertificadoFinal($pdo, $certificate);
+
+                                $dataCertExistente = [
+                                    'nombre' => $estudiante['nombre'],
+                                    'fecha' => $fecha,
+                                    'grupo_id' => $categoria['grupo_id'],
+                                    'categoria_id' => $categoria_id,
+                                    'periodo_id' => $periodo_id,
+                                    'estudiante_id' => $estudiante['id'],
+                                    'estado' => $estadoCertificado,
+                                    'codigo' => $codigoFinal,
+                                    'es_destacado' => isset($estudiante['es_destacado_categoria'])
+                                        ? ((int)$estudiante['es_destacado_categoria'] === 1)
+                                        : false,
+                                    'usuario_id' => isset($usuario['id']) ? (int)$usuario['id'] : null,
+                                    'usuario_nombre' => (string)($usuario['nombre_completo'] ?? $usuario['username'] ?? '')
+                                ];
+
+                                if (!empty($razon)) {
+                                    $dataCertExistente['razon'] = $razon;
+                                } elseif (!empty($existente['razon'])) {
+                                    $dataCertExistente['razon'] = $existente['razon'];
+                                }
+
+                                // Crear temporalmente un certificado generado para producir artefactos con QR/código final.
+                                $resultTemp = $certificate->create($dataCertExistente);
+                                if (!$resultTemp['success']) {
+                                    throw new Exception($resultTemp['error'] ?? 'No se pudo generar certificado');
+                                }
+
+                                $tempCertId = (int)($resultTemp['certificado_id'] ?? 0);
+                                if ($tempCertId <= 0) {
+                                    throw new Exception('No se pudo identificar el certificado temporal generado');
+                                }
+
+                                $historial = normalizarHistorialGeneraciones($existente['fechas_generacion'] ?? null);
+                                $historial[] = construirEntradaGeneracion($usuario, 'Generación inicial');
+
+                                // Eliminar temporal para liberar el código final y reutilizar el registro aprobado original.
+                                $stmtDelTemp = $pdo->prepare("DELETE FROM certificados WHERE id = ?");
+                                $stmtDelTemp->execute([$tempCertId]);
+
+                                $stmtUpd = $pdo->prepare("
+                                    UPDATE certificados
+                                    SET codigo = ?,
+                                        archivo_imagen = ?,
+                                        archivo_pdf = ?,
+                                        fechas_generacion = ?,
+                                        fecha_creacion = NOW(),
+                                        aprobado = 1,
+                                        aprobado_por = COALESCE(aprobado_por, ?),
+                                        fecha_aprobacion = COALESCE(fecha_aprobacion, NOW()),
+                                        requiere_aprobacion = 0,
+                                        estado = ?,
+                                        estudiante_id = ?
+                                    WHERE id = ?
+                                ");
+                                $stmtUpd->execute([
+                                    $codigoFinal,
+                                    $resultTemp['imagen'] ?? null,
+                                    $resultTemp['pdf'] ?? null,
+                                    json_encode($historial, JSON_UNESCAPED_UNICODE),
+                                    isset($usuario['id']) ? (int)$usuario['id'] : null,
+                                    $estadoCertificado,
+                                    $estudiante['id'],
+                                    (int)$existente['id']
+                                ]);
+
+                                $pdo->commit();
+
+                                $resultados[] = [
+                                    'estudiante_id' => $estudiante['id'],
+                                    'nombre' => $estudiante['nombre'],
+                                    'success' => true,
+                                    'codigo' => $codigoFinal,
+                                    'ya_existia' => true,
+                                    'regenerado' => false
+                                ];
+                            } catch (Exception $eGenAprobado) {
+                                $pdo->rollBack();
+                                throw $eGenAprobado;
+                            }
                         }
+
                         $exitosos++;
                         continue;
                     }
@@ -586,8 +858,13 @@ try {
                         'grupo_id' => $categoria['grupo_id'],
                         'categoria_id' => $categoria_id,
                         'periodo_id' => $periodo_id,
+                        'estudiante_id' => $estudiante['id'],
                         'estado' => $estadoCertificado,
-                        'es_destacado' => isset($estudiante['destacado']) ? (bool)$estudiante['destacado'] : false
+                        'es_destacado' => isset($estudiante['es_destacado_categoria'])
+                            ? ((int)$estudiante['es_destacado_categoria'] === 1)
+                            : false,
+                        'usuario_id' => isset($usuario['id']) ? (int)$usuario['id'] : null,
+                        'usuario_nombre' => (string)($usuario['nombre_completo'] ?? $usuario['username'] ?? '')
                     ];
                     // Solo agregar razón si se envió explícitamente (para casos especiales)
                     if (!empty($razon)) {
@@ -596,12 +873,14 @@ try {
                     
                     // Si solo estamos aprobando sin plantilla, insertar directo en BD
                     if ($skip_template_check) {
-                        $codigo = $certificate->generateCode();
-                        $fechasGeneracion = json_encode([date('Y-m-d H:i:s')]);
+                        $codigo = generarCodigoAprobacion($pdo);
                         
                         $stmt = $pdo->prepare("
-                            INSERT INTO certificados (codigo, nombre, razon, fecha, grupo_id, categoria_id, periodo_id, estudiante_id, fechas_generacion, estado)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            INSERT INTO certificados (
+                                codigo, nombre, razon, fecha, grupo_id, categoria_id, periodo_id, estudiante_id, estado,
+                                aprobado, aprobado_por, fecha_aprobacion, requiere_aprobacion
+                            )
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, NOW(), 0)
                         ");
                         $stmt->execute([
                             $codigo,
@@ -612,16 +891,24 @@ try {
                             $categoria_id,
                             $periodo_id,
                             $estudiante['id'],
-                            $fechasGeneracion,
-                            $estadoCertificado
+                            $estadoCertificado,
+                            isset($usuario['id']) ? (int)$usuario['id'] : null
                         ]);
-                        marcarCertificadoAprobado($pdo, $pdo->lastInsertId());
+
+                        $certificadoId = (int)$pdo->lastInsertId();
+                        registrarAccionAprobacion(
+                            $pdo,
+                            $certificadoId,
+                            isset($usuario['id']) ? (int)$usuario['id'] : null,
+                            'aprobar',
+                            'Aprobación sin generación por plantilla no disponible'
+                        );
                         
                         $resultados[] = [
                             'estudiante_id' => $estudiante['id'],
                             'nombre' => $estudiante['nombre'],
                             'success' => true,
-                            'codigo' => $codigo,
+                            'codigo' => null,
                             'ya_existia' => false
                         ];
                         $exitosos++;
@@ -740,7 +1027,14 @@ try {
             
             foreach ($certificados as $cert) {
                 try {
-                    $resultRegen = $certificate->regenerate($cert['codigo']);
+                    $resultRegen = $certificate->regenerate(
+                        $cert['codigo'],
+                        '',
+                        [
+                            'usuario_id' => isset($usuario['id']) ? (int)$usuario['id'] : null,
+                            'usuario_nombre' => (string)($usuario['nombre_completo'] ?? $usuario['username'] ?? '')
+                        ]
+                    );
                     
                     if ($resultRegen['success']) {
                         $resultados[] = [
@@ -787,7 +1081,14 @@ try {
             }
             
             $certificate = new \CCE\Certificate($pdo);
-            $result = $certificate->regenerate($codigo, $razon_regeneracion);
+            $result = $certificate->regenerate(
+                $codigo,
+                $razon_regeneracion,
+                [
+                    'usuario_id' => isset($usuario['id']) ? (int)$usuario['id'] : null,
+                    'usuario_nombre' => (string)($usuario['nombre_completo'] ?? $usuario['username'] ?? '')
+                ]
+            );
             
             echo json_encode($result);
             break;
@@ -959,7 +1260,14 @@ try {
                     error_log("Imagen no encontrada: $imagePath, regenerando...");
                     
                     // Regenerar certificado al vuelo
-                    $result = $certificate->regenerate($cert['codigo']);
+                    $result = $certificate->regenerate(
+                        $cert['codigo'],
+                        '',
+                        [
+                            'usuario_id' => isset($usuario['id']) ? (int)$usuario['id'] : null,
+                            'usuario_nombre' => (string)($usuario['nombre_completo'] ?? $usuario['username'] ?? '')
+                        ]
+                    );
                     if ($result['success'] && isset($result['imagen_path'])) {
                         $imagePath = $result['imagen_path'];
                     }
@@ -1043,7 +1351,14 @@ try {
                 
                 // Si no existe, intentar regenerar
                 if (!file_exists($rutaArchivo)) {
-                    $result = $certificate->regenerate($cert['codigo']);
+                    $result = $certificate->regenerate(
+                        $cert['codigo'],
+                        '',
+                        [
+                            'usuario_id' => isset($usuario['id']) ? (int)$usuario['id'] : null,
+                            'usuario_nombre' => (string)($usuario['nombre_completo'] ?? $usuario['username'] ?? '')
+                        ]
+                    );
                     if ($result['success'] && isset($result['imagen_path'])) {
                         if ($formato === 'pdf') {
                             // El PDF se genera junto con la imagen
@@ -1128,7 +1443,14 @@ try {
                 
                 // Si no existe, intentar regenerar
                 if (!file_exists($rutaArchivo)) {
-                    $result = $certificate->regenerate($cert['codigo']);
+                    $result = $certificate->regenerate(
+                        $cert['codigo'],
+                        '',
+                        [
+                            'usuario_id' => isset($usuario['id']) ? (int)$usuario['id'] : null,
+                            'usuario_nombre' => (string)($usuario['nombre_completo'] ?? $usuario['username'] ?? '')
+                        ]
+                    );
                     if ($result['success'] && isset($result['imagen_path'])) {
                         $rutaArchivo = $result['imagen_path'];
                     }
@@ -1183,7 +1505,14 @@ try {
             
             if (!$cert['archivo_pdf'] || !file_exists($pdfPath)) {
                 // Regenerar el certificado
-                $result = $certificate->regenerate($codigo);
+                $result = $certificate->regenerate(
+                    $codigo,
+                    '',
+                    [
+                        'usuario_id' => isset($usuario['id']) ? (int)$usuario['id'] : null,
+                        'usuario_nombre' => (string)($usuario['nombre_completo'] ?? $usuario['username'] ?? '')
+                    ]
+                );
                 if ($result['success'] && isset($result['pdf_path'])) {
                     $pdfPath = $result['pdf_path'];
                 } else {
@@ -1223,7 +1552,14 @@ try {
             
             if (!$cert['archivo_imagen'] || !file_exists($imgPath)) {
                 // Regenerar el certificado
-                $result = $certificate->regenerate($codigo);
+                $result = $certificate->regenerate(
+                    $codigo,
+                    '',
+                    [
+                        'usuario_id' => isset($usuario['id']) ? (int)$usuario['id'] : null,
+                        'usuario_nombre' => (string)($usuario['nombre_completo'] ?? $usuario['username'] ?? '')
+                    ]
+                );
                 if ($result['success'] && isset($result['imagen_path'])) {
                     $imgPath = $result['imagen_path'];
                 } else {

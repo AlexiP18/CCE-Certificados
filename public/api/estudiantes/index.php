@@ -589,7 +589,11 @@ try {
                     (
                         SELECT MAX(
                             CASE
-                                WHEN cert_gen.id IS NOT NULL THEN 1
+                                WHEN cert_gen.id IS NOT NULL
+                                     AND (
+                                         NULLIF(TRIM(cert_gen.archivo_pdf), '') IS NOT NULL
+                                         OR NULLIF(TRIM(cert_gen.archivo_imagen), '') IS NOT NULL
+                                     ) THEN 1
                                 ELSE 0
                             END
                         )
@@ -717,20 +721,45 @@ try {
 
             // 1. Intentar buscar por estudiante_id (más robusto)
             $sql = "
-                SELECT DISTINCT c.codigo, c.fecha, c.fechas_generacion, 
-                       cat.nombre as categoria_nombre, cat.icono as categoria_icono, '#e67e22' as categoria_color,
-                       g.id as grupo_id, g.nombre as grupo_nombre,
-                       p.nombre as periodo_nombre,
-                       p.fecha_inicio as periodo_fecha_inicio
+                SELECT DISTINCT 
+                       c.id,
+                       c.estudiante_id,
+                       c.categoria_id,
+                       c.periodo_id,
+                       c.codigo,
+                       c.fecha,
+                       c.fecha_creacion,
+                       c.aprobado,
+                       c.aprobado_por,
+                       c.fecha_aprobacion,
+                       ua.nombre_completo as aprobado_por_nombre,
+                       c.archivo_pdf,
+                       c.archivo_imagen,
+                       c.fechas_generacion, 
+                       cat.nombre as categoria_nombre,
+                       cat.icono as categoria_icono,
+                       '#e67e22' as categoria_color,
+                       g.id as grupo_id,
+                       g.nombre as grupo_nombre,
+                       COALESCE(p_cert.nombre, 'Sin período') as periodo_nombre,
+                       COALESCE(p_cert.fecha_inicio, '0000-00-00') as periodo_fecha_inicio,
+                       (
+                           SELECT COALESCE(MAX(cex.es_destacado), 0)
+                           FROM categoria_estudiantes cex
+                           WHERE cex.estudiante_id = c.estudiante_id
+                             AND cex.categoria_id = c.categoria_id
+                             AND cex.periodo_id <=> c.periodo_id
+                       ) as es_destacado
                 FROM certificados c
                 LEFT JOIN categorias cat ON c.categoria_id = cat.id
                 LEFT JOIN grupos g ON cat.grupo_id = g.id
-                -- Link via GROUP and NAME to find distinct subject enrollments across periods
-                LEFT JOIN categorias cat_linked ON cat_linked.grupo_id = g.id AND cat_linked.nombre = cat.nombre
-                LEFT JOIN categoria_estudiantes ce ON ce.categoria_id = cat_linked.id AND ce.estudiante_id = c.estudiante_id
-                LEFT JOIN periodos p ON ce.periodo_id = p.id
+                LEFT JOIN periodos p_cert ON c.periodo_id = p_cert.id
+                LEFT JOIN usuarios ua ON c.aprobado_por = ua.id
                 WHERE c.estudiante_id = ?
-                AND p.id IS NOT NULL 
+                  AND (
+                      NULLIF(TRIM(c.archivo_pdf), '') IS NOT NULL
+                      OR NULLIF(TRIM(c.archivo_imagen), '') IS NOT NULL
+                  )
                 ORDER BY periodo_fecha_inicio DESC, c.fecha DESC
             ";
             $stmt = $pdo->prepare($sql);
@@ -748,20 +777,45 @@ try {
 
                 if ($nombreEstudiante) {
                     $stmt = $pdo->prepare("
-                        SELECT DISTINCT c.codigo, c.fecha, c.fechas_generacion, 
-                               cat.nombre as categoria_nombre, cat.icono as categoria_icono, '#e67e22' as categoria_color,
-                               g.id as grupo_id, g.nombre as grupo_nombre,
-                               p.nombre as periodo_nombre,
-                               p.fecha_inicio as periodo_fecha_inicio
+                        SELECT DISTINCT 
+                               c.id,
+                               c.estudiante_id,
+                               c.categoria_id,
+                               c.periodo_id,
+                               c.codigo,
+                               c.fecha,
+                               c.fecha_creacion,
+                               c.aprobado,
+                               c.aprobado_por,
+                               c.fecha_aprobacion,
+                               ua.nombre_completo as aprobado_por_nombre,
+                               c.archivo_pdf,
+                               c.archivo_imagen,
+                               c.fechas_generacion, 
+                               cat.nombre as categoria_nombre,
+                               cat.icono as categoria_icono,
+                               '#e67e22' as categoria_color,
+                               g.id as grupo_id,
+                               g.nombre as grupo_nombre,
+                               COALESCE(p_cert.nombre, 'Sin período') as periodo_nombre,
+                               COALESCE(p_cert.fecha_inicio, '0000-00-00') as periodo_fecha_inicio,
+                               (
+                                   SELECT COALESCE(MAX(cex.es_destacado), 0)
+                                   FROM categoria_estudiantes cex
+                                   WHERE cex.estudiante_id = c.estudiante_id
+                                     AND cex.categoria_id = c.categoria_id
+                                     AND cex.periodo_id <=> c.periodo_id
+                               ) as es_destacado
                         FROM certificados c
                         LEFT JOIN categorias cat ON c.categoria_id = cat.id
                         LEFT JOIN grupos g ON cat.grupo_id = g.id
-                        -- Link via GROUP and NAME
-                        LEFT JOIN categorias cat_linked ON cat_linked.grupo_id = g.id AND cat_linked.nombre = cat.nombre
-                        LEFT JOIN categoria_estudiantes ce ON ce.categoria_id = cat_linked.id AND ce.estudiante_id = c.estudiante_id
-                        LEFT JOIN periodos p ON ce.periodo_id = p.id
+                        LEFT JOIN periodos p_cert ON c.periodo_id = p_cert.id
+                        LEFT JOIN usuarios ua ON c.aprobado_por = ua.id
                         WHERE (TRIM(c.nombre) = TRIM(?) OR c.nombre LIKE ?)
-                        AND p.id IS NOT NULL
+                          AND (
+                              NULLIF(TRIM(c.archivo_pdf), '') IS NOT NULL
+                              OR NULLIF(TRIM(c.archivo_imagen), '') IS NOT NULL
+                          )
                         ORDER BY periodo_fecha_inicio DESC, c.fecha DESC
                     ");
                     $stmt->execute([$nombreEstudiante, '%' . $nombreEstudiante . '%']);

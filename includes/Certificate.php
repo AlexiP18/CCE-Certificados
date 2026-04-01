@@ -710,8 +710,15 @@ class Certificate {
             // Generar PDF
             $pdfPath = $this->generatePDF($imagePath, $codigo);
             
-            // Inicializar historial de fechas de generación
-            $fechasGeneracion = json_encode([date('Y-m-d H:i:s')]);
+            // Inicializar historial de generación (fecha + usuario)
+            $usuarioIdGeneracion = isset($data['usuario_id']) ? (int)$data['usuario_id'] : null;
+            $usuarioNombreGeneracion = trim((string)($data['usuario_nombre'] ?? ''));
+            $fechasGeneracion = json_encode([[
+                'fecha' => date('Y-m-d H:i:s'),
+                'razon' => 'Generación inicial',
+                'usuario_id' => $usuarioIdGeneracion > 0 ? $usuarioIdGeneracion : null,
+                'usuario' => $usuarioNombreGeneracion !== '' ? $usuarioNombreGeneracion : null
+            ]], JSON_UNESCAPED_UNICODE);
             
             // Guardar en base de datos (permitir estado personalizado para flujos de aprobación)
             $estadoCert = $data['estado'] ?? 'activo';
@@ -739,8 +746,18 @@ class Certificate {
             // Mantener consistencia con filtros por aprobacion en vistas de grupo/categoria.
             // Si la instalacion no tiene estas columnas, ignorar sin interrumpir la generacion.
             try {
-                $stmtApr = $this->pdo->prepare("UPDATE certificados SET aprobado = 1, requiere_aprobacion = 0, fecha_aprobacion = NOW() WHERE id = ?");
-                $stmtApr->execute([$certificado_id]);
+                $stmtApr = $this->pdo->prepare("
+                    UPDATE certificados
+                    SET aprobado = 1,
+                        requiere_aprobacion = 0,
+                        fecha_aprobacion = COALESCE(fecha_aprobacion, NOW()),
+                        aprobado_por = COALESCE(aprobado_por, ?)
+                    WHERE id = ?
+                ");
+                $stmtApr->execute([
+                    $usuarioIdGeneracion > 0 ? $usuarioIdGeneracion : null,
+                    $certificado_id
+                ]);
             } catch (\Throwable $e) {
                 // No-op por compatibilidad de esquema.
             }
@@ -1162,7 +1179,10 @@ class Certificate {
             (isset($this->config['destacado_habilitado']) && $this->config['destacado_habilitado'])) {
             
             // Verificar si el estudiante está marcado como destacado
-            $esDestacado = isset($data['es_destacado']) && $data['es_destacado'];
+            $esDestacado = false;
+            if (array_key_exists('es_destacado', $data)) {
+                $esDestacado = ($data['es_destacado'] === true) || ((int)$data['es_destacado'] === 1);
+            }
             
             if ($esDestacado) {
                 $this->agregarStickerDestacado($img, $scaleX, $scaleY);
@@ -1949,7 +1969,7 @@ class Certificate {
     /**
      * Regenerar imagen de un certificado existente
      */
-    public function regenerate($codigo, $razonRegeneracion = '') {
+    public function regenerate($codigo, $razonRegeneracion = '', array $contexto = []) {
         try {
             // Obtener datos del certificado
             $stmt = $this->pdo->prepare("SELECT * FROM certificados WHERE codigo = ?");
@@ -1975,17 +1995,47 @@ class Certificate {
                 throw new \Exception("No hay plantilla configurada para regenerar");
             }
             
-            // Buscar si el estudiante está marcado como destacado
+            // Buscar si el estudiante está marcado como destacado en su categoría/período.
             $esDestacado = false;
             try {
-                $stmt = $this->pdo->prepare("SELECT destacado FROM estudiantes WHERE nombre = ? LIMIT 1");
-                $stmt->execute([$cert['nombre']]);
-                $estudiante = $stmt->fetch();
-                if ($estudiante && array_key_exists('destacado', $estudiante)) {
-                    $esDestacado = (bool)$estudiante['destacado'];
+                $estudianteId = !empty($cert['estudiante_id']) ? (int)$cert['estudiante_id'] : 0;
+
+                if ($estudianteId <= 0 && !empty($cert['nombre'])) {
+                    $stmtEst = $this->pdo->prepare("SELECT id FROM estudiantes WHERE nombre = ? LIMIT 1");
+                    $stmtEst->execute([$cert['nombre']]);
+                    $estTmp = $stmtEst->fetch();
+                    if ($estTmp && !empty($estTmp['id'])) {
+                        $estudianteId = (int)$estTmp['id'];
+                    }
+                }
+
+                if ($estudianteId > 0 && !empty($cert['categoria_id'])) {
+                    $tieneColumnaDestacadoCategoria = false;
+                    try {
+                        $stmtCol = $this->pdo->query("SHOW COLUMNS FROM categoria_estudiantes LIKE 'es_destacado'");
+                        $tieneColumnaDestacadoCategoria = $stmtCol && $stmtCol->fetch(\PDO::FETCH_ASSOC);
+                    } catch (\Throwable $e) {
+                        $tieneColumnaDestacadoCategoria = false;
+                    }
+
+                    if ($tieneColumnaDestacadoCategoria) {
+                        $stmt = $this->pdo->prepare("
+                            SELECT COALESCE(MAX(ce.es_destacado), 0) AS es_destacado
+                            FROM categoria_estudiantes ce
+                            WHERE ce.estudiante_id = ?
+                              AND ce.categoria_id = ?
+                              AND ce.periodo_id <=> ?
+                        ");
+                        $stmt->execute([
+                            $estudianteId,
+                            $cert['categoria_id'],
+                            $cert['periodo_id'] ?? null
+                        ]);
+                        $rowDest = $stmt->fetch();
+                        $esDestacado = ((int)($rowDest['es_destacado'] ?? 0) === 1);
+                    }
                 }
             } catch (\Throwable $e) {
-                // Compatibilidad con esquemas donde no existe la columna "destacado".
                 $esDestacado = false;
             }
             
@@ -2008,14 +2058,19 @@ class Certificate {
             if (!empty($cert['fechas_generacion'])) {
                 $fechasGeneracion = json_decode($cert['fechas_generacion'], true) ?? [];
             }
+
+            $usuarioIdRegeneracion = isset($contexto['usuario_id']) ? (int)$contexto['usuario_id'] : null;
+            $usuarioNombreRegeneracion = trim((string)($contexto['usuario_nombre'] ?? ''));
             $fechasGeneracion[] = [
                 'fecha' => date('Y-m-d H:i:s'),
-                'razon' => $razonRegeneracion ?: 'Regeneración manual'
+                'razon' => $razonRegeneracion ?: 'Regeneración manual',
+                'usuario_id' => $usuarioIdRegeneracion > 0 ? $usuarioIdRegeneracion : null,
+                'usuario' => $usuarioNombreRegeneracion !== '' ? $usuarioNombreRegeneracion : null
             ];
             
             // Actualizar registro en BD con nuevas rutas y fechas
             $stmt = $this->pdo->prepare("UPDATE certificados SET archivo_imagen = ?, archivo_pdf = ?, fechas_generacion = ? WHERE codigo = ?");
-            $stmt->execute([basename($imagePath), basename($pdfPath), json_encode($fechasGeneracion), $codigo]);
+            $stmt->execute([basename($imagePath), basename($pdfPath), json_encode($fechasGeneracion, JSON_UNESCAPED_UNICODE), $codigo]);
             
             return [
                 'success' => true,

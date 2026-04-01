@@ -53,7 +53,7 @@ $stmt = $pdo->prepare("
     FROM periodos p
     INNER JOIN categoria_periodos cp ON p.id = cp.periodo_id
     WHERE cp.categoria_id = ? AND p.activo = 1 AND cp.activo = 1
-    ORDER BY p.fecha_inicio DESC
+    ORDER BY p.fecha_inicio ASC
 ");
 $stmt->execute([$categoria_id]);
 $periodos = $stmt->fetchAll(PDO::FETCH_ASSOC);

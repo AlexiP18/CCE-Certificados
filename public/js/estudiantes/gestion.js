@@ -19,6 +19,7 @@ let currentPage = 1;
 let totalPages = 1;
 let estudiantesFiltrados = [];
 let datosPaginados = [];
+const soloAprobadosEnVista = new URLSearchParams(window.location.search).get('solo_aprobados') === '1';
 
 // Inicialización
 document.addEventListener('DOMContentLoaded', function () {
@@ -85,10 +86,25 @@ document.addEventListener('DOMContentLoaded', function () {
 
 // Cambiar período
 function cambiarPeriodo(nuevoPeriodo) {
-    periodoId = nuevoPeriodo;
+    periodoId = String(nuevoPeriodo ?? '').trim();
+
+    // Reflejar visualmente el chip activo sin recargar toda la página.
+    document.querySelectorAll('.period-chip').forEach(chip => {
+        const chipPeriodo = String(chip.dataset.periodId || '').trim();
+        chip.classList.toggle('active', chipPeriodo === periodoId);
+    });
+
     const url = new URL(window.location);
-    url.searchParams.set('periodo_id', nuevoPeriodo);
+    url.searchParams.set('periodo_id', periodoId);
     window.history.pushState({}, '', url);
+
+    // Limpiar selección al cambiar de período para evitar estados cruzados.
+    seleccionados = [];
+    const selectAll = document.getElementById('selectAll');
+    if (selectAll) selectAll.checked = false;
+    actualizarContadorSeleccionados();
+    actualizarVisibilidadColumnaPeriodosTabla();
+
     cargarDatos();
 }
 
@@ -113,7 +129,9 @@ async function cargarDatos() {
 // Cargar estudiantes
 async function cargarEstudiantes() {
     const tbody = document.getElementById('tablaEstudiantes');
-    tbody.innerHTML = '<tr><td colspan="7"><div class="loading"><i class="fas fa-spinner"></i><p>Cargando...</p></div></td></tr>';
+    const colspan = obtenerColspanTablaPrincipal();
+    actualizarVisibilidadColumnaPeriodosTabla();
+    tbody.innerHTML = `<tr><td colspan="${colspan}"><div class="loading"><i class="fas fa-spinner"></i><p>Cargando...</p></div></td></tr>`;
 
     try {
         const params = new URLSearchParams({
@@ -121,6 +139,7 @@ async function cargarEstudiantes() {
             categoria_id: categoriaId
         });
         if (periodoId) params.append('periodo_id', periodoId);
+        if (soloAprobadosEnVista) params.append('solo_aprobados', '1');
 
         const response = await fetch(`../api/categorias/estudiantes.php?${params}`);
         const responseText = await response.text();
@@ -144,7 +163,7 @@ async function cargarEstudiantes() {
         }
     } catch (error) {
         console.error(error);
-        tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><i class="fas fa-exclamation-triangle"></i><h3>Error al cargar</h3><p>' + error.message + '</p></div></td></tr>';
+        tbody.innerHTML = `<tr><td colspan="${colspan}"><div class="empty-state"><i class="fas fa-exclamation-triangle"></i><h3>Error al cargar</h3><p>${error.message}</p></div></td></tr>`;
     }
 }
 
@@ -285,6 +304,8 @@ function prepararDatosPaginacion(lista) {
 function renderPage() {
     const tbody = document.getElementById('tablaEstudiantes');
     const totalItems = datosPaginados.length;
+    const colspan = obtenerColspanTablaPrincipal();
+    actualizarVisibilidadColumnaPeriodosTabla();
 
     // Actualizar controles
     document.getElementById('paginationFooter').style.display = totalItems > 0 ? 'flex' : 'none';
@@ -323,7 +344,7 @@ function renderPage() {
     tbody.innerHTML = '';
 
     if (totalItems === 0) {
-        tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><i class="fas fa-users"></i><h3>No hay estudiantes</h3><p>No se encontraron estudiantes con los filtros actuales</p></div></td></tr>';
+        tbody.innerHTML = `<tr><td colspan="${colspan}"><div class="empty-state"><i class="fas fa-users"></i><h3>No hay estudiantes</h3><p>No se encontraron estudiantes con los filtros actuales</p></div></td></tr>`;
         return;
     }
 
@@ -379,30 +400,106 @@ function toggleMenores(repId) {
     }
 }
 
+function certificadoTieneArchivo(item) {
+    if (!item) return false;
+    const pdf = String(item.certificado_archivo_pdf || '').trim();
+    const imagen = String(item.certificado_archivo_imagen || '').trim();
+    return pdf !== '' || imagen !== '';
+}
+
+function certificadoEstaAprobado(item) {
+    if (!item) return false;
+    if (Number(item.certificado_aprobado || 0) === 1) return true;
+    if (Number(item.certificado_id || 0) > 0) return true;
+    if (String(item.certificado_fecha_aprobacion || '').trim() !== '') return true;
+    return false;
+}
+
+function certificadoEstaGenerado(item) {
+    return certificadoTieneArchivo(item);
+}
+
+function normalizarHistorialGeneracion(raw) {
+    if (Array.isArray(raw)) return raw;
+    if (typeof raw !== 'string') return [];
+    const text = raw.trim();
+    if (!text) return [];
+    try {
+        const parsed = JSON.parse(text);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+        return [];
+    }
+}
+
+function obtenerUltimaEntradaGeneracion(item) {
+    const historial = normalizarHistorialGeneracion(item?.certificado_fechas_generacion);
+    if (!historial.length) return null;
+    const last = historial[historial.length - 1];
+    if (typeof last === 'string') {
+        return {
+            fecha: last,
+            usuario: ''
+        };
+    }
+    if (last && typeof last === 'object') {
+        return {
+            fecha: String(last.fecha || '').trim(),
+            usuario: String(last.usuario || '').trim()
+        };
+    }
+    return null;
+}
+
+function formatearFechaTooltip(fechaRaw) {
+    if (!fechaRaw) return '';
+    const date = new Date(fechaRaw);
+    if (Number.isNaN(date.getTime())) return String(fechaRaw);
+    return `${date.toLocaleDateString()} a las ${date.toLocaleTimeString()}`;
+}
+
+function construirTooltipEstadoCertificado(item, isAprobado, isGenerado) {
+    if (isGenerado) {
+        const ultima = obtenerUltimaEntradaGeneracion(item);
+        if (ultima?.fecha) {
+            const base = `Generado el ${formatearFechaTooltip(ultima.fecha)}`;
+            return ultima.usuario ? `${base} por ${ultima.usuario}` : base;
+        }
+        const creado = String(item?.certificado_fecha_creacion || '').trim();
+        if (creado) return `Generado el ${formatearFechaTooltip(creado)}`;
+        return 'Certificado generado';
+    }
+
+    if (isAprobado) {
+        const fechaAprob = String(item?.certificado_fecha_aprobacion || '').trim();
+        const aprobadoPor = String(item?.certificado_aprobado_por_nombre || '').trim();
+        if (fechaAprob) {
+            const base = `Aprobado el ${formatearFechaTooltip(fechaAprob)}`;
+            return aprobadoPor ? `${base} por ${aprobadoPor}` : base;
+        }
+        return aprobadoPor ? `Aprobado por ${aprobadoPor}` : 'Aprobado para certificación';
+    }
+
+    return '';
+}
+
 function renderFilaEstudiante(tbody, est, rowClass = '', hasMenores = false, repUniqueId = '') {
     const tr = document.createElement('tr');
     if (rowClass) tr.className = rowClass;
+    const mostrarPeriodo = esFiltroTodosPeriodos();
 
     const checked = seleccionados.includes(est.id);
-    const isAprobado = !!est.certificado_codigo;
-    // Un certificado con código ya está generado; el archivo físico puede regenerarse al vuelo.
-    const isGenerado = !!est.certificado_codigo;
+    const isAprobado = certificadoEstaAprobado(est);
+    const isGenerado = certificadoEstaGenerado(est);
+    const codigoCert = String(est.certificado_codigo || '').trim();
 
     let certStatus = '<span class="cert-status cert-none">Pendiente</span>';
-    let tooltip = '';
+    let tooltip = construirTooltipEstadoCertificado(est, isAprobado, isGenerado);
 
     if (isGenerado) {
         certStatus = `<span class="cert-status cert-generated" style="background-color: #e8f5e9; color: #2ecc71; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold;"><i class="fas fa-check-double"></i> Generado</span>`;
-        if (est.certificado_creado_at) {
-            const date = new Date(est.certificado_creado_at);
-            tooltip = `Aprobado/Generado el ${date.toLocaleDateString()} a las ${date.toLocaleTimeString()}`;
-        }
     } else if (isAprobado) {
         certStatus = `<span class="cert-status cert-approved" style="background-color: #e3f2fd; color: #3498db; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold;"><i class="fas fa-thumbs-up"></i> Aprobado</span>`;
-        if (est.certificado_creado_at) {
-            const date = new Date(est.certificado_creado_at);
-            tooltip = `Aprobado el ${date.toLocaleDateString()} a las ${date.toLocaleTimeString()}`;
-        }
     }
 
     const tooltipAttr = tooltip ? `class="cert-tooltip-trigger" data-tooltip="${tooltip}"` : '';
@@ -416,8 +513,8 @@ function renderFilaEstudiante(tbody, est, rowClass = '', hasMenores = false, rep
             <button class="btn-icon btn-danger" onclick="confirmarQuitar('${est.id}', '${est.nombre.replace(/'/g, "\\'")}', ${est.es_menor})" title="Quitar">
                 <i class="fas fa-user-times"></i>
             </button>
-            ${isGenerado ? `
-            <button class="btn-icon btn-view" title="Visualización de Certificado" onclick="abrirModalInfoCertificadoDesdeFila(${est.id}, '${String(est.certificado_codigo || '').replace(/'/g, "\\'")}')">
+            ${(isGenerado && codigoCert) ? `
+            <button class="btn-icon btn-view" title="Visualización de Certificado" onclick="abrirModalInfoCertificadoDesdeFila(${est.id}, '${codigoCert.replace(/'/g, "\\'")}')">
                 <i class="fas fa-eye"></i>
             </button>
             ` : (isAprobado ? `
@@ -464,6 +561,7 @@ function renderFilaEstudiante(tbody, est, rowClass = '', hasMenores = false, rep
                 ${est.email ? `<a href="mailto:${est.email}" class="contact-chip contact-chip-email" style="max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${est.email}"><i class="fas fa-envelope"></i> ${est.email}</a>` : ''}
             </div>
         </td>
+        ${mostrarPeriodo ? `<td>${obtenerBadgePeriodoHtml(est)}</td>` : ''}
         <td ${tooltipAttr}>${certStatus} ${tooltip ? '<i class="fas fa-info-circle cert-info-icon"></i>' : ''}</td>
         <td>${accionesHtml}</td>
     `;
@@ -474,6 +572,7 @@ function renderFilaEstudiante(tbody, est, rowClass = '', hasMenores = false, rep
 function renderFilaMenor(tbody, menor, repUniqueId = '') {
     const tr = document.createElement('tr');
     tr.className = `estudiante-menor ${repUniqueId ? 'menor-de-' + repUniqueId : ''}`;
+    const mostrarPeriodo = esFiltroTodosPeriodos();
     // Por defecto ocultos si pertenecen a un grupo
     if (repUniqueId) {
         tr.style.display = 'none';
@@ -481,25 +580,17 @@ function renderFilaMenor(tbody, menor, repUniqueId = '') {
     }
 
     const checked = seleccionados.includes(menor.id);
-    const isAprobado = !!menor.certificado_codigo;
-    // Un certificado con código ya está generado; el archivo físico puede regenerarse al vuelo.
-    const isGenerado = !!menor.certificado_codigo;
+    const isAprobado = certificadoEstaAprobado(menor);
+    const isGenerado = certificadoEstaGenerado(menor);
+    const codigoCert = String(menor.certificado_codigo || '').trim();
 
     let certStatus = '<span class="cert-status cert-none">Pendiente</span>';
-    let tooltip = '';
+    let tooltip = construirTooltipEstadoCertificado(menor, isAprobado, isGenerado);
 
     if (isGenerado) {
         certStatus = `<span class="cert-status cert-generated" style="background-color: #e8f5e9; color: #2ecc71; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold;"><i class="fas fa-check-double"></i> Generado</span>`;
-        if (menor.certificado_creado_at) {
-            const date = new Date(menor.certificado_creado_at);
-            tooltip = `Aprobado/Generado el ${date.toLocaleDateString()} a las ${date.toLocaleTimeString()}`;
-        }
     } else if (isAprobado) {
         certStatus = `<span class="cert-status cert-approved" style="background-color: #e3f2fd; color: #3498db; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold;"><i class="fas fa-thumbs-up"></i> Aprobado</span>`;
-        if (menor.certificado_creado_at) {
-            const date = new Date(menor.certificado_creado_at);
-            tooltip = `Aprobado el ${date.toLocaleDateString()} a las ${date.toLocaleTimeString()}`;
-        }
     }
 
     const tooltipAttr = tooltip ? `class="cert-tooltip-trigger" data-tooltip="${tooltip}"` : '';
@@ -513,8 +604,8 @@ function renderFilaMenor(tbody, menor, repUniqueId = '') {
             <button class="btn-icon btn-danger" onclick="confirmarQuitar('${menor.id}', '${menor.nombre.replace(/'/g, "\\'")}', 1)" title="Quitar">
                 <i class="fas fa-user-times"></i>
             </button>
-            ${isGenerado ? `
-            <button class="btn-icon btn-view" title="Visualización de Certificado" onclick="abrirModalInfoCertificadoDesdeFila(${menor.id}, '${String(menor.certificado_codigo || '').replace(/'/g, "\\'")}')">
+            ${(isGenerado && codigoCert) ? `
+            <button class="btn-icon btn-view" title="Visualización de Certificado" onclick="abrirModalInfoCertificadoDesdeFila(${menor.id}, '${codigoCert.replace(/'/g, "\\'")}')">
                 <i class="fas fa-eye"></i>
             </button>
             ` : (isAprobado ? `
@@ -556,6 +647,7 @@ function renderFilaMenor(tbody, menor, repUniqueId = '') {
                  ${!menor.representante_celular && !menor.representante_email ? '<span style="color: #95a5a6; font-size: 12px; font-style: italic;">(Sin contacto)</span>' : ''}
             </div>
         </td>
+        ${mostrarPeriodo ? `<td>${obtenerBadgePeriodoHtml(menor)}</td>` : ''}
         <td ${tooltipAttr}>${certStatus} ${tooltip ? '<i class="fas fa-info-circle cert-info-icon"></i>' : ''}</td>
         <td>${accionesHtml}</td>
     `;
@@ -566,6 +658,7 @@ function renderFilaMenor(tbody, menor, repUniqueId = '') {
 function renderFilaRepresentanteVirtual(tbody, fila, repUniqueId = '') {
     const tr = document.createElement('tr');
     tr.className = 'representante-virtual';
+    const mostrarPeriodo = esFiltroTodosPeriodos();
 
     // Acciones: botón de editar si tiene ID
     let accionesHtml = '';
@@ -597,6 +690,7 @@ function renderFilaRepresentanteVirtual(tbody, fila, repUniqueId = '') {
             ${fila.celular ? `<a href="${generarLinkWhatsApp(fila.celular, fila.nombre)}" target="_blank" class="contact-chip contact-chip-whatsapp" style="opacity: 0.8"><i class="fab fa-whatsapp"></i> 0${fila.celular}</a>` : ''}
             ${fila.email ? `<a href="mailto:${fila.email}" class="contact-chip contact-chip-email" style="opacity: 0.8"><i class="fas fa-envelope"></i> ${fila.email}</a>` : ''}
         </td>
+        ${mostrarPeriodo ? `<td><small style="color:#95a5a6;">—</small></td>` : ''}
         <td><small style="color: #95a5a6;">Representante de ${fila.menores.length} estudiantes</small></td>
         <td>${accionesHtml}</td>
     `;
@@ -623,7 +717,7 @@ function actualizarStats() {
     const totalMenoresVal = estudiantes.filter(e => e.es_menor == 1).length;
     document.getElementById('totalMenores').textContent = totalMenoresVal;
 
-    const generados = estudiantes.filter(e => e.certificado_codigo).length;
+    const generados = estudiantes.filter(e => certificadoEstaGenerado(e)).length;
     document.getElementById('totalCertificados').textContent = generados;
 
     document.getElementById('totalPendientes').textContent = estudiantes.length - generados;
@@ -756,11 +850,57 @@ function toggleSeleccion(id) {
     document.getElementById('selectAll').checked = totalVisibles > 0 && seleccionados.length === totalVisibles;
 }
 
+function esVistaEmbebidaCategoria() {
+    const byFlag = (typeof isEmbeddedView !== 'undefined') && Boolean(isEmbeddedView);
+    const byUrl = new URLSearchParams(window.location.search).get('embedded') === 'true';
+    return byFlag || byUrl;
+}
+
+function esFiltroTodosPeriodos() {
+    const raw = String(periodoId ?? '').trim().toLowerCase();
+    return raw === 'todos';
+}
+
+function obtenerColspanTablaPrincipal() {
+    return esFiltroTodosPeriodos() ? 8 : 7;
+}
+
+function actualizarVisibilidadColumnaPeriodosTabla() {
+    const th = document.getElementById('thPeriodoTabla');
+    if (th) th.style.display = esFiltroTodosPeriodos() ? '' : 'none';
+}
+
+function obtenerBadgePeriodoHtml(item) {
+    const nombrePeriodo = String(item?.periodo_nombre || item?.periodo || '').trim() || 'Sin período';
+    const safeNombrePeriodo = nombrePeriodo
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    const esDestacado = Number(item?.es_destacado || 0) === 1;
+    const estrella = esDestacado ? ' <i class="fas fa-star" style="color:#f1c40f;"></i>' : '';
+    return `<span class="badge badge-secondary" style="display:inline-flex;align-items:center;gap:6px;"><i class="fas fa-calendar-alt"></i> ${safeNombrePeriodo}${estrella}</span>`;
+}
+
+function setDisplayIfExists(id, displayValue) {
+    const el = document.getElementById(id);
+    if (el) el.style.display = displayValue;
+}
+
 function actualizarContadorSeleccionados() {
     const count = seleccionados.length;
     document.getElementById('selectedCount').textContent = count;
 
     const bulkActions = document.getElementById('bulkActions');
+    const embebida = esVistaEmbebidaCategoria();
+    const permiteGenerarPeriodoActual = !esFiltroTodosPeriodos();
+    const btnGenerarSel = document.getElementById('btnGenerarSeleccionados');
+    if (btnGenerarSel && embebida) {
+        btnGenerarSel.title = permiteGenerarPeriodoActual
+            ? 'Generar certificados para estudiantes seleccionados'
+            : 'Selecciona un período específico para generar certificados';
+    }
 
     if (count > 0) {
         bulkActions.classList.add('active');
@@ -770,19 +910,33 @@ function actualizarContadorSeleccionados() {
 
         seleccionados.forEach(id => {
             const est = estudiantes.find(e => e.id == id);
-            if (est && est.certificado_codigo) {
+            if (est && certificadoEstaGenerado(est) && String(est.certificado_codigo || '').trim() !== '') {
                 hayGenerado = true;
             }
         });
 
-        document.getElementById('btnGenerarSeleccionados').style.display = 'inline-flex';
-        document.getElementById('btnDescargarPdfSeleccionados').style.display = hayGenerado ? 'inline-flex' : 'none';
-        document.getElementById('btnDescargarImgSeleccionados').style.display = hayGenerado ? 'inline-flex' : 'none';
-        document.getElementById('btnToggleDestacados').style.display = 'inline-flex';
-        document.getElementById('btnQuitarSeleccionados').style.display = 'inline-flex';
+        if (embebida) {
+            // En slides embebidos: mantener generación y descargas; ocultar destacados/quitar.
+            setDisplayIfExists('btnGenerarSeleccionados', permiteGenerarPeriodoActual ? 'inline-flex' : 'none');
+            setDisplayIfExists('btnDescargarPdfSeleccionados', hayGenerado ? 'inline-flex' : 'none');
+            setDisplayIfExists('btnDescargarImgSeleccionados', hayGenerado ? 'inline-flex' : 'none');
+            setDisplayIfExists('btnToggleDestacados', 'none');
+            setDisplayIfExists('btnQuitarSeleccionados', 'none');
+        } else {
+            setDisplayIfExists('btnGenerarSeleccionados', 'inline-flex');
+            setDisplayIfExists('btnDescargarPdfSeleccionados', hayGenerado ? 'inline-flex' : 'none');
+            setDisplayIfExists('btnDescargarImgSeleccionados', hayGenerado ? 'inline-flex' : 'none');
+            setDisplayIfExists('btnToggleDestacados', 'inline-flex');
+            setDisplayIfExists('btnQuitarSeleccionados', 'inline-flex');
+        }
 
     } else {
         bulkActions.classList.remove('active');
+        setDisplayIfExists('btnGenerarSeleccionados', 'none');
+        setDisplayIfExists('btnDescargarPdfSeleccionados', 'none');
+        setDisplayIfExists('btnDescargarImgSeleccionados', 'none');
+        setDisplayIfExists('btnToggleDestacados', 'none');
+        setDisplayIfExists('btnQuitarSeleccionados', 'none');
     }
 }
 
@@ -2723,16 +2877,67 @@ async function confirmarAprobacionLote() {
 }
 
 function generarCertificadosSeleccionados() {
+    if (esVistaEmbebidaCategoria() && esFiltroTodosPeriodos()) {
+        showNotification('Para generar certificados debes seleccionar un período específico (no "Todos").', 'warning');
+        return;
+    }
+
+    const periodoActual = (() => {
+        if (typeof periodoId === 'undefined' || periodoId === null) return null;
+        const raw = String(periodoId).trim();
+        if (!raw || raw.toLowerCase() === 'todos') return null;
+        const num = Number(raw);
+        return Number.isFinite(num) ? num : null;
+    })();
+
+    if (esVistaEmbebidaCategoria() && window.parent && window.parent !== window) {
+        const idsSeleccionados = Array.from(new Set(seleccionados.map(id => String(id).trim()).filter(Boolean)));
+        const periodoNombreActual = (document.querySelector('.period-chip.active')?.textContent || '').trim() || 'Período seleccionado';
+        const seleccionadosData = idsSeleccionados.map(id => {
+            const est = estudiantes.find(e => String(e.id) === id) || {};
+            return {
+                id: Number(id),
+                nombre: est.nombre || '',
+                cedula: est.cedula || '',
+                es_menor: Number(est.es_menor) === 1,
+                representante_cedula: est.representante_cedula || '',
+                es_destacado: Number(est.es_destacado || 0) === 1,
+                categoria_id: (typeof categoriaId !== 'undefined' && categoriaId) ? Number(categoriaId) : null,
+                periodo_id: periodoActual,
+                certificado_id: est.certificado_id || null,
+                certificado_aprobado: Number(est.certificado_aprobado || 0),
+                certificado_fecha_aprobacion: est.certificado_fecha_aprobacion || '',
+                certificado_aprobado_por_nombre: est.certificado_aprobado_por_nombre || '',
+                certificado_codigo: est.certificado_codigo || '',
+                certificado_archivo_pdf: est.certificado_archivo_pdf || '',
+                certificado_archivo_imagen: est.certificado_archivo_imagen || ''
+            };
+        });
+
+        window.parent.postMessage({
+            type: 'cce:open-generate-modal',
+            seleccionados: idsSeleccionados,
+            seleccionados_data: seleccionadosData,
+            categoria_id: (typeof categoriaId !== 'undefined' && categoriaId) ? Number(categoriaId) : null,
+            periodo_id: periodoActual,
+            periodo_nombre: periodoNombreActual
+        }, '*');
+        return;
+    }
+
     abrirModalAprobarLote(seleccionados);
 }
 
 function generarTodosCertificados() {
-    // Filtrar los que NO tienen certificado
-    const sinCertificado = estudiantes.filter(e => !e.certificado_codigo).map(e => e.id);
-    if (sinCertificado.length > 0) {
-        abrirModalAprobarLote(sinCertificado);
+    // Filtrar los aprobados que aún no tienen archivos generados
+    const pendientesGeneracion = estudiantes
+        .filter(e => certificadoEstaAprobado(e) && !certificadoEstaGenerado(e))
+        .map(e => e.id);
+
+    if (pendientesGeneracion.length > 0) {
+        abrirModalAprobarLote(pendientesGeneracion);
     } else {
-        showNotification('Todos los estudiantes ya tienen certificado', 'info');
+        showNotification('No hay estudiantes aprobados pendientes de generación', 'info');
     }
 }
 
@@ -2784,7 +2989,16 @@ function cargarImagenPreview(imageEl, src, loaderEl = null) {
     });
 }
 
-async function intentarPreviewDesdePlantilla(estudianteId, fechaCertificado, codigoCertificado, imageEl, loaderEl = null, loaderTextEl = null) {
+async function intentarPreviewDesdePlantilla(
+    estudianteId,
+    fechaCertificado,
+    codigoCertificado,
+    imageEl,
+    loaderEl = null,
+    loaderTextEl = null,
+    esDestacado = null,
+    periodoIdPreview = null
+) {
     if (typeof categoriaId === 'undefined' || !categoriaId) return false;
 
     try {
@@ -2795,6 +3009,12 @@ async function intentarPreviewDesdePlantilla(estudianteId, fechaCertificado, cod
         if (estudianteId) formData.append('estudiante_id', String(estudianteId));
         if (fechaCertificado) formData.append('fecha_certificado', String(fechaCertificado));
         if (codigoCertificado) formData.append('codigo_certificado', String(codigoCertificado));
+        if (periodoIdPreview !== null && periodoIdPreview !== undefined && String(periodoIdPreview).trim() !== '') {
+            formData.append('periodo_id', String(periodoIdPreview));
+        }
+        if (esDestacado !== null && esDestacado !== undefined) {
+            formData.append('es_destacado', esDestacado ? '1' : '0');
+        }
 
         const resp = await fetch(`../api/preview/index.php?v=${Date.now()}_${Math.random().toString(36).slice(2, 8)}`, {
             method: 'POST',
@@ -2821,6 +3041,13 @@ function abrirModalInfoCertificadoDesdeFila(estudianteId, codigo) {
     }
 
     const est = estudiantes.find(e => String(e.id) === String(estudianteId)) || {};
+    const periodoActual = (() => {
+        if (typeof periodoId === 'undefined' || periodoId === null) return null;
+        const raw = String(periodoId).trim();
+        if (!raw || raw.toLowerCase() === 'todos') return null;
+        const num = Number(raw);
+        return Number.isFinite(num) ? num : null;
+    })();
 
     // Si estamos en iframe embebido, delegar apertura del modal al padre.
     const runningInFrame = window.parent && window.parent !== window;
@@ -2838,6 +3065,7 @@ function abrirModalInfoCertificadoDesdeFila(estudianteId, codigo) {
                     nombre: est.nombre || '—',
                     cedula: est.cedula || '—',
                     categoria_id: (typeof categoriaId !== 'undefined' && categoriaId) ? Number(categoriaId) : null,
+                    periodo_id: periodoActual,
                     categoria: (typeof categoriaNombre !== 'undefined' && categoriaNombre) ? categoriaNombre : 'Sin categoría',
                     fecha: est.certificado_fecha_creacion || est.certificado_fecha || '',
                     es_destacado: Number(est.es_destacado) === 1
@@ -2898,7 +3126,9 @@ function abrirModalInfoCertificadoDesdeFila(estudianteId, codigo) {
                 codigo,
                 elPreview,
                 elLoader,
-                elLoaderText
+                elLoaderText,
+                Number(est.es_destacado) === 1,
+                periodoActual
             );
             if (!ok) {
                 if (elLoaderText) elLoaderText.textContent = 'Intentando carga por certificado...';
@@ -2956,7 +3186,9 @@ function previsualizarCertificado(codigo) {
                         codigo,
                         img,
                         loading,
-                        loaderText
+                        loaderText,
+                        Number(info?.es_destacado || 0) === 1,
+                        info?.periodo_id ?? null
                     );
                     if (!ok) {
                         if (loaderText) loaderText.textContent = 'Intentando carga por certificado...';
@@ -3033,7 +3265,7 @@ function descargarCertificadosSeleccionados(tipo) {
 
     seleccionados.forEach((id, index) => {
         const est = estudiantes.find(e => e.id == id);
-        if (est && est.certificado_codigo) {
+        if (est && certificadoEstaGenerado(est) && String(est.certificado_codigo || '').trim() !== '') {
             setTimeout(() => {
                 descargarCertificado(est.certificado_codigo, tipo);
             }, index * 1000);
@@ -3042,7 +3274,7 @@ function descargarCertificadosSeleccionados(tipo) {
 }
 
 function descargarTodosCertificados(tipo) {
-    const conCertificado = estudiantes.filter(e => e.certificado_codigo);
+    const conCertificado = estudiantes.filter(e => certificadoEstaGenerado(e) && String(e.certificado_codigo || '').trim() !== '');
     if (conCertificado.length === 0) {
         showNotification('No hay certificados para descargar', 'warning');
         return;

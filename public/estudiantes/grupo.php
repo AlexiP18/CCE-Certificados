@@ -43,7 +43,7 @@ $stmt = $pdo->prepare("
     FROM periodos p
     INNER JOIN grupo_periodos gp ON p.id = gp.periodo_id
     WHERE gp.grupo_id = ? AND p.activo = 1 AND gp.activo = 1
-    ORDER BY p.fecha_inicio DESC
+    ORDER BY p.fecha_inicio ASC
 ");
 $stmt->execute([$grupo_id]);
 $periodos = $stmt->fetchAll(PDO::FETCH_ASSOC);

@@ -239,7 +239,7 @@
                     <i class="fas fa-spinner fa-spin fa-3x"></i><br><br><span style="margin-top:20px;display:block;font-size:16px;">Cargando interfaz de gestión...</span>
                 </div>
                 <!-- El iframe se cargará dinámicamente o puede dejarse aquí. -->
-                <iframe data-src="<?= $basePath ?>/categorias/gestion.php?categoria_id=<?= $cat['id'] ?>&periodo_id=<?= $defaultPeriodo ?>&embedded=true" 
+                <iframe data-src="<?= $basePath ?>/categorias/gestion.php?categoria_id=<?= $cat['id'] ?>&periodo_id=<?= $defaultPeriodo ?>&embedded=true&solo_aprobados=1" 
                         id="iframe-cat-<?= $cat['id'] ?>" 
                         style="width: 100%; height: calc(100vh - 150px); border: none; display: none; background: transparent; overflow-y: scroll;" 
                         onload="document.getElementById('loader-cat-<?= $cat['id'] ?>').style.display='none'; this.style.display='block';">
@@ -261,7 +261,7 @@
                 <div class="gen-lote-tabs-container" style="margin-bottom: 20px;">
                     <div class="gen-lote-tabs" style="display: flex; gap: 10px; border-bottom: 2px solid #e5e7eb; padding-bottom: 4px;">
                         <button class="gen-lote-tab active" onclick="switchGenLoteTab('gen-lote-tab-lista', this)" style="background: none; border: none; padding: 10px 15px; font-weight: 600; cursor: pointer; color: var(--color-grupo); border-bottom: 3px solid var(--color-grupo); font-size: 15px;">
-                            <i class="fas fa-list"></i> Estudiantes y Categorías
+                            <i class="fas fa-list"></i> Estudiantes
                         </button>
                         <button class="gen-lote-tab" onclick="switchGenLoteTab('gen-lote-tab-preview', this)" style="background: none; border: none; padding: 10px 15px; font-weight: 600; cursor: pointer; color: #6b7280; border-bottom: 3px solid transparent; font-size: 15px; transition: all 0.2s;">
                             <i class="fas fa-image"></i> Previsualización de Plantillas
@@ -490,20 +490,54 @@
                         </div>
                     </div>
 
-                    <div class="edit-categorias-section">
-                        <h4><i class="fas fa-layer-group"></i> Categorías y Períodos del Grupo</h4>
-                        <div id="editCategoriasResumenGroup" class="edit-categorias-list">
-                            <div class="edit-categorias-empty">
-                                <i class="fas fa-spinner fa-spin"></i> Cargando categorías...
-                            </div>
-                        </div>
-                    </div>
-
                     <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
                         <button type="button" class="btn-bulk" style="background:#e0e0e0; color:#333; border:none; border-radius:8px; padding:10px 20px; cursor:pointer;" onclick="cerrarEditModal()">Cancelar</button>
                         <button type="submit" class="btn-bulk" style="background:var(--color-grupo); color:white; border:none; border-radius:8px; padding:10px 20px; cursor:pointer;"><i class="fas fa-save"></i> Guardar Cambios</button>
                     </div>
                 </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Información de Estudiante (solo lectura) -->
+    <div id="infoEstudianteModal" class="modal" onclick="cerrarModal(event, 'infoEstudianteModal')">
+        <div class="modal-content modal-lg" onclick="event.stopPropagation()" style="max-width: 1100px; width: 95%; max-height: 90vh; padding: 0; overflow: hidden; display: flex; flex-direction: column;">
+            <div class="modal-header" style="background-color: var(--color-grupo); color: white; padding: 18px 22px; margin: 0; display: flex; justify-content: space-between; align-items: center;">
+                <h3 style="margin: 0;"><i class="fas fa-circle-info"></i> Información del Estudiante</h3>
+                <button class="modal-close" onclick="cerrarModal(null, 'infoEstudianteModal')" style="background: rgba(255,255,255,0.2); color: white;">&times;</button>
+            </div>
+            <div class="modal-body info-estudiante-modal-body">
+                <div class="info-estudiante-head">
+                    <div class="info-estudiante-head-main">
+                        <h4 id="infoEstudianteNombre">Cargando...</h4>
+                        <p id="infoEstudianteCedula">—</p>
+                    </div>
+                    <div class="info-estudiante-head-stats">
+                        <span class="info-stat-chip"><i class="fas fa-layer-group"></i> Categorías: <strong id="infoEstudianteTotalCategorias">0</strong></span>
+                        <span class="info-stat-chip"><i class="fas fa-calendar-alt"></i> Períodos: <strong id="infoEstudianteTotalPeriodos">0</strong></span>
+                    </div>
+                </div>
+
+                <div id="infoEstudianteTabs" class="info-estudiante-tabs">
+                    <!-- Tabs dinámicas -->
+                </div>
+
+                <div id="infoEstudianteSlides" class="info-estudiante-slides">
+                    <div class="edit-categorias-empty" style="padding: 26px;">
+                        <i class="fas fa-spinner fa-spin"></i> Cargando información...
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer info-estudiante-footer" style="padding: 15px 22px; border-top: 1px solid #e2e8f0; display: flex; justify-content: flex-end; gap: 10px; background: #fff;">
+                <button type="button" class="btn btn-secondary" onclick="cerrarModal(null, 'infoEstudianteModal')" style="border: 1px solid #cbd5e1; background: white; color: #64748b; font-weight: 500;">
+                    <i class="fas fa-times"></i> Cerrar
+                </button>
+                <button type="button" id="infoEstudianteBtnPdf" class="btn" onclick="descargarInfoEstudianteModal('pdf')" style="background: #e74c3c; color: white; border: none; padding: 10px 18px; border-radius: 6px; cursor: not-allowed; opacity: .55;" disabled>
+                    <i class="fas fa-file-pdf"></i> PDF
+                </button>
+                <button type="button" id="infoEstudianteBtnPng" class="btn" onclick="descargarInfoEstudianteModal('imagen')" style="background: #3498db; color: white; border: none; padding: 10px 18px; border-radius: 6px; cursor: not-allowed; opacity: .55;" disabled>
+                    <i class="fas fa-file-image"></i> PNG
+                </button>
             </div>
         </div>
     </div>

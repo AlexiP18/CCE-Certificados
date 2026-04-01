@@ -916,19 +916,62 @@ try {
     }
     
     $estudianteIdPedido = isset($_POST['estudiante_id']) && intval($_POST['estudiante_id']) > 0 ? intval($_POST['estudiante_id']) : null;
+    $periodoIdPedido = isset($_POST['periodo_id']) && $_POST['periodo_id'] !== '' && $_POST['periodo_id'] !== 'null'
+        ? intval($_POST['periodo_id'])
+        : null;
+    $esDestacadoPreview = null;
+    if (array_key_exists('es_destacado', $_POST)) {
+        $rawDestacado = strtolower(trim((string)$_POST['es_destacado']));
+        $esDestacadoPreview = in_array($rawDestacado, ['1', 'true', 'si', 'sí', 'yes', 'on'], true);
+    }
     
     if ($estudianteIdPedido) {
-        // Buscar el estudiante específico
-        $stmtEstudiante = $pdo->prepare("
-            SELECT e.nombre, c.nombre as categoria_nombre
-            FROM estudiantes e
-            INNER JOIN categoria_estudiantes ce ON e.id = ce.estudiante_id
-            INNER JOIN categorias c ON ce.categoria_id = c.id
-            WHERE e.id = ?
-            LIMIT 1
-        ");
-        $stmtEstudiante->execute([$estudianteIdPedido]);
-        $primerEstudiante = $stmtEstudiante->fetch(PDO::FETCH_ASSOC);
+        // Buscar el estudiante específico; priorizar categoría/periodo actual cuando estén disponibles.
+        $baseParams = [$estudianteIdPedido];
+        if ($tipo === 'categoria') {
+            $baseSql = "
+                SELECT e.nombre, c.nombre as categoria_nombre, COALESCE(MAX(ce.es_destacado), 0) as es_destacado
+                FROM estudiantes e
+                INNER JOIN categoria_estudiantes ce ON e.id = ce.estudiante_id
+                INNER JOIN categorias c ON ce.categoria_id = c.id
+                WHERE e.id = ? AND ce.categoria_id = ?
+            ";
+            $baseParams[] = $id;
+        } else {
+            $baseSql = "
+                SELECT e.nombre, c.nombre as categoria_nombre, COALESCE(MAX(ce.es_destacado), 0) as es_destacado
+                FROM estudiantes e
+                INNER JOIN categoria_estudiantes ce ON e.id = ce.estudiante_id
+                INNER JOIN categorias c ON ce.categoria_id = c.id
+                WHERE e.id = ? AND c.grupo_id = ?
+            ";
+            $baseParams[] = $grupoIdParaEstudiante;
+        }
+
+        $sqlConGroup = $baseSql . " GROUP BY e.id, e.nombre, c.nombre LIMIT 1";
+        $primerEstudiante = null;
+
+        if ($periodoIdPedido !== null) {
+            // Intentar primero filtrar por período; si el esquema no lo soporta, degradar sin romper preview.
+            try {
+                $sqlConPeriodo = $baseSql . " AND ce.periodo_id <=> ? GROUP BY e.id, e.nombre, c.nombre LIMIT 1";
+                $stmtEstudiante = $pdo->prepare($sqlConPeriodo);
+                $stmtEstudiante->execute(array_merge($baseParams, [$periodoIdPedido]));
+                $primerEstudiante = $stmtEstudiante->fetch(PDO::FETCH_ASSOC);
+            } catch (Throwable $e) {
+                $stmtEstudiante = $pdo->prepare($sqlConGroup);
+                $stmtEstudiante->execute($baseParams);
+                $primerEstudiante = $stmtEstudiante->fetch(PDO::FETCH_ASSOC);
+            }
+        } else {
+            $stmtEstudiante = $pdo->prepare($sqlConGroup);
+            $stmtEstudiante->execute($baseParams);
+            $primerEstudiante = $stmtEstudiante->fetch(PDO::FETCH_ASSOC);
+        }
+
+        if ($esDestacadoPreview === null && $primerEstudiante && array_key_exists('es_destacado', $primerEstudiante)) {
+            $esDestacadoPreview = ((int)$primerEstudiante['es_destacado'] === 1);
+        }
     } elseif ($grupoIdParaEstudiante) {
         // Buscar el primer estudiante del grupo (usando tabla intermedia categoria_estudiantes)
         $stmtEstudiante = $pdo->prepare("
@@ -1367,9 +1410,23 @@ try {
         });
     }
     
+    $mostrarStickerDestacado = false;
+    if ($esDestacadoPreview !== null) {
+        $mostrarStickerDestacado = (bool)$esDestacadoPreview;
+    } elseif ($estudianteIdPedido) {
+        // En preview de estudiante sin dato explícito, por seguridad no dibujar sticker.
+        $mostrarStickerDestacado = false;
+    } else {
+        // En preview de configuración de plantilla (sin estudiante), sí dibujar para posicionamiento.
+        $mostrarStickerDestacado = true;
+    }
+
     // Agregar sticker de destacado
-    if (in_array('destacado', $variablesHabilitadas) || 
-        (isset($certConfig['destacado_habilitado']) && $certConfig['destacado_habilitado'])) {
+    if (
+        (in_array('destacado', $variablesHabilitadas)
+            || (isset($certConfig['destacado_habilitado']) && $certConfig['destacado_habilitado']))
+        && $mostrarStickerDestacado
+    ) {
         
         $destacadoPosX = intval($certConfig['posicion_destacado_x'] ?? ($certConfig['destacado_posicion_x'] ?? 50));
         $destacadoPosY = intval($certConfig['posicion_destacado_y'] ?? ($certConfig['destacado_posicion_y'] ?? 50));
