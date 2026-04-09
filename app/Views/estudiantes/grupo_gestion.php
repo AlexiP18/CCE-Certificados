@@ -183,14 +183,13 @@
                             <th>Fecha Nac</th>
                             <th style="min-width: 260px;">Contacto</th>
                             <th style="min-width: 380px;">Categoría</th>
-                            <th style="min-width: 230px;">Fec. Matricula</th>
-                            <th>Historial</th>
+                            <th style="min-width: 230px;">Fec. Registro</th>
                             <th class="sticky-col sticky-right" style="text-align: right; background: #f8f9fa;">Acciones</th>
                         </tr>
                     </thead>
                     <tbody id="estudiantesBody">
                         <tr>
-                            <td colspan="9" class="empty-state">
+                            <td colspan="8" class="empty-state">
                                 <i class="fas fa-spinner fa-spin"></i>
                                 <p>Cargando estudiantes...</p>
                             </td>
@@ -422,13 +421,7 @@
                     <div class="form-row">
                         <div class="form-group">
                             <label>Nombre Completo *</label>
-                            <div style="display: flex; gap: 12px; align-items: center;">
-                                <input type="text" name="nombre" id="edit_nombre" class="form-control" required style="flex: 1;">
-                                <label class="star-toggle" title="Marcar como estudiante destacado">
-                                    <input type="checkbox" name="destacado" id="edit_destacado">
-                                    <i class="fas fa-star"></i>
-                                </label>
-                            </div>
+                            <input type="text" name="nombre" id="edit_nombre" class="form-control" required>
                         </div>
                         <div class="form-group">
                             <label>Cédula</label>
@@ -457,6 +450,14 @@
                             <label>Fecha Nacimiento</label>
                             <input type="date" name="fecha_nacimiento" id="edit_fecha_nacimiento" class="form-control" onchange="toggleEditRepresentante()">
                         </div>
+                    </div>
+
+                    <div class="edit-referencias-section">
+                        <h4><i class="fas fa-address-book"></i> Contactos de Referencia <small>(Máximo 3)</small></h4>
+                        <div id="referencias_editar_list" class="referencias-list"></div>
+                        <button type="button" id="btnAddReferenciaEditar" class="btn-add-referencia" onclick="agregarReferenciaEdicionGrupo()">
+                            <i class="fas fa-plus"></i> Agregar Referencia
+                        </button>
                     </div>
 
                     <div id="editRepresentanteSection" style="display: none; background: #fff8e1; padding: 20px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #ffe082;">
@@ -513,8 +514,11 @@
                         <p id="infoEstudianteCedula">—</p>
                     </div>
                     <div class="info-estudiante-head-stats">
-                        <span class="info-stat-chip"><i class="fas fa-layer-group"></i> Categorías: <strong id="infoEstudianteTotalCategorias">0</strong></span>
-                        <span class="info-stat-chip"><i class="fas fa-calendar-alt"></i> Períodos: <strong id="infoEstudianteTotalPeriodos">0</strong></span>
+                        <span class="info-stat-chip info-stat-chip-categorias"><i class="fas fa-layer-group"></i> Categorías: <strong id="infoEstudianteTotalCategorias">0</strong></span>
+                        <span class="info-stat-chip info-stat-chip-periodos"><i class="fas fa-calendar-alt"></i> Períodos: <strong id="infoEstudianteTotalPeriodos">0</strong></span>
+                        <span class="info-stat-chip info-stat-chip-aprobados"><i class="fas fa-check-circle"></i> Aprobados: <strong id="infoEstudianteTotalAprobados">0</strong></span>
+                        <span class="info-stat-chip info-stat-chip-pendientes"><i class="fas fa-hourglass-half"></i> Pendientes: <strong id="infoEstudianteTotalPendientes">0</strong></span>
+                        <span class="info-stat-chip info-stat-chip-generados"><i class="fas fa-certificate"></i> Generados: <strong id="infoEstudianteTotalGenerados">0</strong></span>
                     </div>
                 </div>
 

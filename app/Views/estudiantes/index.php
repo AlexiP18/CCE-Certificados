@@ -463,6 +463,59 @@
         </div>
     </div>
 
+    <!-- MODAL MÁS INFORMACIÓN -->
+    <div class="modal-overlay idx-info-overlay" id="modalMasInfoOverlay" onclick="cerrarModalMasInfo(event)">
+        <div class="modal idx-info-modal" onclick="event.stopPropagation()">
+            <div class="modal-header idx-info-modal-header">
+                <h3><i class="fas fa-circle-info"></i> Información del Estudiante</h3>
+                <button class="modal-close" onclick="cerrarModalMasInfo()" style="background: rgba(255,255,255,.18); color: #fff;">×</button>
+            </div>
+
+            <div class="idx-info-modal-body">
+                <div class="idx-info-head">
+                    <div class="idx-info-head-main">
+                        <h4 id="idxInfoNombre">Cargando...</h4>
+                        <p id="idxInfoCedula">—</p>
+                    </div>
+                    <div class="idx-info-head-stats">
+                        <span class="idx-info-stat-chip idx-info-stat-categorias"><i class="fas fa-layer-group"></i> Categorías: <strong id="idxInfoTotalCategorias">0</strong></span>
+                        <span class="idx-info-stat-chip idx-info-stat-periodos"><i class="fas fa-calendar-alt"></i> Períodos: <strong id="idxInfoTotalPeriodos">0</strong></span>
+                        <span class="idx-info-stat-chip idx-info-stat-aprobados"><i class="fas fa-check-circle"></i> Aprobados: <strong id="idxInfoTotalAprobados">0</strong></span>
+                        <span class="idx-info-stat-chip idx-info-stat-pendientes"><i class="fas fa-hourglass-half"></i> Pendientes: <strong id="idxInfoTotalPendientes">0</strong></span>
+                        <span class="idx-info-stat-chip idx-info-stat-generados"><i class="fas fa-certificate"></i> Generados: <strong id="idxInfoTotalGenerados">0</strong></span>
+                    </div>
+                </div>
+
+                <div id="idxInfoGrupoFilters" class="idx-info-group-filters">
+                    <!-- Dynamic -->
+                </div>
+
+                <div id="idxInfoTabs" class="idx-info-tabs">
+                    <!-- Dynamic -->
+                </div>
+
+                <div id="idxInfoSlides" class="idx-info-slides">
+                    <div class="empty-state" style="padding: 24px 10px;">
+                        <i class="fas fa-spinner fa-spin"></i>
+                        <p>Cargando información...</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer idx-info-footer">
+                <button type="button" class="btn-modal btn-modal-cancel" onclick="cerrarModalMasInfo()">
+                    <i class="fas fa-times"></i> Cerrar
+                </button>
+                <button type="button" id="idxInfoBtnPdf" class="btn-modal" onclick="descargarMasInfo('pdf')" style="background:#e74c3c;color:#fff;opacity:.55;cursor:not-allowed;" disabled>
+                    <i class="fas fa-file-pdf"></i> PDF
+                </button>
+                <button type="button" id="idxInfoBtnPng" class="btn-modal" onclick="descargarMasInfo('imagen')" style="background:#3498db;color:#fff;opacity:.55;cursor:not-allowed;" disabled>
+                    <i class="fas fa-file-image"></i> PNG
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Modal Info Grupos -->
     <div id="infoGruposModal" class="info-modal-overlay">
         <div class="info-modal-content" style="max-width: 500px;">

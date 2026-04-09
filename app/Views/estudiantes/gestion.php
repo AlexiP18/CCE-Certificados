@@ -47,6 +47,30 @@
         
 
         <!-- Stats -->
+        <?php if ($isEmbedded): ?>
+        <div class="stats-row stats-row-compact">
+            <div class="stat-chip stat-chip-estudiantes">
+                <i class="fas fa-users"></i>
+                <span>Matriculados</span>
+                <strong id="totalEstudiantes">0</strong>
+            </div>
+            <div class="stat-chip stat-chip-menores">
+                <i class="fas fa-child"></i>
+                <span>Menores</span>
+                <strong id="totalMenores">0</strong>
+            </div>
+            <div class="stat-chip stat-chip-generados">
+                <i class="fas fa-certificate"></i>
+                <span>Generados</span>
+                <strong id="totalCertificados">0</strong>
+            </div>
+            <div class="stat-chip stat-chip-pendientes">
+                <i class="fas fa-clock"></i>
+                <span>Pendientes</span>
+                <strong id="totalPendientes">0</strong>
+            </div>
+        </div>
+        <?php else: ?>
         <div class="stats-row">
             <div class="stat-card">
                 <div class="stat-icon estudiantes">
@@ -85,6 +109,7 @@
                 </div>
             </div>
         </div>
+        <?php endif; ?>
         
         <!-- Selector de Período -->
         <?php if (count($periodos) > 1): ?>

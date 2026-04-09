@@ -754,6 +754,61 @@ body {
     margin-bottom: 25px;
 }
 
+.stats-row-compact {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+.stat-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    border-radius: 999px;
+    padding: 7px 12px;
+    border: 1px solid #dbeafe;
+    background: #eff6ff;
+    color: #1e40af;
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.stat-chip i {
+    font-size: 12px;
+}
+
+.stat-chip strong {
+    font-size: 13px;
+    font-weight: 800;
+}
+
+.stat-chip-estudiantes {
+    border-color: #bfdbfe;
+    background: #eff6ff;
+    color: #1d4ed8;
+}
+
+.stat-chip-menores {
+    border-color: #ddd6fe;
+    background: #f5f3ff;
+    color: #6d28d9;
+}
+
+.stat-chip-generados {
+    border-color: #bbf7d0;
+    background: #f0fdf4;
+    color: #166534;
+}
+
+.stat-chip-pendientes {
+    border-color: #fde68a;
+    background: #fffbeb;
+    color: #92400e;
+}
+
 .stat-card {
     background: white;
     border-radius: 15px;

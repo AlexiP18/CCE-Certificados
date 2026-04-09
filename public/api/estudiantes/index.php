@@ -358,6 +358,18 @@ try {
             $representante_celular = $input['representante_celular'] ?? null;
             $representante_email = $input['representante_email'] ?? null;
             $representante_fecha_nacimiento = $input['representante_fecha_nacimiento'] ?? null;
+            $referencias = null;
+            if (array_key_exists('referencias', $input)) {
+                $referenciasRaw = $input['referencias'];
+                if (is_string($referenciasRaw)) {
+                    $decodedRefs = json_decode($referenciasRaw, true);
+                    $referencias = is_array($decodedRefs) ? $decodedRefs : [];
+                } elseif (is_array($referenciasRaw)) {
+                    $referencias = $referenciasRaw;
+                } else {
+                    $referencias = [];
+                }
+            }
             
             if (empty($id) || empty($nombre)) {
                 throw new Exception('ID y nombre son requeridos');
@@ -468,6 +480,33 @@ try {
                         $newRepData['representante_fecha_nacimiento'],
                         $r_id
                     ]);
+                }
+            }
+
+            // Actualizar referencias personales si se enviaron desde el frontend
+            if ($referencias !== null) {
+                $stmtDelRefs = $pdo->prepare("DELETE FROM estudiantes_referencias WHERE estudiante_id = ?");
+                $stmtDelRefs->execute([$id]);
+
+                if (!empty($referencias)) {
+                    $stmtInsRefs = $pdo->prepare("INSERT INTO estudiantes_referencias (estudiante_id, nombre, telefono, relacion) VALUES (?, ?, ?, ?)");
+                    $countRefs = 0;
+                    foreach ($referencias as $ref) {
+                        if ($countRefs >= 3) break;
+                        if (!is_array($ref)) continue;
+
+                        $refNombre = trim((string)($ref['nombre'] ?? ''));
+                        $refRelacion = trim((string)($ref['relacion'] ?? ''));
+                        $refTelefono = preg_replace('/[^0-9]/', '', (string)($ref['telefono'] ?? ''));
+                        if (strlen($refTelefono) > 9) {
+                            $refTelefono = substr($refTelefono, -9);
+                        }
+
+                        if ($refNombre === '') continue;
+
+                        $stmtInsRefs->execute([$id, $refNombre, $refTelefono, $refRelacion]);
+                        $countRefs++;
+                    }
                 }
             }
 
@@ -713,6 +752,7 @@ try {
             Auth::requirePermission('estudiantes', 'ver');
 
             $id = $input['id'] ?? $_GET['id'] ?? 0;
+            $nombreEstudiante = null;
             file_put_contents($logFile, date('Y-m-d H:i:s') . " - ACTION: get_details - ID: $id\n", FILE_APPEND);
             
             if (!$id) {
@@ -853,12 +893,287 @@ try {
             $stmtEstData->execute([$id]);
             $estudianteData = $stmtEstData->fetch(PDO::FETCH_ASSOC);
 
+            // Seguimiento por categoría/período (incluye aprobados sin archivos generados)
+            $sqlSeguimiento = "
+                SELECT
+                       c.id,
+                       c.estudiante_id,
+                       c.categoria_id,
+                       c.periodo_id,
+                       c.codigo,
+                       c.fecha,
+                       c.fecha_creacion,
+                       c.aprobado,
+                       c.aprobado_por,
+                       c.fecha_aprobacion,
+                       ua.nombre_completo as aprobado_por_nombre,
+                       c.archivo_pdf,
+                       c.archivo_imagen,
+                       c.fechas_generacion,
+                       cat.nombre as categoria_nombre,
+                       cat.icono as categoria_icono,
+                       '#e67e22' as categoria_color,
+                       g.id as grupo_id,
+                       g.nombre as grupo_nombre,
+                       COALESCE(p_cert.nombre, 'Sin período') as periodo_nombre,
+                       COALESCE(DATE_FORMAT(p_cert.fecha_inicio, '%Y-%m-%d'), '0000-00-00') as periodo_fecha_inicio,
+                       (
+                           SELECT COALESCE(MAX(cex.es_destacado), 0)
+                           FROM categoria_estudiantes cex
+                           WHERE cex.estudiante_id = c.estudiante_id
+                             AND cex.categoria_id = c.categoria_id
+                             AND cex.periodo_id <=> c.periodo_id
+                       ) as es_destacado,
+                       (
+                           SELECT COALESCE(DATE_FORMAT(MIN(cex.fecha_matricula), '%Y-%m-%d %H:%i:%s'), '')
+                           FROM categoria_estudiantes cex
+                           WHERE cex.estudiante_id = c.estudiante_id
+                             AND cex.categoria_id = c.categoria_id
+                             AND cex.periodo_id <=> c.periodo_id
+                       ) as fecha_matricula
+                FROM certificados c
+                LEFT JOIN categorias cat ON c.categoria_id = cat.id
+                LEFT JOIN grupos g ON cat.grupo_id = g.id
+                LEFT JOIN periodos p_cert ON c.periodo_id = p_cert.id
+                LEFT JOIN usuarios ua ON c.aprobado_por = ua.id
+                WHERE c.estudiante_id = ?
+                ORDER BY c.fecha_creacion DESC, c.id DESC
+            ";
+
+            $stmtSeguimiento = $pdo->prepare($sqlSeguimiento);
+            $stmtSeguimiento->execute([$id]);
+            $certificadosSeguimientoRaw = $stmtSeguimiento->fetchAll(PDO::FETCH_ASSOC);
+
+            if (empty($certificadosSeguimientoRaw) && empty($nombreEstudiante) && !empty($estudianteData['nombre'])) {
+                $nombreEstudiante = $estudianteData['nombre'];
+            }
+
+            if (empty($certificadosSeguimientoRaw) && !empty($nombreEstudiante)) {
+                $stmtSeguimiento = $pdo->prepare("
+                    SELECT
+                           c.id,
+                           c.estudiante_id,
+                           c.categoria_id,
+                           c.periodo_id,
+                           c.codigo,
+                           c.fecha,
+                           c.fecha_creacion,
+                           c.aprobado,
+                           c.aprobado_por,
+                           c.fecha_aprobacion,
+                           ua.nombre_completo as aprobado_por_nombre,
+                           c.archivo_pdf,
+                           c.archivo_imagen,
+                           c.fechas_generacion,
+                           cat.nombre as categoria_nombre,
+                           cat.icono as categoria_icono,
+                           '#e67e22' as categoria_color,
+                           g.id as grupo_id,
+                           g.nombre as grupo_nombre,
+                           COALESCE(p_cert.nombre, 'Sin período') as periodo_nombre,
+                           COALESCE(DATE_FORMAT(p_cert.fecha_inicio, '%Y-%m-%d'), '0000-00-00') as periodo_fecha_inicio,
+                           (
+                               SELECT COALESCE(MAX(cex.es_destacado), 0)
+                               FROM categoria_estudiantes cex
+                               WHERE cex.estudiante_id = c.estudiante_id
+                                 AND cex.categoria_id = c.categoria_id
+                                 AND cex.periodo_id <=> c.periodo_id
+                           ) as es_destacado,
+                           (
+                               SELECT COALESCE(DATE_FORMAT(MIN(cex.fecha_matricula), '%Y-%m-%d %H:%i:%s'), '')
+                               FROM categoria_estudiantes cex
+                               WHERE cex.estudiante_id = c.estudiante_id
+                                 AND cex.categoria_id = c.categoria_id
+                                 AND cex.periodo_id <=> c.periodo_id
+                           ) as fecha_matricula
+                    FROM certificados c
+                    LEFT JOIN categorias cat ON c.categoria_id = cat.id
+                    LEFT JOIN grupos g ON cat.grupo_id = g.id
+                    LEFT JOIN periodos p_cert ON c.periodo_id = p_cert.id
+                    LEFT JOIN usuarios ua ON c.aprobado_por = ua.id
+                    WHERE (TRIM(c.nombre) = TRIM(?) OR c.nombre LIKE ?)
+                    ORDER BY c.fecha_creacion DESC, c.id DESC
+                ");
+                $stmtSeguimiento->execute([$nombreEstudiante, '%' . $nombreEstudiante . '%']);
+                $certificadosSeguimientoRaw = $stmtSeguimiento->fetchAll(PDO::FETCH_ASSOC);
+            }
+
+            $normalizarHistorialGeneraciones = function ($raw): array {
+                if (is_array($raw)) return $raw;
+                if (!is_string($raw)) return [];
+                $text = trim($raw);
+                if ($text === '') return [];
+                $decoded = json_decode($text, true);
+                return is_array($decoded) ? $decoded : [];
+            };
+
+            $compararFechas = function (string $a, string $b): int {
+                if ($a === $b) return 0;
+                return $a < $b ? -1 : 1;
+            };
+
+            $seguimientoMap = [];
+            foreach ($certificadosSeguimientoRaw as $row) {
+                $categoriaId = isset($row['categoria_id']) && $row['categoria_id'] !== null ? (int)$row['categoria_id'] : null;
+                $periodoId = isset($row['periodo_id']) && $row['periodo_id'] !== null ? (int)$row['periodo_id'] : null;
+                $mapKey = ($categoriaId !== null ? (string)$categoriaId : 'null') . '__' . ($periodoId !== null ? (string)$periodoId : 'null');
+
+                $archivoPdf = trim((string)($row['archivo_pdf'] ?? ''));
+                $archivoImagen = trim((string)($row['archivo_imagen'] ?? ''));
+                $tieneArchivos = ($archivoPdf !== '' || $archivoImagen !== '');
+
+                $historialRaw = $normalizarHistorialGeneraciones($row['fechas_generacion'] ?? null);
+                $historialFechas = [];
+                foreach ($historialRaw as $item) {
+                    if (is_string($item)) {
+                        $fechaHist = trim($item);
+                        if ($fechaHist !== '') {
+                            $historialFechas[] = ['fecha' => $fechaHist, 'usuario' => ''];
+                        }
+                        continue;
+                    }
+                    if (is_array($item)) {
+                        $fechaHist = trim((string)($item['fecha'] ?? ''));
+                        if ($fechaHist === '') continue;
+                        $usuarioHist = trim((string)($item['usuario'] ?? ($item['usuario_nombre'] ?? '')));
+                        $historialFechas[] = ['fecha' => $fechaHist, 'usuario' => $usuarioHist];
+                    }
+                }
+
+                if (!empty($historialFechas)) {
+                    usort($historialFechas, function ($a, $b) use ($compararFechas) {
+                        return $compararFechas((string)($a['fecha'] ?? ''), (string)($b['fecha'] ?? ''));
+                    });
+                }
+
+                $primeraGenFecha = '';
+                $ultimaGenFecha = '';
+                $primeraGenUsuario = '';
+                $ultimaGenUsuario = '';
+                if (!empty($historialFechas)) {
+                    $firstHist = $historialFechas[0];
+                    $lastHist = $historialFechas[count($historialFechas) - 1];
+                    $primeraGenFecha = (string)($firstHist['fecha'] ?? '');
+                    $ultimaGenFecha = (string)($lastHist['fecha'] ?? '');
+                    $primeraGenUsuario = (string)($firstHist['usuario'] ?? '');
+                    $ultimaGenUsuario = (string)($lastHist['usuario'] ?? '');
+                }
+
+                if (($primeraGenFecha === '' || $ultimaGenFecha === '') && $tieneArchivos) {
+                    $fallbackGen = trim((string)($row['fecha_creacion'] ?? $row['fecha'] ?? ''));
+                    if ($fallbackGen !== '') {
+                        if ($primeraGenFecha === '') $primeraGenFecha = $fallbackGen;
+                        if ($ultimaGenFecha === '') $ultimaGenFecha = $fallbackGen;
+                    }
+                }
+
+                $estaAprobado = ((int)($row['aprobado'] ?? 0) === 1)
+                    || trim((string)($row['fecha_aprobacion'] ?? '')) !== ''
+                    || !empty($row['aprobado_por']);
+                $estaGenerado = $tieneArchivos || $primeraGenFecha !== '' || $ultimaGenFecha !== '';
+
+                if (!isset($seguimientoMap[$mapKey])) {
+                    $seguimientoMap[$mapKey] = [
+                        'categoria_id' => $categoriaId,
+                        'periodo_id' => $periodoId,
+                        'categoria_nombre' => (string)($row['categoria_nombre'] ?? 'Sin categoría'),
+                        'categoria_icono' => (string)($row['categoria_icono'] ?? ''),
+                        'categoria_color' => (string)($row['categoria_color'] ?? '#e67e22'),
+                        'grupo_id' => isset($row['grupo_id']) ? (int)$row['grupo_id'] : null,
+                        'grupo_nombre' => (string)($row['grupo_nombre'] ?? ''),
+                        'periodo_nombre' => (string)($row['periodo_nombre'] ?? 'Sin período'),
+                        'periodo_fecha_inicio' => (string)($row['periodo_fecha_inicio'] ?? '0000-00-00'),
+                        'fecha_matricula' => (string)($row['fecha_matricula'] ?? ''),
+                        'es_destacado' => (int)($row['es_destacado'] ?? 0) === 1 ? 1 : 0,
+                        'aprobado' => $estaAprobado ? 1 : 0,
+                        'fecha_aprobacion' => (string)($row['fecha_aprobacion'] ?? ''),
+                        'aprobado_por' => isset($row['aprobado_por']) && $row['aprobado_por'] !== null ? (int)$row['aprobado_por'] : null,
+                        'aprobado_por_nombre' => (string)($row['aprobado_por_nombre'] ?? ''),
+                        'generado' => $estaGenerado ? 1 : 0,
+                        'codigo_generado' => $estaGenerado ? (string)($row['codigo'] ?? '') : '',
+                        'fecha_generacion_primera' => $primeraGenFecha,
+                        'fecha_generacion_ultima' => $ultimaGenFecha,
+                        'generado_por_nombre' => $primeraGenUsuario !== '' ? $primeraGenUsuario : $ultimaGenUsuario
+                    ];
+                    continue;
+                }
+
+                $actual = &$seguimientoMap[$mapKey];
+
+                if (!empty($row['fecha_matricula']) && empty($actual['fecha_matricula'])) {
+                    $actual['fecha_matricula'] = (string)$row['fecha_matricula'];
+                }
+                if ((int)($row['es_destacado'] ?? 0) === 1) {
+                    $actual['es_destacado'] = 1;
+                }
+
+                if ($estaAprobado) {
+                    $actual['aprobado'] = 1;
+                    $fechaAprobRow = trim((string)($row['fecha_aprobacion'] ?? ''));
+                    if ($fechaAprobRow !== '') {
+                        $fechaAprobActual = trim((string)($actual['fecha_aprobacion'] ?? ''));
+                        if ($fechaAprobActual === '' || $compararFechas($fechaAprobRow, $fechaAprobActual) < 0) {
+                            $actual['fecha_aprobacion'] = $fechaAprobRow;
+                        }
+                    }
+                    if (empty($actual['aprobado_por_nombre']) && !empty($row['aprobado_por_nombre'])) {
+                        $actual['aprobado_por_nombre'] = (string)$row['aprobado_por_nombre'];
+                    }
+                    if (empty($actual['aprobado_por']) && !empty($row['aprobado_por'])) {
+                        $actual['aprobado_por'] = (int)$row['aprobado_por'];
+                    }
+                }
+
+                if ($estaGenerado) {
+                    $actual['generado'] = 1;
+                    if (empty($actual['codigo_generado']) && !empty($row['codigo'])) {
+                        $actual['codigo_generado'] = (string)$row['codigo'];
+                    }
+
+                    if ($primeraGenFecha !== '') {
+                        $actualPrimera = trim((string)($actual['fecha_generacion_primera'] ?? ''));
+                        if ($actualPrimera === '' || $compararFechas($primeraGenFecha, $actualPrimera) < 0) {
+                            $actual['fecha_generacion_primera'] = $primeraGenFecha;
+                            if ($primeraGenUsuario !== '') {
+                                $actual['generado_por_nombre'] = $primeraGenUsuario;
+                            }
+                        }
+                    }
+
+                    if ($ultimaGenFecha !== '') {
+                        $actualUltima = trim((string)($actual['fecha_generacion_ultima'] ?? ''));
+                        if ($actualUltima === '' || $compararFechas($ultimaGenFecha, $actualUltima) > 0) {
+                            $actual['fecha_generacion_ultima'] = $ultimaGenFecha;
+                        }
+                    }
+
+                    if (empty($actual['generado_por_nombre']) && $ultimaGenUsuario !== '') {
+                        $actual['generado_por_nombre'] = $ultimaGenUsuario;
+                    }
+                }
+
+                unset($actual);
+            }
+
+            $certificadosSeguimiento = array_values($seguimientoMap);
+            usort($certificadosSeguimiento, function ($a, $b) {
+                $catCmp = strcasecmp((string)($a['categoria_nombre'] ?? ''), (string)($b['categoria_nombre'] ?? ''));
+                if ($catCmp !== 0) return $catCmp;
+
+                $fa = (string)($a['periodo_fecha_inicio'] ?? '0000-00-00');
+                $fb = (string)($b['periodo_fecha_inicio'] ?? '0000-00-00');
+                if ($fa !== $fb) return $fa < $fb ? -1 : 1;
+
+                return strcasecmp((string)($a['periodo_nombre'] ?? ''), (string)($b['periodo_nombre'] ?? ''));
+            });
+
             $fallbackUsed = empty($certificados) && !empty($nombreEstudiante ?? null);
 
             echo json_encode([
                 'success' => true,
                 'estudiante' => $estudianteData,
                 'certificados' => $certificados,
+                'certificados_seguimiento' => $certificadosSeguimiento,
                 'debug_info' => [
                     'received_id' => $id,
                     'count' => count($certificados),

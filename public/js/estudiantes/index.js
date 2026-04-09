@@ -13,6 +13,11 @@ let currentFilters = {
 let estudiantesData = []; // Global store for students
 let estudiantesSeleccionados = [];
 let categoriasPorGrupo = {};
+let masInfoCategorias = [];
+let masInfoDetalle = null;
+let masInfoGrupoFiltro = 'all';
+let masInfoCodigoDescarga = '';
+let masInfoCategoriaActiva = 'general';
 
 // Helper functions for dropdowns
 function toggleDropdown(id, event) {
@@ -773,11 +778,8 @@ function renderEstudiantes(estudiantes) {
                     </td>
                     <td class="sticky-col sticky-right">
                         <div class="action-buttons">
-                            <button class="btn-icon btn-view" onclick="verInfoGrupos(${est.id})" title="Ver Grupos y Categorías" style="color:#5e35b1; background:#ede7f6;">
-                                <i class="fas fa-layer-group"></i>
-                            </button>
-                            <button class="btn-icon btn-certificate" onclick="viewEstudiante(${est.id})" title="Visualizar Certificados">
-                                <i class="fas fa-certificate"></i>
+                            <button class="btn-icon btn-view" onclick="abrirMasInformacion(${est.id})" title="Más Información" style="color:#0f766e; background:#d1fae5;">
+                                <i class="fas fa-circle-info"></i>
                             </button>
                             ${btnEditarHtml}
                             <button class="btn-icon btn-delete" onclick="deleteEstudiante(${est.id}, '${escapeHtml(est.nombre)}')" title="Eliminar">
@@ -790,6 +792,752 @@ function renderEstudiantes(estudiantes) {
 
     // Resetear el checkbox "seleccionar todos"
     document.getElementById('selectAll').checked = false;
+}
+
+function normalizarClaveMasInfo(valor) {
+    return String(valor || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '');
+}
+
+function formatearFechaHoraMasInfo(fechaRaw, incluirHora = true) {
+    const raw = String(fechaRaw || '').trim();
+    if (!raw || raw === '0000-00-00' || raw === '0000-00-00 00:00:00') return '—';
+
+    const normalizada = raw.includes(' ') ? raw.replace(' ', 'T') : raw;
+    const date = new Date(normalizada);
+    if (Number.isNaN(date.getTime())) {
+        if (!incluirHora && raw.length >= 10) {
+            return formatDate(raw.substring(0, 10));
+        }
+        return raw;
+    }
+
+    if (!incluirHora) {
+        return date.toLocaleDateString('es-ES', { year: 'numeric', month: '2-digit', day: '2-digit' });
+    }
+
+    return date.toLocaleString('es-ES', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+}
+
+function obtenerEdadMasInfo(fechaRaw) {
+    const edad = calcularEdadDesdeFecha(fechaRaw);
+    return edad === null ? '-' : String(edad);
+}
+
+function estadoCertificadoMasInfo(periodo) {
+    if (periodo?.cert_generado) return { label: 'Generado', css: 'is-generado' };
+    if (periodo?.cert_aprobado) return { label: 'Aprobado', css: 'is-aprobado' };
+    return { label: 'Pendiente', css: 'is-pendiente' };
+}
+
+function actualizarFooterMasInfo(codigo = '', puedeDescargar = false) {
+    const btnPdf = document.getElementById('idxInfoBtnPdf');
+    const btnPng = document.getElementById('idxInfoBtnPng');
+    const code = String(codigo || '').trim();
+    const enabled = Boolean(puedeDescargar && code);
+    masInfoCodigoDescarga = enabled ? code : '';
+
+    [btnPdf, btnPng].forEach(btn => {
+        if (!btn) return;
+        btn.disabled = !enabled;
+        btn.style.opacity = enabled ? '1' : '.55';
+        btn.style.cursor = enabled ? 'pointer' : 'not-allowed';
+        btn.title = enabled ? 'Descargar certificado generado' : 'Disponible solo cuando el certificado esté en estado Generado';
+    });
+}
+
+function descargarMasInfo(tipo = 'pdf') {
+    const code = String(masInfoCodigoDescarga || '').trim();
+    if (!code) {
+        alert('Este período no tiene certificado generado para descargar');
+        return;
+    }
+    const action = tipo === 'imagen' ? 'descargar_imagen' : 'descargar_pdf';
+    const url = `../api/certificados/generar.php?action=${action}&codigo=${encodeURIComponent(code)}&t=${Date.now()}`;
+    window.open(url, '_blank');
+}
+
+function construirCategoriasMasInfo(estudiante, certificadosRaw, seguimientoRaw) {
+    const certificados = Array.isArray(certificadosRaw) ? certificadosRaw : [];
+    const seguimiento = Array.isArray(seguimientoRaw) ? seguimientoRaw : [];
+    const categorias = [];
+
+    const catById = new Map();
+    const catByKey = new Map();
+
+    const toIntOrNull = (value) => {
+        if (value === null || value === undefined || value === '') return null;
+        const n = Number(value);
+        return Number.isFinite(n) ? n : null;
+    };
+
+    const ensureCategoria = (payload = {}) => {
+        const categoriaId = toIntOrNull(payload.categoria_id);
+        const grupoId = toIntOrNull(payload.grupo_id);
+        const categoriaNombre = String(payload.categoria_nombre || 'Sin categoría').trim() || 'Sin categoría';
+        const grupoNombre = String(payload.grupo_nombre || 'Sin grupo').trim() || 'Sin grupo';
+        const grupoColor = String(payload.grupo_color || '#94a3b8').trim() || '#94a3b8';
+        const grupoIcono = String(payload.grupo_icono || '👥').trim() || '👥';
+        const categoriaIcono = String(payload.categoria_icono || '📁').trim() || '📁';
+
+        if (categoriaId !== null && catById.has(categoriaId)) {
+            const cat = catById.get(categoriaId);
+            if ((!cat.grupo_id || cat.grupo_id === 0) && grupoId) {
+                cat.grupo_id = grupoId;
+                cat.grupo_key = `g-${grupoId}`;
+            }
+            if ((!cat.grupo_nombre || cat.grupo_nombre === 'Sin grupo') && grupoNombre) cat.grupo_nombre = grupoNombre;
+            if ((!cat.grupo_color || cat.grupo_color === '#94a3b8') && grupoColor) cat.grupo_color = grupoColor;
+            if ((!cat.grupo_icono || cat.grupo_icono === '👥') && grupoIcono) cat.grupo_icono = grupoIcono;
+            if ((!cat.icono || cat.icono === '📁') && categoriaIcono) cat.icono = categoriaIcono;
+            return cat;
+        }
+
+        const grupoKey = grupoId !== null ? `g-${grupoId}` : `gn-${normalizarClaveMasInfo(grupoNombre || 'sin_grupo')}`;
+        const categoriaKeyPart = categoriaId !== null ? `c-${categoriaId}` : `cn-${normalizarClaveMasInfo(categoriaNombre)}`;
+        const categoriaKey = `${grupoKey}__${categoriaKeyPart}`;
+        if (catByKey.has(categoriaKey)) return catByKey.get(categoriaKey);
+
+        const categoria = {
+            key: categoriaKey,
+            id: categoriaId,
+            nombre: categoriaNombre,
+            icono: categoriaIcono,
+            grupo_id: grupoId,
+            grupo_key: grupoKey,
+            grupo_nombre: grupoNombre,
+            grupo_color: grupoColor,
+            grupo_icono: grupoIcono,
+            periodos: []
+        };
+
+        categorias.push(categoria);
+        catByKey.set(categoriaKey, categoria);
+        if (categoriaId !== null) catById.set(categoriaId, categoria);
+        return categoria;
+    };
+
+    const ensurePeriodo = (categoria, payload = {}) => {
+        if (!categoria) return null;
+        const periodoId = toIntOrNull(payload.periodo_id);
+        const periodoNombre = String(payload.periodo_nombre || 'Sin período').trim() || 'Sin período';
+        const fechaInicio = String(payload.fecha_inicio || payload.periodo_fecha_inicio || '0000-00-00').trim() || '0000-00-00';
+        const fechaMatricula = String(payload.fecha_matricula || '').trim();
+        const estado = String(payload.estado || 'activo').trim() || 'activo';
+        const esDestacado = Number(payload.es_destacado || 0) === 1;
+
+        let periodo = null;
+        if (periodoId !== null) {
+            periodo = categoria.periodos.find(p => p.periodo_id === periodoId) || null;
+        }
+        if (!periodo) {
+            const nombreKey = normalizarClaveMasInfo(periodoNombre);
+            periodo = categoria.periodos.find(p => normalizarClaveMasInfo(p.nombre) === nombreKey) || null;
+        }
+
+        if (!periodo) {
+            periodo = {
+                key: `${periodoId !== null ? `p-${periodoId}` : `pn-${normalizarClaveMasInfo(periodoNombre)}`}`,
+                periodo_id: periodoId,
+                nombre: periodoNombre,
+                fecha_inicio: fechaInicio,
+                fecha_matricula: fechaMatricula,
+                estado: estado,
+                es_destacado: esDestacado,
+                cert_aprobado: false,
+                cert_generado: false,
+                codigo_generado: '',
+                fecha_aprobacion: '',
+                aprobado_por_nombre: '',
+                fecha_generacion_primera: '',
+                fecha_generacion_ultima: '',
+                generado_por_nombre: '',
+                certificado: null
+            };
+            categoria.periodos.push(periodo);
+            return periodo;
+        }
+
+        if ((!periodo.fecha_inicio || periodo.fecha_inicio === '0000-00-00') && fechaInicio) periodo.fecha_inicio = fechaInicio;
+        if (fechaMatricula && (!periodo.fecha_matricula || fechaMatricula < periodo.fecha_matricula)) periodo.fecha_matricula = fechaMatricula;
+        if (!periodo.estado && estado) periodo.estado = estado;
+        if (esDestacado) periodo.es_destacado = true;
+        if (periodo.periodo_id === null && periodoId !== null) periodo.periodo_id = periodoId;
+        return periodo;
+    };
+
+    const enrollmentRaw = String(estudiante?.enrollment_data || '').trim();
+    if (enrollmentRaw) {
+        enrollmentRaw.split('||').forEach(enroll => {
+            if (!enroll) return;
+            const parts = enroll.split('##');
+            if (parts.length < 8) return;
+
+            const categoria = ensureCategoria({
+                grupo_id: parts[0],
+                grupo_nombre: parts[1],
+                grupo_color: parts[2],
+                grupo_icono: parts[3],
+                categoria_id: parts[4],
+                categoria_nombre: parts[5],
+                categoria_icono: parts[6]
+            });
+            ensurePeriodo(categoria, {
+                periodo_nombre: parts[7],
+                es_destacado: parts[8] || 0,
+                periodo_fecha_inicio: parts[9] || '0000-00-00',
+                fecha_matricula: parts[10] || ''
+            });
+        });
+    }
+
+    seguimiento.forEach(seg => {
+        const categoria = ensureCategoria({
+            grupo_id: seg?.grupo_id ?? null,
+            grupo_nombre: seg?.grupo_nombre || 'Sin grupo',
+            grupo_color: '#94a3b8',
+            grupo_icono: '👥',
+            categoria_id: seg?.categoria_id ?? null,
+            categoria_nombre: seg?.categoria_nombre || 'Sin categoría',
+            categoria_icono: seg?.categoria_icono || '📁'
+        });
+        const periodo = ensurePeriodo(categoria, {
+            periodo_id: seg?.periodo_id ?? null,
+            periodo_nombre: seg?.periodo_nombre || 'Sin período',
+            periodo_fecha_inicio: seg?.periodo_fecha_inicio || '0000-00-00',
+            fecha_matricula: seg?.fecha_matricula || '',
+            es_destacado: seg?.es_destacado || 0
+        });
+        if (!periodo) return;
+
+        const aprobado = Number(seg?.aprobado || 0) === 1 || String(seg?.fecha_aprobacion || '').trim() !== '';
+        const generado = Number(seg?.generado || 0) === 1 || String(seg?.codigo_generado || '').trim() !== '';
+        if (aprobado) {
+            periodo.cert_aprobado = true;
+            if (!periodo.fecha_aprobacion) periodo.fecha_aprobacion = String(seg?.fecha_aprobacion || '').trim();
+            if (!periodo.aprobado_por_nombre) periodo.aprobado_por_nombre = String(seg?.aprobado_por_nombre || '').trim();
+        }
+        if (generado) {
+            periodo.cert_generado = true;
+            if (!periodo.codigo_generado) periodo.codigo_generado = String(seg?.codigo_generado || '').trim();
+            if (!periodo.fecha_generacion_primera) periodo.fecha_generacion_primera = String(seg?.fecha_generacion_primera || '').trim();
+            if (!periodo.fecha_generacion_ultima) periodo.fecha_generacion_ultima = String(seg?.fecha_generacion_ultima || '').trim();
+            if (!periodo.generado_por_nombre) periodo.generado_por_nombre = String(seg?.generado_por_nombre || '').trim();
+        }
+    });
+
+    certificados.forEach(cert => {
+        const categoria = ensureCategoria({
+            grupo_id: cert?.grupo_id ?? null,
+            grupo_nombre: cert?.grupo_nombre || 'Sin grupo',
+            grupo_color: '#94a3b8',
+            grupo_icono: '👥',
+            categoria_id: cert?.categoria_id ?? null,
+            categoria_nombre: cert?.categoria_nombre || 'Sin categoría',
+            categoria_icono: cert?.categoria_icono || '📁'
+        });
+        const periodo = ensurePeriodo(categoria, {
+            periodo_id: cert?.periodo_id ?? null,
+            periodo_nombre: cert?.periodo_nombre || 'Sin período',
+            periodo_fecha_inicio: cert?.periodo_fecha_inicio || '0000-00-00'
+        });
+        if (!periodo) return;
+
+        const tieneArchivos = Boolean(String(cert?.archivo_pdf || '').trim() || String(cert?.archivo_imagen || '').trim());
+        const aprobado = Number(cert?.aprobado || 0) === 1 || String(cert?.fecha_aprobacion || '').trim() !== '';
+        const generado = Boolean(tieneArchivos || String(cert?.codigo || '').trim() !== '');
+
+        periodo.certificado = cert;
+        if (aprobado) {
+            periodo.cert_aprobado = true;
+            if (!periodo.fecha_aprobacion) periodo.fecha_aprobacion = String(cert?.fecha_aprobacion || '').trim();
+            if (!periodo.aprobado_por_nombre) periodo.aprobado_por_nombre = String(cert?.aprobado_por_nombre || '').trim();
+        }
+        if (generado) {
+            periodo.cert_generado = true;
+            if (!periodo.codigo_generado) periodo.codigo_generado = String(cert?.codigo || '').trim();
+            if (!periodo.fecha_generacion_primera) periodo.fecha_generacion_primera = String(cert?.fecha_creacion || cert?.fecha || '').trim();
+            if (!periodo.fecha_generacion_ultima) periodo.fecha_generacion_ultima = String(cert?.fecha_creacion || cert?.fecha || '').trim();
+        }
+    });
+
+    categorias.forEach(cat => {
+        cat.periodos.forEach(periodo => {
+            if (periodo.cert_generado) periodo.cert_aprobado = true;
+            if (!periodo.codigo_generado && periodo.certificado?.codigo) periodo.codigo_generado = String(periodo.certificado.codigo).trim();
+            if (!periodo.fecha_generacion_primera && periodo.certificado?.fecha_creacion) periodo.fecha_generacion_primera = String(periodo.certificado.fecha_creacion).trim();
+            if (!periodo.fecha_generacion_ultima && periodo.certificado?.fecha_creacion) periodo.fecha_generacion_ultima = String(periodo.certificado.fecha_creacion).trim();
+        });
+
+        cat.periodos.sort((a, b) => {
+            const fa = String(a.fecha_inicio || '0000-00-00');
+            const fb = String(b.fecha_inicio || '0000-00-00');
+            if (fa !== fb) return fa < fb ? -1 : 1;
+            return String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es', { sensitivity: 'base' });
+        });
+    });
+
+    categorias.sort((a, b) => {
+        const gCmp = String(a.grupo_nombre || '').localeCompare(String(b.grupo_nombre || ''), 'es', { sensitivity: 'base' });
+        if (gCmp !== 0) return gCmp;
+        return String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es', { sensitivity: 'base' });
+    });
+
+    return categorias;
+}
+
+function renderMasInfoGeneral(estudiante, categorias) {
+    const esMenor = Number(estudiante?.es_menor || 0) === 1;
+    const fechaNacimiento = formatearFechaHoraMasInfo(estudiante?.fecha_nacimiento || '', false);
+    const edad = obtenerEdadMasInfo(estudiante?.fecha_nacimiento || '');
+    const fechaRegistro = formatearFechaHoraMasInfo(estudiante?.fecha_creacion || '', true);
+    const fechaActualizacion = formatearFechaHoraMasInfo(estudiante?.fecha_actualizacion || '', true);
+
+    const celular = String(estudiante?.celular || '').trim();
+    const email = String(estudiante?.email || '').trim();
+    const celularLocal = normalizarTelefonoLocalEC(celular);
+    const whatsappHref = celularLocal ? `https://wa.me/593${celularLocal}` : '';
+
+    const contactoHtml = [];
+    if (whatsappHref) {
+        contactoHtml.push(`<a href="${whatsappHref}" target="_blank" class="idx-info-contact-chip btn-whatsapp" title="WhatsApp"><i class="fab fa-whatsapp"></i> ${escapeHtml(celular)}</a>`);
+    }
+    if (email) {
+        contactoHtml.push(`<a href="mailto:${escapeHtml(email)}" class="idx-info-contact-chip btn-email" title="Email"><i class="fas fa-envelope"></i> ${escapeHtml(email)}</a>`);
+    }
+    if (!contactoHtml.length) {
+        contactoHtml.push('<span class="idx-info-contact-empty">Sin contacto registrado</span>');
+    }
+
+    const representanteHtml = esMenor ? `
+        <article class="idx-info-general-card">
+            <h5><i class="fas fa-user-tie"></i> Representante</h5>
+            <div class="idx-info-general-stack">
+                <div class="idx-info-row"><span>Nombre</span><strong>${escapeHtml(estudiante?.representante_nombre || '—')}</strong></div>
+                <div class="idx-info-row"><span>Cédula</span><strong>${escapeHtml(estudiante?.representante_cedula || '—')}</strong></div>
+                <div class="idx-info-row"><span>Celular</span><strong>${escapeHtml(estudiante?.representante_celular || '—')}</strong></div>
+                <div class="idx-info-row"><span>Email</span><strong>${escapeHtml(estudiante?.representante_email || '—')}</strong></div>
+            </div>
+        </article>
+    ` : '';
+
+    return `
+        <section class="idx-info-general-grid">
+            <article class="idx-info-general-card idx-info-general-card-main">
+                <h5><i class="fas fa-id-card"></i> Datos Generales</h5>
+                <div class="idx-info-general-stack">
+                    <div class="idx-info-row"><span>Tipo</span><strong>${esMenor ? 'Menor de edad' : 'Mayor de edad'}</strong></div>
+                    <div class="idx-info-row"><span>Fecha de nacimiento</span><strong>${escapeHtml(fechaNacimiento)}${edad !== '-' ? ` (${escapeHtml(edad)} años)` : ''}</strong></div>
+                    <div class="idx-info-row"><span>Contacto</span><span class="idx-info-contact-list">${contactoHtml.join('')}</span></div>
+                    <div class="idx-info-row"><span>Registro en sistema</span><strong>${escapeHtml(fechaRegistro)}</strong></div>
+                    <div class="idx-info-row"><span>Última actualización</span><strong>${escapeHtml(fechaActualizacion)}</strong></div>
+                    <div class="idx-info-row"><span>Grupos/Categorías</span><strong>${escapeHtml(String(categorias.length))} categorías</strong></div>
+                </div>
+            </article>
+            ${representanteHtml}
+        </section>
+    `;
+}
+
+function renderMasInfoModal(estudiante) {
+    const nombreEl = document.getElementById('idxInfoNombre');
+    const cedulaEl = document.getElementById('idxInfoCedula');
+    if (nombreEl) nombreEl.textContent = estudiante?.nombre || 'Estudiante';
+    if (cedulaEl) cedulaEl.textContent = estudiante?.cedula ? `Cédula: ${estudiante.cedula}` : 'Cédula: —';
+
+    const periodos = masInfoCategorias.reduce((acc, cat) => {
+        if (Array.isArray(cat?.periodos)) acc.push(...cat.periodos);
+        return acc;
+    }, []);
+
+    const totalCategorias = masInfoCategorias.length;
+    const totalPeriodos = periodos.length;
+    const totalAprobados = periodos.filter(p => Boolean(p?.cert_aprobado)).length;
+    const totalGenerados = periodos.filter(p => Boolean(p?.cert_generado)).length;
+    const totalPendientes = periodos.filter(p => !Boolean(p?.cert_aprobado) && !Boolean(p?.cert_generado)).length;
+
+    const setText = (id, value) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = String(value);
+    };
+
+    setText('idxInfoTotalCategorias', totalCategorias);
+    setText('idxInfoTotalPeriodos', totalPeriodos);
+    setText('idxInfoTotalAprobados', totalAprobados);
+    setText('idxInfoTotalPendientes', totalPendientes);
+    setText('idxInfoTotalGenerados', totalGenerados);
+
+    const gruposMap = new Map();
+    masInfoCategorias.forEach(cat => {
+        if (!gruposMap.has(cat.grupo_key)) {
+            gruposMap.set(cat.grupo_key, {
+                key: cat.grupo_key,
+                id: cat.grupo_id,
+                nombre: cat.grupo_nombre || 'Sin grupo',
+                color: cat.grupo_color || '#94a3b8',
+                icono: cat.grupo_icono || '👥'
+            });
+        }
+    });
+
+    const grupos = Array.from(gruposMap.values()).sort((a, b) =>
+        String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es', { sensitivity: 'base' })
+    );
+
+    const filtersContainer = document.getElementById('idxInfoGrupoFilters');
+    if (filtersContainer) {
+        const badges = [`<button type="button" class="idx-info-group-chip ${masInfoGrupoFiltro === 'all' ? 'active' : ''}" onclick="switchMasInfoGrupoFiltro('all', this)"><i class="fas fa-layer-group"></i> Todos</button>`];
+        grupos.forEach(g => {
+            const active = masInfoGrupoFiltro === g.key;
+            const chipStyle = active
+                ? `background:${escapeHtml(g.color)};border-color:${escapeHtml(g.color)};color:#fff;`
+                : `border-color:${escapeHtml(g.color)}55;color:${escapeHtml(g.color)};`;
+            badges.push(`
+                <button type="button" class="idx-info-group-chip ${active ? 'active' : ''}" onclick="switchMasInfoGrupoFiltro('${g.key}', this)" style="${chipStyle}">
+                    <span>${renderGrupoIcono(g.icono)}</span>
+                    <span>${escapeHtml(g.nombre)}</span>
+                </button>
+            `);
+        });
+        filtersContainer.innerHTML = badges.join('');
+    }
+
+    renderMasInfoTabsAndSlides();
+}
+
+function renderMasInfoTabsAndSlides() {
+    const tabs = document.getElementById('idxInfoTabs');
+    const slides = document.getElementById('idxInfoSlides');
+    if (!tabs || !slides) return;
+
+    const categoriasFiltradas = masInfoGrupoFiltro === 'all'
+        ? masInfoCategorias.slice()
+        : masInfoCategorias.filter(cat => cat.grupo_key === masInfoGrupoFiltro);
+
+    const tabsHtml = [];
+    const slidesHtml = [];
+
+    tabsHtml.push(`
+        <button type="button" class="idx-info-tab ${masInfoCategoriaActiva === 'general' ? 'active' : ''}" data-cat-key="general" onclick="switchMasInfoCategoria('general', this)">
+            <span><i class="fas fa-id-card"></i></span>
+            <span>General</span>
+        </button>
+    `);
+
+    slidesHtml.push(`
+        <section class="idx-info-slide ${masInfoCategoriaActiva === 'general' ? 'active' : ''}" data-slide-key="general">
+            ${renderMasInfoGeneral(masInfoDetalle || {}, categoriasFiltradas)}
+        </section>
+    `);
+
+    categoriasFiltradas.forEach(cat => {
+        tabsHtml.push(`
+            <button type="button" class="idx-info-tab" data-cat-key="${cat.key}" onclick="switchMasInfoCategoria('${cat.key}', this)">
+                <span>${renderCategoriaIcono(cat.icono)}</span>
+                <span>${escapeHtml(cat.nombre)}</span>
+                <span class="idx-info-tab-count">${Array.isArray(cat.periodos) ? cat.periodos.length : 0}</span>
+            </button>
+        `);
+
+        const periodos = Array.isArray(cat.periodos) ? cat.periodos : [];
+        const periodosHtml = periodos.map((periodo, idx) => {
+            const activo = idx === 0 ? 'active' : '';
+            const tieneCert = Boolean(String(periodo?.codigo_generado || '').trim());
+            return `
+                <button type="button" class="idx-info-periodo-badge ${activo}" data-period-index="${idx}" onclick="switchMasInfoPeriodo('${cat.key}', ${idx}, this)">
+                    <i class="far fa-calendar-alt"></i>
+                    <span>${escapeHtml(periodo.nombre || 'Sin período')}</span>
+                    ${periodo.es_destacado ? '<i class="fas fa-star idx-info-periodo-badge-star"></i>' : ''}
+                    ${tieneCert ? '<i class="fas fa-certificate idx-info-periodo-badge-cert"></i>' : ''}
+                </button>
+            `;
+        }).join('');
+
+        slidesHtml.push(`
+            <section class="idx-info-slide" data-slide-key="${cat.key}">
+                <div class="idx-info-periodo-badges">
+                    ${periodosHtml || '<div class="empty-state" style="padding:10px 0;"><i class="fas fa-calendar-times"></i><p>No hay períodos registrados para esta categoría.</p></div>'}
+                </div>
+                <div class="idx-info-periodo-detail" id="idxInfoPeriodoDetail-${cat.key}">
+                    <div class="empty-state" style="padding: 18px 0;">
+                        <i class="fas fa-spinner fa-spin"></i>
+                        <p>Cargando período...</p>
+                    </div>
+                </div>
+            </section>
+        `);
+    });
+
+    tabs.innerHTML = tabsHtml.join('');
+    slides.innerHTML = slidesHtml.join('');
+
+    const disponibleKeys = new Set(['general', ...categoriasFiltradas.map(c => c.key)]);
+    if (!disponibleKeys.has(masInfoCategoriaActiva)) {
+        masInfoCategoriaActiva = 'general';
+    }
+
+    const btnInicial = tabs.querySelector(`.idx-info-tab[data-cat-key="${masInfoCategoriaActiva}"]`) || tabs.querySelector('.idx-info-tab');
+    if (btnInicial) {
+        switchMasInfoCategoria(btnInicial.dataset.catKey || 'general', btnInicial);
+    } else {
+        actualizarFooterMasInfo('', false);
+        slides.innerHTML = '<div class="empty-state" style="padding:20px 0;"><i class="fas fa-folder-open"></i><p>No hay categorías para este filtro.</p></div>';
+    }
+}
+
+function switchMasInfoGrupoFiltro(groupKey, btn) {
+    masInfoGrupoFiltro = String(groupKey || 'all');
+    masInfoCategoriaActiva = 'general';
+    renderMasInfoModal(masInfoDetalle || {});
+}
+
+function switchMasInfoCategoria(catKey, btn) {
+    const key = String(catKey || 'general');
+    masInfoCategoriaActiva = key;
+
+    document.querySelectorAll('#idxInfoTabs .idx-info-tab').forEach(tab => tab.classList.remove('active'));
+    document.querySelectorAll('#idxInfoSlides .idx-info-slide').forEach(slide => slide.classList.remove('active'));
+
+    if (btn) {
+        btn.classList.add('active');
+        if (typeof btn.scrollIntoView === 'function') {
+            btn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        }
+    }
+
+    const slide = document.querySelector(`#idxInfoSlides .idx-info-slide[data-slide-key="${key}"]`);
+    if (!slide) return;
+    slide.classList.add('active');
+
+    if (key === 'general') {
+        actualizarFooterMasInfo('', false);
+        return;
+    }
+
+    const badge = slide.querySelector('.idx-info-periodo-badge.active') || slide.querySelector('.idx-info-periodo-badge');
+    if (!badge) {
+        actualizarFooterMasInfo('', false);
+        const detail = document.getElementById(`idxInfoPeriodoDetail-${key}`);
+        if (detail) {
+            detail.innerHTML = '<div class="empty-state" style="padding:12px 0;"><i class="fas fa-calendar-times"></i><p>No hay períodos registrados para esta categoría.</p></div>';
+        }
+        return;
+    }
+
+    const idx = Number(badge.dataset.periodIndex || 0);
+    switchMasInfoPeriodo(key, Number.isFinite(idx) ? idx : 0, badge);
+}
+
+function switchMasInfoPeriodo(catKey, periodIndex, btn) {
+    const key = String(catKey || '');
+    const idx = Number(periodIndex);
+    if (!key || !Number.isFinite(idx) || idx < 0) return;
+
+    const slide = document.querySelector(`#idxInfoSlides .idx-info-slide[data-slide-key="${key}"]`);
+    if (!slide) return;
+    slide.querySelectorAll('.idx-info-periodo-badge').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+
+    renderMasInfoPeriodoDetalle(key, idx);
+}
+
+async function cargarPreviewMasInfo(codigo, imageEl, loaderEl, loaderTextEl) {
+    try {
+        const response = await fetch(`../api/certificados/index.php?action=get_image&code=${encodeURIComponent(codigo)}&t=${Date.now()}`);
+        const data = await response.json();
+        if (!response.ok || !data?.success || !data?.image) return false;
+
+        await new Promise((resolve, reject) => {
+            imageEl.onload = () => resolve(true);
+            imageEl.onerror = () => reject(new Error('no image'));
+            imageEl.src = data.image;
+        });
+
+        imageEl.style.display = 'block';
+        if (loaderEl) loaderEl.style.display = 'none';
+        return true;
+    } catch (_error) {
+        if (loaderTextEl) loaderTextEl.textContent = 'No se pudo cargar la previsualización';
+        return false;
+    }
+}
+
+async function renderMasInfoPeriodoDetalle(catKey, periodIndex) {
+    const categoria = masInfoCategorias.find(c => c.key === catKey) || null;
+    const detail = document.getElementById(`idxInfoPeriodoDetail-${catKey}`);
+    if (!categoria || !detail) return;
+
+    const periodos = Array.isArray(categoria.periodos) ? categoria.periodos : [];
+    const periodo = periodos[periodIndex] || null;
+    if (!periodo) {
+        detail.innerHTML = '<div class="empty-state" style="padding:12px 0;"><i class="fas fa-calendar-times"></i><p>Información de período no disponible.</p></div>';
+        actualizarFooterMasInfo('', false);
+        return;
+    }
+
+    const estado = estadoCertificadoMasInfo(periodo);
+    const codigo = String(periodo?.codigo_generado || periodo?.certificado?.codigo || '').trim();
+    const generado = Boolean(periodo?.cert_generado && codigo);
+    const previewImgId = `idxInfoPreviewImg-${catKey}-${periodIndex}`;
+    const previewLoaderId = `idxInfoPreviewLoader-${catKey}-${periodIndex}`;
+    const previewTextId = `idxInfoPreviewText-${catKey}-${periodIndex}`;
+    const qrSrc = generado
+        ? `../api/certificados/qr.php?codigo=${encodeURIComponent(codigo)}&t=${Date.now()}`
+        : '';
+
+    actualizarFooterMasInfo(codigo, generado);
+
+    detail.innerHTML = `
+        <article class="idx-info-periodo-card">
+            <div class="idx-info-periodo-layout">
+                <div>
+                    <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
+                        <span class="idx-info-periodo-name"><i class="far fa-calendar-alt"></i> ${escapeHtml(periodo.nombre || 'Sin período')}</span>
+                        ${periodo.es_destacado ? '<span class="idx-info-periodo-star"><i class="fas fa-star"></i> Destacado</span>' : ''}
+                    </div>
+
+                    ${generado ? `
+                    <div class="idx-info-qr-wrap">
+                        <div class="idx-info-qr-box"><img src="${qrSrc}" alt="QR de verificación"></div>
+                        <span class="idx-info-qr-label"><i class="fas fa-qrcode"></i> QR de Verificación</span>
+                    </div>` : ''}
+
+                    <div class="idx-info-periodo-stack">
+                        <div class="idx-info-periodo-row">
+                            <span class="idx-info-periodo-row-label">Inicio del período</span>
+                            <strong class="idx-info-periodo-row-value">${escapeHtml(formatearFechaHoraMasInfo(periodo.fecha_inicio || '', false))}</strong>
+                        </div>
+                        <div class="idx-info-periodo-row">
+                            <span class="idx-info-periodo-row-label">Fecha de matrícula</span>
+                            <strong class="idx-info-periodo-row-value">${escapeHtml(formatearFechaHoraMasInfo(periodo.fecha_matricula || '', true))}</strong>
+                        </div>
+                        <div class="idx-info-periodo-row">
+                            <span class="idx-info-periodo-row-label">Estado de matrícula</span>
+                            <strong class="idx-info-periodo-row-value">${escapeHtml(String(periodo.estado || 'activo'))}</strong>
+                        </div>
+                        <div class="idx-info-periodo-row">
+                            <span class="idx-info-periodo-row-label">Estado de certificado</span>
+                            <strong class="idx-info-periodo-row-value"><span class="idx-info-cert-status ${estado.css}">${estado.label}</span></strong>
+                        </div>
+                        <div class="idx-info-periodo-row">
+                            <span class="idx-info-periodo-row-label">Fecha de aprobación</span>
+                            <strong class="idx-info-periodo-row-value">${escapeHtml(formatearFechaHoraMasInfo(periodo.fecha_aprobacion || '', true))}</strong>
+                        </div>
+                        <div class="idx-info-periodo-row">
+                            <span class="idx-info-periodo-row-label">Aprobado por</span>
+                            <strong class="idx-info-periodo-row-value">${escapeHtml(periodo.aprobado_por_nombre || '—')}</strong>
+                        </div>
+                        <div class="idx-info-periodo-row">
+                            <span class="idx-info-periodo-row-label">Código del certificado</span>
+                            <strong class="idx-info-periodo-row-value">${escapeHtml(codigo || 'Sin certificado generado')}</strong>
+                        </div>
+                        <div class="idx-info-periodo-row">
+                            <span class="idx-info-periodo-row-label">Fecha de generación</span>
+                            <strong class="idx-info-periodo-row-value">${escapeHtml(formatearFechaHoraMasInfo(periodo.fecha_generacion_primera || periodo.fecha_generacion_ultima || '', true))}</strong>
+                        </div>
+                    </div>
+                </div>
+                <div class="idx-info-preview-wrap">
+                    <div class="idx-info-preview-card">
+                        <div id="${previewLoaderId}" class="idx-info-preview-loader" style="${generado ? '' : 'display:none;'}">
+                            <i class="fas fa-circle-notch fa-spin"></i>
+                            <span id="${previewTextId}">Cargando previsualización...</span>
+                        </div>
+                        <img id="${previewImgId}" alt="Previsualización de certificado" style="${generado ? '' : 'display:none;'}">
+                        ${generado ? '' : '<div class="idx-info-preview-empty"><i class="fas fa-eye-slash"></i> Certificado no generado - Sin Previsualización</div>'}
+                    </div>
+                </div>
+            </div>
+        </article>
+    `;
+
+    if (!generado || !codigo) return;
+
+    const imageEl = document.getElementById(previewImgId);
+    const loaderEl = document.getElementById(previewLoaderId);
+    const loaderTextEl = document.getElementById(previewTextId);
+    if (!imageEl || !loaderEl) return;
+    await cargarPreviewMasInfo(codigo, imageEl, loaderEl, loaderTextEl);
+}
+
+async function abrirMasInformacion(estudianteId) {
+    const id = Number(estudianteId || 0);
+    if (!id) return;
+
+    const overlay = document.getElementById('modalMasInfoOverlay');
+    const tabs = document.getElementById('idxInfoTabs');
+    const slides = document.getElementById('idxInfoSlides');
+    const filters = document.getElementById('idxInfoGrupoFilters');
+    if (!overlay || !tabs || !slides || !filters) return;
+
+    const estudianteListado = estudiantesData.find(e => String(e.id) === String(id)) || null;
+    masInfoDetalle = estudianteListado ? { ...estudianteListado } : null;
+    masInfoCategorias = [];
+    masInfoGrupoFiltro = 'all';
+    masInfoCategoriaActiva = 'general';
+    actualizarFooterMasInfo('', false);
+
+    if (masInfoDetalle) {
+        const nombreEl = document.getElementById('idxInfoNombre');
+        const cedulaEl = document.getElementById('idxInfoCedula');
+        if (nombreEl) nombreEl.textContent = masInfoDetalle.nombre || 'Estudiante';
+        if (cedulaEl) cedulaEl.textContent = masInfoDetalle.cedula ? `Cédula: ${masInfoDetalle.cedula}` : 'Cédula: —';
+    }
+
+    filters.innerHTML = '<div class="empty-state" style="padding:4px 0;"><i class="fas fa-spinner fa-spin"></i><p>Cargando grupos...</p></div>';
+    tabs.innerHTML = '';
+    slides.innerHTML = '<div class="empty-state" style="padding:24px 10px;"><i class="fas fa-spinner fa-spin"></i><p>Cargando información...</p></div>';
+    overlay.classList.add('active');
+
+    try {
+        const response = await fetch(`../api/estudiantes/index.php?action=get_details&id=${encodeURIComponent(id)}&t=${Date.now()}`);
+        const data = await response.json();
+        if (!response.ok || !data?.success || !data?.estudiante) {
+            throw new Error(data?.message || 'No se pudo cargar el detalle del estudiante');
+        }
+
+        const detalle = {
+            ...(estudianteListado || {}),
+            ...(data.estudiante || {}),
+            id: data.estudiante?.id || id
+        };
+        if (!detalle.enrollment_data && estudianteListado?.enrollment_data) {
+            detalle.enrollment_data = estudianteListado.enrollment_data;
+        }
+
+        const certificados = Array.isArray(data.certificados) ? data.certificados : [];
+        const seguimiento = Array.isArray(data.certificados_seguimiento) ? data.certificados_seguimiento : [];
+
+        masInfoDetalle = detalle;
+        masInfoCategorias = construirCategoriasMasInfo(detalle, certificados, seguimiento);
+        renderMasInfoModal(detalle);
+    } catch (error) {
+        console.error(error);
+        tabs.innerHTML = '';
+        slides.innerHTML = `<div class="empty-state" style="padding:22px 10px;"><i class="fas fa-exclamation-triangle"></i><p>${escapeHtml(error.message || 'No se pudo cargar la información')}</p></div>`;
+        filters.innerHTML = '';
+        actualizarFooterMasInfo('', false);
+    }
+}
+
+function cerrarModalMasInfo(event) {
+    if (event && event.target && event.target.id !== 'modalMasInfoOverlay') return;
+    const overlay = document.getElementById('modalMasInfoOverlay');
+    if (overlay) overlay.classList.remove('active');
+    masInfoCategorias = [];
+    masInfoDetalle = null;
+    masInfoGrupoFiltro = 'all';
+    masInfoCategoriaActiva = 'general';
+    actualizarFooterMasInfo('', false);
 }
 
 function updatePagination() {
@@ -1401,6 +2149,7 @@ document.addEventListener('keydown', function (e) {
     cerrarModalEditar();
     cerrarModalHistorial();
     cerrarModalReferencias();
+    cerrarModalMasInfo();
     cerrarInfoGruposModal();
 });
 

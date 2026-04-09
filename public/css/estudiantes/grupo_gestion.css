@@ -488,7 +488,7 @@ tbody tr:hover {
 .icon-ref {
     color: #8e44ad;
     margin-left: 6px;
-    font-size: 13px;
+    font-size: 17px;
     cursor: pointer;
     opacity: 0.7;
     transition: opacity 0.2s ease, color 0.2s ease;
@@ -524,7 +524,7 @@ tbody tr:hover {
 /* Actions Cell */
 .actions-cell {
     display: flex;
-    gap: 8px;
+    gap: 6px;
 }
 
 .btn-icon {
@@ -1001,6 +1001,132 @@ tr.row-selected td {
     margin-bottom: 15px;
 }
 
+.edit-referencias-section {
+    margin-bottom: 18px;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 12px;
+    background: #f8fafc;
+}
+
+.edit-referencias-section h4 {
+    margin: 0 0 10px;
+    font-size: 14px;
+    color: #334155;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+}
+
+.edit-referencias-section h4 small {
+    color: #64748b;
+    font-weight: 500;
+}
+
+.referencias-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+}
+
+.referencia-item {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    transition: border-color 0.2s ease;
+}
+
+.referencia-item:hover {
+    border-color: #cbd5e1;
+}
+
+.referencia-item input.form-control {
+    flex: 1;
+    min-width: 0;
+    padding: 7px 10px;
+    border: 1px solid #dfe6e9;
+    border-radius: 8px;
+    font-size: 13px;
+    background: white;
+}
+
+.referencia-item input.form-control:focus {
+    outline: none;
+    border-color: var(--color-grupo);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+}
+
+.referencia-item [data-ref="nombre"] {
+    flex: 2;
+    min-width: 0;
+}
+
+.referencia-item [data-ref="relacion"] {
+    flex: 0.9;
+    min-width: 0;
+}
+
+.referencia-item .ref-celular-wrapper {
+    flex: 1.35;
+    min-width: 140px;
+    border-radius: 8px;
+}
+
+.referencia-item .ref-celular-wrapper input {
+    font-size: 13px;
+    padding: 7px 8px;
+}
+
+.referencia-item .btn-ref-delete {
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 8px;
+    background: #ffeef0;
+    color: #e74c3c;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-size: 13px;
+}
+
+.referencia-item .btn-ref-delete:hover {
+    background: #e74c3c;
+    color: #fff;
+    transform: scale(1.04);
+}
+
+.btn-add-referencia {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 8px;
+    padding: 6px 14px;
+    background: transparent;
+    border: 1.5px dashed var(--color-grupo);
+    border-radius: 8px;
+    color: var(--color-grupo);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn-add-referencia:hover {
+    background: rgba(59, 130, 246, 0.08);
+    border-style: solid;
+}
+
 .edit-categorias-section {
     border: 1px solid #e2e8f0;
     border-radius: 10px;
@@ -1239,6 +1365,8 @@ tr.row-selected td {
     display: flex;
     flex-direction: column;
     flex: 1;
+    height: min(72vh, 640px);
+    max-height: min(72vh, 640px);
     background: #f8fafc;
 }
 
@@ -1279,19 +1407,68 @@ tr.row-selected td {
     border: 1px solid #dbeafe;
     background: #eff6ff;
     color: #1e40af;
-    padding: 5px 10px;
-    font-size: 12px;
-    font-weight: 600;
+    padding: 7px 12px;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.info-stat-chip.info-stat-chip-categorias {
+    border-color: #bfdbfe;
+    background: #eff6ff;
+    color: #1d4ed8;
+}
+
+.info-stat-chip.info-stat-chip-periodos {
+    border-color: #c7d2fe;
+    background: #eef2ff;
+    color: #4338ca;
+}
+
+.info-stat-chip.info-stat-chip-aprobados {
+    border-color: #fde68a;
+    background: #fffbeb;
+    color: #92400e;
+}
+
+.info-stat-chip.info-stat-chip-pendientes {
+    border-color: #fecaca;
+    background: #fef2f2;
+    color: #b91c1c;
+}
+
+.info-stat-chip.info-stat-chip-generados {
+    border-color: #bbf7d0;
+    background: #f0fdf4;
+    color: #166534;
 }
 
 .info-estudiante-tabs {
     display: flex;
     align-items: center;
+    flex-wrap: nowrap;
     gap: 8px;
-    padding: 10px 16px 0;
+    padding: 0 16px;
     overflow-x: auto;
+    overflow-y: hidden;
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
     border-bottom: 1px solid #d1d5db;
     background: #eceff3;
+    min-height: 56px;
+    max-height: 56px;
+}
+
+.info-estudiante-tabs::-webkit-scrollbar {
+    height: 7px;
+}
+
+.info-estudiante-tabs::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 999px;
+}
+
+.info-estudiante-tabs::-webkit-scrollbar-track {
+    background: transparent;
 }
 
 .info-estudiante-tab {
@@ -1300,14 +1477,15 @@ tr.row-selected td {
     background: #f3f4f6;
     color: #4b5563;
     border-radius: 10px 10px 0 0;
-    padding: 10px 16px;
-    font-size: 13px;
-    font-weight: 600;
+    padding: 11px 17px;
+    font-size: 14px;
+    font-weight: 700;
     cursor: pointer;
     display: inline-flex;
     align-items: center;
     gap: 8px;
     white-space: nowrap;
+    flex: 0 0 auto;
     position: relative;
     top: 1px;
     transition: all 0.16s ease;
@@ -1347,8 +1525,11 @@ tr.row-selected td {
 .info-estudiante-slides {
     padding: 16px 20px 20px;
     overflow-y: auto;
+    overflow-x: hidden;
     flex: 1;
     background: #fff;
+    min-height: 0;
+    max-height: none;
 }
 
 .info-estudiante-slide {
@@ -1359,6 +1540,100 @@ tr.row-selected td {
 
 .info-estudiante-slide.active {
     display: flex;
+}
+
+.info-general-grid {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.info-general-card {
+    border: 1px solid #dbeafe;
+    border-radius: 12px;
+    background: #ffffff;
+    padding: 12px;
+}
+
+.info-general-card-main {
+    width: min(60%, 760px);
+    min-width: 320px;
+}
+
+.info-general-grid .info-general-card:not(.info-general-card-main) {
+    flex: 1 1 280px;
+}
+
+.info-general-card h5 {
+    margin: 0 0 10px;
+    color: #1e3a8a;
+    font-size: 15px;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+}
+
+.info-general-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.info-general-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    background: #f8fafc;
+    padding: 9px 10px;
+}
+
+.info-general-row span {
+    color: #64748b;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.info-general-row-value-wrap {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    min-width: 0;
+}
+
+.info-general-row strong {
+    color: #0f172a;
+    font-size: 14px;
+    font-weight: 700;
+    text-align: right;
+}
+
+.info-general-contact-list {
+    display: inline-flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 6px;
+    max-width: 100%;
+}
+
+.info-general-contact-chip {
+    font-size: 13px;
+    padding: 6px 11px;
+    font-weight: 700;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.info-general-contact-empty {
+    color: #94a3b8;
+    font-size: 12px;
+    font-weight: 600;
 }
 
 .info-periodo-badges-wrap {
@@ -1432,6 +1707,9 @@ tr.row-selected td {
 .info-periodo-layout-left,
 .info-periodo-layout-right {
     min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
 }
 
 .info-periodo-header {
@@ -1605,6 +1883,65 @@ tr.row-selected td {
     color: #1d4ed8;
 }
 
+.info-preview-empty-state {
+    margin: 0;
+    padding: 18px;
+    font-size: 17px;
+    font-weight: 700;
+    color: #64748b;
+    text-align: center;
+    line-height: 1.35;
+}
+
+.info-preview-empty-state i {
+    font-size: 18px;
+    margin-right: 6px;
+}
+
+.info-periodo-qr-wrap {
+    border: 1px dashed #cbd5e1;
+    border-radius: 10px;
+    background: #f8fafc;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    width: fit-content;
+    margin: 0 auto 8px;
+}
+
+.info-periodo-qr-label {
+    color: #334155;
+    font-size: 12px;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    text-align: center;
+}
+
+.info-periodo-qr-box {
+    width: 118px;
+    height: 118px;
+    border-radius: 8px;
+    border: 1px solid #dbeafe;
+    background: #fff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px;
+    flex-shrink: 0;
+}
+
+.info-periodo-qr-box img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
 @media (max-width: 768px) {
     .edit-cat-main {
         flex-direction: column;
@@ -1640,12 +1977,40 @@ tr.row-selected td {
     }
 
     .info-estudiante-tabs {
-        padding: 10px 12px;
+        padding: 0 12px;
         gap: 6px;
+        min-height: 52px;
+        max-height: 52px;
     }
 
     .info-estudiante-slides {
         padding: 12px;
+        min-height: 0;
+        max-height: none;
+    }
+
+    .info-general-row {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .info-general-row-value-wrap {
+        justify-content: flex-start;
+        width: 100%;
+    }
+
+    .info-general-contact-list {
+        justify-content: flex-start;
+        width: 100%;
+    }
+
+    .info-general-row strong {
+        text-align: left;
+    }
+
+    .info-general-card-main {
+        width: 100%;
+        min-width: 0;
     }
 
     .info-periodo-layout {
@@ -1716,7 +2081,7 @@ tr.row-selected td {
     transform: translateX(-50%);
     opacity: 0;
     transition: opacity 0.3s;
-    font-size: 12px;
+    font-size: 13px;
     white-space: nowrap;
 }
 
@@ -2234,7 +2599,7 @@ tr.row-selected td {
 
 /* Column widths (table-layout:fixed)
    Orden actual: 1 checkbox, 2 estudiante, 3 cedula, 4 fecha nac,
-   5 contacto, 6 categoria, 7 fec. matricula, 8 historial, 9 acciones */
+   5 contacto, 6 categoria, 7 fec. matricula, 8 acciones */
 .estudiantes-table th:nth-child(1),
 .estudiantes-table td:nth-child(1) {
     width: 50px;
@@ -2252,17 +2617,20 @@ tr.row-selected td {
 .estudiantes-table th:nth-child(6),
 .estudiantes-table td:nth-child(6) { width: 380px; }          /* Categoría */
 .estudiantes-table th:nth-child(7),
-.estudiantes-table td:nth-child(7) { width: 230px; }          /* Fec. Matricula */
+.estudiantes-table td:nth-child(7) { width: 230px; }          /* Fec. Registro */
 .estudiantes-table th:nth-child(8),
-.estudiantes-table td:nth-child(8) { width: 180px; text-align: center; }  /* Historial */
-.estudiantes-table th:nth-child(9),
-.estudiantes-table td:nth-child(9) { width: 140px; }          /* Acciones */
+.estudiantes-table td:nth-child(8) { width: 145px; }          /* Acciones */
 
 /* Tooltip Personalizado para Badges */
 .badge-categoria {
     position: relative;
     max-width: 100%;
     overflow: visible;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 6px 10px;
+    border-radius: 10px;
+    line-height: 1.25;
 }
 
 .badge-categoria:not(.tooltip-content) {
@@ -2272,7 +2640,7 @@ tr.row-selected td {
 
 .badge-categoria .tooltip-content {
     visibility: hidden;
-    width: 200px;
+    width: 220px;
     background-color: #2d3748;
     color: #fff;
     text-align: left;
@@ -2286,7 +2654,7 @@ tr.row-selected td {
     opacity: 0;
     transition: opacity 0.3s;
     box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-    font-size: 12px;
+    font-size: 13px;
     line-height: 1.5;
     pointer-events: none;
     white-space: normal;
@@ -2306,6 +2674,23 @@ tr.row-selected td {
 .badge-categoria:hover .tooltip-content {
     visibility: visible;
     opacity: 1;
+}
+
+/* Primera fila: mostrar tooltip hacia abajo para evitar recorte superior */
+.estudiantes-table tbody tr:first-child .tooltip .tooltiptext {
+    top: 125%;
+    bottom: auto;
+}
+
+.estudiantes-table tbody tr:first-child .badge-categoria .tooltip-content {
+    top: 125%;
+    bottom: auto;
+}
+
+.estudiantes-table tbody tr:first-child .badge-categoria .tooltip-content::after {
+    top: auto;
+    bottom: 100%;
+    border-color: transparent transparent #2d3748 transparent;
 }
 
 /* Container de Categorías Wrapping */
@@ -2589,6 +2974,7 @@ tr.row-selected td {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    font-size: 13px;
     margin-bottom: 4px;
     padding-bottom: 4px;
     border-bottom: 1px solid rgba(255,255,255,0.1);
@@ -2608,7 +2994,7 @@ tr.row-selected td {
 
 .badge-categoria .fa-star {
     margin-left: 4px;
-    font-size: 10px;
+    font-size: 12px;
     color: #f59e0b;
 }
 
@@ -2633,22 +3019,47 @@ tr.row-selected td {
     z-index: 1;
 }
 
+/* Columna Categoría por encima de columnas vecinas para tooltips */
+.estudiantes-table tbody td:nth-child(6) {
+    position: relative;
+    z-index: 12;
+    overflow: visible;
+}
+
+/* Al interactuar con badges/tooltip, priorizar esta celda sobre filas vecinas */
+.estudiantes-table tbody td:nth-child(6):hover {
+    z-index: 110;
+}
+
+.estudiantes-table tbody td:nth-child(6):hover .badge-categoria .tooltip-content {
+    z-index: 4000;
+}
+
+/* Primera fila: prioridad máxima para tooltip hacia abajo */
+.estudiantes-table tbody tr:first-child td:nth-child(6) {
+    z-index: 100 !important;
+}
+
+.estudiantes-table tbody tr:first-child td:nth-child(6) .badge-categoria .tooltip-content {
+    z-index: 5000 !important;
+}
+
 /* Left columns */
 .sticky-left-1 {
     left: 0;
-    z-index: 10;
+    z-index: 130;
 }
 
 .sticky-left-2 {
     left: 50px;
-    z-index: 11;
+    z-index: 131;
     box-shadow: 3px 0 6px -2px rgba(0,0,0,.08);
 }
 
 /* Right column */
 .sticky-right {
     right: 0;
-    z-index: 10;
+    z-index: 140;
     box-shadow: -3px 0 6px -2px rgba(0,0,0,.08);
 }
 

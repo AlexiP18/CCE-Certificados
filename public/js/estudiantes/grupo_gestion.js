@@ -33,6 +33,8 @@ let generacionLoteCategoriaContextoId = null;
 let editCertificadosCache = [];
 let infoEstudianteCategorias = [];
 let infoEstudianteCertificados = [];
+let infoEstudianteSeguimiento = [];
+let infoEstudianteDetalle = null;
 let infoEstudianteDescargaCodigo = '';
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -364,7 +366,7 @@ function prepararJerarquia(lista) {
 function renderTabla() {
     const tbody = document.getElementById('estudiantesBody');
     const footer = document.getElementById('paginationFooter');
-    const colspanTabla = 9;
+    const colspanTabla = 8;
 
     const totalItems = datosPaginados.length;
     let inicio = 0;
@@ -460,34 +462,19 @@ function buildCeldasDatos(est) {
         edadHtml = `<div>${fechaDisplay}</div><div class="badge badge-edad">${calcularEdad(est.fecha_nacimiento)} años</div>`;
     }
 
-    // Historial + última actualización
-    let fechaActualizacionHtml = '<small style="display:inline-block;color:#cbd5e0;white-space:nowrap;">-</small>';
-    if (est.fecha_actualizacion) {
-        const fAct = new Date(est.fecha_actualizacion);
-        if (!Number.isNaN(fAct.getTime())) {
-            const dia = String(fAct.getDate()).padStart(2, '0');
-            const mes = String(fAct.getMonth() + 1).padStart(2, '0');
-            const anio = fAct.getFullYear();
-            const hora = String(fAct.getHours()).padStart(2, '0');
-            const min = String(fAct.getMinutes()).padStart(2, '0');
-            fechaActualizacionHtml = `<small style="display:inline-block;color:#6b7280;white-space:nowrap;">${dia}/${mes}/${anio} ${hora}:${min}</small>`;
-        }
-    }
-
-    const historialHtml = `
-        <div style="display:flex;align-items:center;justify-content:center;gap:8px;">
-            <button class="btn-icon btn-view" title="Ver Historial" onclick="abrirModalHistorial(${est.id})" style="margin: 0 auto;"><i class="fas fa-history"></i></button>
-            ${fechaActualizacionHtml}
-        </div>
-    `;
-
     // Fecha Registro
     let fechaRegistroHtml = '<span style="color:#cbd5e0;">-</span>';
     if (est.fecha_creacion) {
         const f = new Date(est.fecha_creacion);
-        const dia = String(f.getDate()).padStart(2,'0');
-        const mes = String(f.getMonth()+1).padStart(2,'0');
-        fechaRegistroHtml = `<div style="line-height:1.2;"><div style="font-weight:500;color:#4b5563;">${dia}/${mes}/${f.getFullYear()}</div><small style="color:#9ca3af;">Registro</small></div>`;
+        if (!Number.isNaN(f.getTime())) {
+            const dia = String(f.getDate()).padStart(2, '0');
+            const mes = String(f.getMonth() + 1).padStart(2, '0');
+            const hora = String(f.getHours()).padStart(2, '0');
+            const min = String(f.getMinutes()).padStart(2, '0');
+            fechaRegistroHtml = `<div style="line-height:1.2;"><div style="font-weight:500;color:#4b5563;">${dia}/${mes}/${f.getFullYear()} ${hora}:${min}</div><small style="color:#9ca3af;">Registro</small></div>`;
+        } else {
+            fechaRegistroHtml = `<div style="line-height:1.2;"><div style="font-weight:500;color:#4b5563;">${escapeHtml(String(est.fecha_creacion))}</div><small style="color:#9ca3af;">Registro</small></div>`;
+        }
     }
 
     // Categorias
@@ -580,7 +567,7 @@ function buildCeldasDatos(est) {
     }
     contactoHtml += '</div>';
 
-    return { edadHtml, fechaRegistroHtml, categoriasHtml, periodosHtml, contactoHtml, historialHtml };
+    return { edadHtml, fechaRegistroHtml, categoriasHtml, periodosHtml, contactoHtml };
 }
 
 function buildEstudianteRowHtml(est, repUniqueId, hasMenores, representantesCedulas) {
@@ -598,11 +585,7 @@ function buildEstudianteRowHtml(est, repUniqueId, hasMenores, representantesCedu
         ? `<i id="toggle-${repUniqueId}" class="fas fa-chevron-right" onclick="toggleMenores('${repUniqueId}')" style="cursor:pointer;margin-right:8px;color:#3498db;width:15px;text-align:center;display:inline-block;" title="Ver menores"></i>`
         : '';
 
-    const { edadHtml, fechaRegistroHtml, categoriasHtml, contactoHtml, historialHtml } = buildCeldasDatos(est);
-    const generarHabilitado = esContextoGeneracionEspecifico();
-    const botonGenerar = generarHabilitado
-        ? `<button class="btn-icon btn-view" onclick="abrirModalGeneracionLote([${est.id}])" title="Generar Certificados" style="color:#00348a;background:#e8f0fe;"><i class="fas fa-certificate"></i></button>`
-        : `<button class="btn-icon btn-view" disabled title="Selecciona categoría y período específico para generar" style="color:#9ca3af;background:#f3f4f6;cursor:not-allowed;"><i class="fas fa-certificate"></i></button>`;
+    const { edadHtml, fechaRegistroHtml, categoriasHtml, contactoHtml } = buildCeldasDatos(est);
 
     return `
         <tr class="${rowClass.trim()}">
@@ -628,13 +611,11 @@ function buildEstudianteRowHtml(est, repUniqueId, hasMenores, representantesCedu
             <td style="text-align:center;">${contactoHtml}</td>
             <td style="min-width:380px;"><div class="categorias-container">${categoriasHtml}</div></td>
             <td style="min-width:230px;">${fechaRegistroHtml}</td>
-            <td style="text-align:center;">${historialHtml}</td>
             <td class="sticky-col sticky-right" style="text-align:right;">
                 <div class="actions-cell" style="justify-content:flex-end;">
-                    ${botonGenerar}
+                    <button class="btn-icon btn-view" onclick="abrirModalHistorial(${est.id})" title="Ver Historial"><i class="fas fa-history"></i></button>
                     <button class="btn-icon btn-view" onclick="verInfoEstudiante(${est.id})" title="Ver información"><i class="fas fa-eye"></i></button>
                     <button class="btn-icon btn-edit" onclick="editarEstudiante(${est.id})" title="Editar"><i class="fas fa-edit"></i></button>
-                    <button class="btn-icon btn-delete" onclick="eliminarEstudiante(${est.id})" title="Quitar"><i class="fas fa-user-minus"></i></button>
                 </div>
             </td>
         </tr>`;
@@ -645,11 +626,7 @@ function buildMenorRowHtml(est, repUniqueId) {
     const colorCat = est.categoria_color || '#95a5a6';
     const isSelected = estudiantesSeleccionados.has(String(est.id));
 
-    const { edadHtml, fechaRegistroHtml, categoriasHtml, contactoHtml, historialHtml } = buildCeldasDatos(est);
-    const generarHabilitado = esContextoGeneracionEspecifico();
-    const botonGenerar = generarHabilitado
-        ? `<button class="btn-icon btn-view" onclick="abrirModalGeneracionLote([${est.id}])" title="Generar Certificados" style="color:#00348a;background:#e8f0fe;"><i class="fas fa-certificate"></i></button>`
-        : `<button class="btn-icon btn-view" disabled title="Selecciona categoría y período específico para generar" style="color:#9ca3af;background:#f3f4f6;cursor:not-allowed;"><i class="fas fa-certificate"></i></button>`;
+    const { edadHtml, fechaRegistroHtml, categoriasHtml, contactoHtml } = buildCeldasDatos(est);
 
     const rowClass = (isSelected ? 'row-selected ' : '') + `estudiante-menor menor-de-${repUniqueId}`;
 
@@ -677,13 +654,11 @@ function buildMenorRowHtml(est, repUniqueId) {
             <td style="text-align:center;">${contactoHtml}</td>
             <td style="min-width:380px;"><div class="categorias-container">${categoriasHtml}</div></td>
             <td style="min-width:230px;">${fechaRegistroHtml}</td>
-            <td style="text-align:center;">${historialHtml}</td>
             <td class="sticky-col sticky-right" style="text-align:right;">
                 <div class="actions-cell" style="justify-content:flex-end;">
-                    ${botonGenerar}
+                    <button class="btn-icon btn-view" onclick="abrirModalHistorial(${est.id})" title="Ver Historial"><i class="fas fa-history"></i></button>
                     <button class="btn-icon btn-view" onclick="verInfoEstudiante(${est.id})" title="Ver información"><i class="fas fa-eye"></i></button>
                     <button class="btn-icon btn-edit" onclick="editarEstudiante(${est.id})" title="Editar"><i class="fas fa-edit"></i></button>
-                    <button class="btn-icon btn-delete" onclick="eliminarEstudiante(${est.id})" title="Quitar"><i class="fas fa-user-minus"></i></button>
                 </div>
             </td>
         </tr>`;
@@ -717,6 +692,9 @@ function buildRepresentanteVirtualRowHtml(fila, repUniqueId) {
     const accionesHtml = fila.representante_id
         ? `
             <div class="actions-cell" style="justify-content:flex-end;">
+                <button class="btn-icon btn-view" onclick="abrirModalHistorial(${fila.representante_id})" title="Ver Historial">
+                    <i class="fas fa-history"></i>
+                </button>
                 <button class="btn-icon btn-view" onclick="verInfoEstudiante(${fila.representante_id})" title="Ver información">
                     <i class="fas fa-eye"></i>
                 </button>
@@ -751,7 +729,6 @@ function buildRepresentanteVirtualRowHtml(fila, repUniqueId) {
             <td>${fila.cedula ? `<span class="cedula-cell" style="opacity:0.85;">${escapeHtml(fila.cedula)}</span>` : '<span style="color:#aaa">—</span>'}</td>
             <td>${fechaNacimientoHtml}</td>
             <td style="text-align:center;">${contactoHtml}</td>
-            <td></td>
             <td></td>
             <td></td>
             <td class="sticky-col sticky-right" style="text-align:right;">${accionesHtml}</td>
@@ -928,6 +905,158 @@ function agruparCategoriasParaInfoModal(categoriasRaw, certificadosRaw) {
     return categoriasOut;
 }
 
+function extraerResumenGeneracion(rawHistorial) {
+    const historial = normalizarHistorialGeneracionCert(rawHistorial);
+    if (!historial.length) {
+        return {
+            primera_fecha: '',
+            ultima_fecha: '',
+            primera_usuario: '',
+            ultima_usuario: ''
+        };
+    }
+
+    const fechas = historial.map(item => {
+        if (typeof item === 'string') {
+            return { fecha: String(item || '').trim(), usuario: '' };
+        }
+        if (item && typeof item === 'object') {
+            return {
+                fecha: String(item.fecha || '').trim(),
+                usuario: String(item.usuario || item.usuario_nombre || '').trim()
+            };
+        }
+        return { fecha: '', usuario: '' };
+    }).filter(item => item.fecha);
+
+    if (!fechas.length) {
+        return {
+            primera_fecha: '',
+            ultima_fecha: '',
+            primera_usuario: '',
+            ultima_usuario: ''
+        };
+    }
+
+    fechas.sort((a, b) => String(a.fecha).localeCompare(String(b.fecha), 'es', { sensitivity: 'base' }));
+    const first = fechas[0] || { fecha: '', usuario: '' };
+    const last = fechas[fechas.length - 1] || { fecha: '', usuario: '' };
+
+    return {
+        primera_fecha: String(first.fecha || ''),
+        ultima_fecha: String(last.fecha || ''),
+        primera_usuario: String(first.usuario || ''),
+        ultima_usuario: String(last.usuario || '')
+    };
+}
+
+function enriquecerCategoriasInfoConSeguimiento(categoriasRaw, seguimientoRaw) {
+    const categorias = Array.isArray(categoriasRaw) ? categoriasRaw : [];
+    const seguimiento = Array.isArray(seguimientoRaw) ? seguimientoRaw : [];
+    if (!categorias.length) return categorias;
+
+    const segByExact = new Map();
+    const segByName = new Map();
+
+    seguimiento.forEach(seg => {
+        const catId = seg?.categoria_id != null ? String(seg.categoria_id) : '';
+        if (!catId) return;
+
+        const perId = seg?.periodo_id != null ? String(seg.periodo_id) : 'null';
+        const exactKey = `${catId}__${perId}`;
+        if (!segByExact.has(exactKey)) segByExact.set(exactKey, seg);
+
+        const perName = String(seg?.periodo_nombre || '').trim().toLowerCase();
+        if (perName) {
+            const nameKey = `${catId}__${perName}`;
+            if (!segByName.has(nameKey)) segByName.set(nameKey, seg);
+        }
+    });
+
+    categorias.forEach(cat => {
+        const catId = cat?.id != null ? String(cat.id) : '';
+        if (!catId || !Array.isArray(cat.periodos)) return;
+
+        cat.periodos.forEach(periodo => {
+            const perId = periodo?.periodo_id != null ? String(periodo.periodo_id) : 'null';
+            const perName = String(periodo?.nombre || '').trim().toLowerCase();
+            const seg = segByExact.get(`${catId}__${perId}`) || segByName.get(`${catId}__${perName}`) || null;
+
+            const cert = periodo?.certificado || null;
+            const hist = extraerResumenGeneracion(cert?.fechas_generacion);
+            const hasRenderedFiles = Boolean(String(cert?.archivo_pdf || '').trim() || String(cert?.archivo_imagen || '').trim());
+
+            if (seg) {
+                if (!periodo.fecha_matricula && seg?.fecha_matricula) {
+                    periodo.fecha_matricula = seg.fecha_matricula;
+                }
+                if (Number(seg?.es_destacado || 0) === 1) {
+                    periodo.es_destacado = true;
+                }
+
+                const segAprobado = Number(seg?.aprobado || 0) === 1 || String(seg?.fecha_aprobacion || '').trim() !== '';
+                if (segAprobado) {
+                    periodo.cert_aprobado = true;
+                    periodo.fecha_aprobacion = String(seg?.fecha_aprobacion || '').trim();
+                    periodo.aprobado_por_nombre = String(seg?.aprobado_por_nombre || '').trim();
+                }
+
+                const segGenerado = Number(seg?.generado || 0) === 1 || String(seg?.codigo_generado || '').trim() !== '';
+                if (segGenerado) {
+                    periodo.cert_generado = true;
+                    periodo.codigo_generado = String(seg?.codigo_generado || '').trim();
+                    periodo.fecha_generacion_primera = String(seg?.fecha_generacion_primera || '').trim();
+                    periodo.fecha_generacion_ultima = String(seg?.fecha_generacion_ultima || '').trim();
+                    periodo.generado_por_nombre = String(seg?.generado_por_nombre || '').trim();
+                }
+            }
+
+            if (!periodo.fecha_aprobacion) {
+                periodo.fecha_aprobacion = String(cert?.fecha_aprobacion || '').trim();
+            }
+            if (!periodo.aprobado_por_nombre) {
+                periodo.aprobado_por_nombre = String(cert?.aprobado_por_nombre || '').trim();
+            }
+
+            if (!periodo.fecha_generacion_primera) {
+                periodo.fecha_generacion_primera = String(hist.primera_fecha || cert?.fecha_creacion || cert?.fecha || '').trim();
+            }
+            if (!periodo.fecha_generacion_ultima) {
+                periodo.fecha_generacion_ultima = String(hist.ultima_fecha || cert?.fecha_creacion || cert?.fecha || '').trim();
+            }
+            if (!periodo.generado_por_nombre) {
+                periodo.generado_por_nombre = String(hist.primera_usuario || hist.ultima_usuario || '').trim();
+            }
+
+            periodo.codigo_generado = String(periodo.codigo_generado || cert?.codigo || '').trim();
+            periodo.cert_aprobado = Boolean(
+                periodo.cert_aprobado
+                || String(periodo.fecha_aprobacion || '').trim()
+                || Number(cert?.aprobado || 0) === 1
+                || cert
+            );
+            periodo.cert_generado = Boolean(
+                periodo.cert_generado
+                || hasRenderedFiles
+                || String(periodo.fecha_generacion_primera || '').trim()
+                || String(periodo.fecha_generacion_ultima || '').trim()
+            );
+
+            if (!periodo.certificado && periodo.cert_generado && periodo.codigo_generado) {
+                periodo.certificado = {
+                    codigo: periodo.codigo_generado,
+                    fecha: periodo.fecha_generacion_primera || '',
+                    fecha_creacion: periodo.fecha_generacion_primera || '',
+                    categoria_id: cat?.id || null,
+                    periodo_id: periodo?.periodo_id ?? null
+                };
+            }
+        });
+    });
+
+    return categorias;
+}
+
 function getEstadoCertificadoPeriodo(periodo) {
     if (periodo?.cert_generado) return { label: 'Generado', css: 'is-generado' };
     if (periodo?.cert_aprobado) return { label: 'Aprobado', css: 'is-aprobado' };
@@ -959,48 +1088,152 @@ function descargarInfoEstudianteModal(tipo = 'pdf') {
     descargarCertificadoDesdeResumen(code, tipo);
 }
 
+function renderInfoEstudianteGeneralSlide(estudiante, categorias) {
+    const esMenor = Number(estudiante?.es_menor || 0) === 1;
+    const categoriasList = Array.isArray(categorias) ? categorias : [];
+
+    const fechaNacimiento = formatearFechaHoraInfo(estudiante?.fecha_nacimiento || '', false);
+    const edad = estudiante?.fecha_nacimiento ? calcularEdad(estudiante.fecha_nacimiento) : '-';
+    const fechaNacimientoEdad = (fechaNacimiento && fechaNacimiento !== '—' && edad !== '-')
+        ? `${fechaNacimiento} (${edad} años)`
+        : fechaNacimiento;
+    const fechaRegistro = formatearFechaHoraInfo(estudiante?.fecha_creacion || '', true);
+    const fechaActualizacion = formatearFechaHoraInfo(estudiante?.fecha_actualizacion || '', true);
+
+    const celular = String(estudiante?.celular || '').trim();
+    const email = String(estudiante?.email || '').trim();
+    const representanteNombre = String(estudiante?.representante_nombre || '').trim();
+    const representanteCedula = String(estudiante?.representante_cedula || '').trim();
+    const representanteCelular = String(estudiante?.representante_celular || '').trim();
+    const representanteEmail = String(estudiante?.representante_email || '').trim();
+    const representanteNacimiento = formatearFechaHoraInfo(estudiante?.representante_fecha_nacimiento || '', false);
+
+    const celularPreferido = celular || (esMenor ? representanteCelular : '');
+    const emailPreferido = email || (esMenor ? representanteEmail : '');
+    const usaCelRep = !celular && esMenor && representanteCelular;
+    const usaEmailRep = !email && esMenor && representanteEmail;
+
+    const contactoGeneralHtml = `
+        <div class="info-general-contact-list">
+            ${celularPreferido
+                ? `<a href="https://wa.me/${formatPhoneLink(celularPreferido)}" target="_blank" class="contact-chip contact-chip-whatsapp info-general-contact-chip"><i class="${usaCelRep ? 'fas fa-user-tie' : 'fab fa-whatsapp'}"></i> ${escapeHtml(formatPhoneDisplay(celularPreferido))}${usaCelRep ? ' (Rep)' : ''}</a>`
+                : ''}
+            ${emailPreferido
+                ? `<a href="mailto:${encodeURIComponent(emailPreferido)}" class="contact-chip contact-chip-email info-general-contact-chip"><i class="${usaEmailRep ? 'fas fa-user-tie' : 'fas fa-envelope'}"></i> ${escapeHtml(emailPreferido)}${usaEmailRep ? ' (Rep)' : ''}</a>`
+                : ''}
+            ${!celularPreferido && !emailPreferido ? '<span class="info-general-contact-empty">—</span>' : ''}
+        </div>
+    `;
+
+    const representanteHtml = esMenor ? `
+        <article class="info-general-card">
+            <h5><i class="fas fa-user-tie"></i> Representante</h5>
+            <div class="info-general-stack">
+                <div class="info-general-row"><span>Nombre</span><strong>${escapeHtml(representanteNombre || '—')}</strong></div>
+                <div class="info-general-row"><span>Cédula</span><strong>${escapeHtml(representanteCedula || '—')}</strong></div>
+                <div class="info-general-row">
+                    <span>Contacto</span>
+                    <div class="info-general-row-value-wrap">
+                        <div class="info-general-contact-list">
+                            ${representanteCelular
+                                ? `<a href="https://wa.me/${formatPhoneLink(representanteCelular)}" target="_blank" class="contact-chip contact-chip-whatsapp info-general-contact-chip"><i class="fab fa-whatsapp"></i> ${escapeHtml(formatPhoneDisplay(representanteCelular))}</a>`
+                                : ''}
+                            ${representanteEmail
+                                ? `<a href="mailto:${encodeURIComponent(representanteEmail)}" class="contact-chip contact-chip-email info-general-contact-chip"><i class="fas fa-envelope"></i> ${escapeHtml(representanteEmail)}</a>`
+                                : ''}
+                            ${!representanteCelular && !representanteEmail ? '<span class="info-general-contact-empty">—</span>' : ''}
+                        </div>
+                    </div>
+                </div>
+                <div class="info-general-row"><span>Fec. Nacimiento</span><strong>${escapeHtml(representanteNacimiento)}</strong></div>
+            </div>
+        </article>
+    ` : '';
+
+    return `
+        <section class="info-general-grid">
+            <article class="info-general-card info-general-card-main">
+                <h5><i class="fas fa-id-card"></i> Datos Generales</h5>
+                <div class="info-general-stack">
+                    <div class="info-general-row"><span>Fecha de nacimiento</span><strong>${escapeHtml(fechaNacimientoEdad)}</strong></div>
+                    <div class="info-general-row">
+                        <span>Contacto</span>
+                        <div class="info-general-row-value-wrap">${contactoGeneralHtml}</div>
+                    </div>
+                    <div class="info-general-row"><span>Registro en sistema</span><strong>${escapeHtml(fechaRegistro)}</strong></div>
+                    <div class="info-general-row"><span>Última actualización</span><strong>${escapeHtml(fechaActualizacion)}</strong></div>
+                    <div class="info-general-row"><span>Tipo</span><strong>${esMenor ? 'Menor de edad' : 'Mayor de edad'}</strong></div>
+                </div>
+            </article>
+            ${representanteHtml}
+        </section>
+    `;
+}
+
 function renderInfoEstudianteModal(estudiante, categorias, certificados) {
     const tabs = document.getElementById('infoEstudianteTabs');
     const slides = document.getElementById('infoEstudianteSlides');
     const nombreEl = document.getElementById('infoEstudianteNombre');
     const cedulaEl = document.getElementById('infoEstudianteCedula');
     const totalCatsEl = document.getElementById('infoEstudianteTotalCategorias');
-    const totalPersEl = document.getElementById('infoEstudianteTotalPeriodos');
+    const totalPeriodosEl = document.getElementById('infoEstudianteTotalPeriodos');
+    const totalAprobadosEl = document.getElementById('infoEstudianteTotalAprobados');
+    const totalPendientesEl = document.getElementById('infoEstudianteTotalPendientes');
+    const totalGeneradosEl = document.getElementById('infoEstudianteTotalGenerados');
 
     if (!tabs || !slides) return;
 
     if (nombreEl) nombreEl.textContent = estudiante?.nombre || 'Estudiante';
     if (cedulaEl) cedulaEl.textContent = estudiante?.cedula ? `Cédula: ${estudiante.cedula}` : 'Cédula: —';
 
-    const totalPeriodos = categorias.reduce((acc, cat) => acc + (Array.isArray(cat.periodos) ? cat.periodos.length : 0), 0);
+    const periodos = categorias.reduce((acc, cat) => {
+        if (Array.isArray(cat?.periodos)) acc.push(...cat.periodos);
+        return acc;
+    }, []);
+    const totalPeriodos = periodos.length;
+    const totalAprobados = periodos.filter(p => Boolean(p?.cert_aprobado)).length;
+    const totalPendientes = periodos.filter(p => !Boolean(p?.cert_aprobado) && !Boolean(p?.cert_generado)).length;
+    const totalGenerados = periodos.filter(p => Boolean(p?.cert_generado)).length;
+
     if (totalCatsEl) totalCatsEl.textContent = String(categorias.length);
-    if (totalPersEl) totalPersEl.textContent = String(totalPeriodos);
+    if (totalPeriodosEl) totalPeriodosEl.textContent = String(totalPeriodos);
+    if (totalAprobadosEl) totalAprobadosEl.textContent = String(totalAprobados);
+    if (totalPendientesEl) totalPendientesEl.textContent = String(totalPendientes);
+    if (totalGeneradosEl) totalGeneradosEl.textContent = String(totalGenerados);
 
-    if (!categorias.length) {
-        tabs.innerHTML = '';
-        slides.innerHTML = '<div class="edit-categorias-empty" style="padding: 26px;"><i class="fas fa-folder-open"></i> Este estudiante no tiene categorías registradas en este grupo.</div>';
-        actualizarFooterInfoEstudiante('', false);
-        return;
-    }
+    const tabsPartes = [];
+    const slidesPartes = [];
 
-    const tabHtml = categorias.map((cat, index) => {
-        const active = index === 0 ? 'active' : '';
+    tabsPartes.push(`
+        <button type="button" class="info-estudiante-tab active" onclick="switchInfoEstudianteCategoria('general', this)">
+            <span><i class="fas fa-id-card"></i></span>
+            <span>General</span>
+        </button>
+    `);
+
+    slidesPartes.push(`
+        <section class="info-estudiante-slide active" data-slide-key="general">
+            ${renderInfoEstudianteGeneralSlide(estudiante, categorias)}
+        </section>
+    `);
+
+    const tabCategoriasHtml = categorias.map((cat, index) => {
         return `
-            <button type="button" class="info-estudiante-tab ${active}" onclick="switchInfoEstudianteCategoria(${index}, this)">
+            <button type="button" class="info-estudiante-tab" onclick="switchInfoEstudianteCategoria('cat-${index}', this)">
                 <span>${renderIconoCategoriaModal(cat.icono)}</span>
                 <span>${escapeHtml(cat.nombre)}</span>
                 <span class="info-estudiante-tab-count">${Array.isArray(cat.periodos) ? cat.periodos.length : 0}</span>
             </button>
         `;
     }).join('');
-    tabs.innerHTML = tabHtml;
+    tabsPartes.push(tabCategoriasHtml);
+    tabs.innerHTML = tabsPartes.join('');
 
-    const slideHtml = categorias.map((cat, index) => {
-        const active = index === 0 ? 'active' : '';
+    const slideCategoriasHtml = categorias.map((cat, index) => {
         const periodos = Array.isArray(cat.periodos) ? cat.periodos : [];
         const periodosHtml = periodos.map((periodo, periodIndex) => {
             const activeBadge = periodIndex === 0 ? 'active' : '';
-            const tieneCert = !!String(periodo?.certificado?.codigo || '').trim();
+            const tieneCert = !!String(periodo?.codigo_generado || periodo?.certificado?.codigo || '').trim();
             return `
                 <button type="button" class="info-periodo-badge ${activeBadge}" data-period-index="${periodIndex}" onclick="switchInfoPeriodoBadge(${index}, ${periodIndex}, this)">
                     <i class="far fa-calendar-alt"></i>
@@ -1012,7 +1245,7 @@ function renderInfoEstudianteModal(estudiante, categorias, certificados) {
         }).join('');
 
         return `
-            <section class="info-estudiante-slide ${active}" data-slide-index="${index}">
+            <section class="info-estudiante-slide" data-slide-key="cat-${index}" data-cat-index="${index}">
                 <div class="info-periodo-badges-wrap">
                     ${periodosHtml || '<div class="edit-categorias-empty"><i class="fas fa-calendar-times"></i> No hay períodos registrados para esta categoría.</div>'}
                 </div>
@@ -1023,22 +1256,41 @@ function renderInfoEstudianteModal(estudiante, categorias, certificados) {
         `;
     }).join('');
 
-    slides.innerHTML = slideHtml;
-    switchInfoEstudianteCategoria(0, tabs.querySelector('.info-estudiante-tab.active') || tabs.querySelector('.info-estudiante-tab'));
+    slidesPartes.push(slideCategoriasHtml);
+    slides.innerHTML = slidesPartes.join('');
+    switchInfoEstudianteCategoria('general', tabs.querySelector('.info-estudiante-tab.active') || tabs.querySelector('.info-estudiante-tab'));
 }
 
 function switchInfoEstudianteCategoria(index, btn) {
-    const idx = Number(index);
-    if (!Number.isFinite(idx) || idx < 0) return;
+    const slideKey = String(index || '').trim();
+    if (!slideKey) return;
 
     document.querySelectorAll('#infoEstudianteTabs .info-estudiante-tab').forEach(tab => tab.classList.remove('active'));
     document.querySelectorAll('#infoEstudianteSlides .info-estudiante-slide').forEach(slide => slide.classList.remove('active'));
 
-    if (btn) btn.classList.add('active');
-    const slide = document.querySelector(`#infoEstudianteSlides .info-estudiante-slide[data-slide-index="${idx}"]`);
+    if (btn) {
+        btn.classList.add('active');
+        const tabsContainer = document.getElementById('infoEstudianteTabs');
+        if (tabsContainer && typeof btn.scrollIntoView === 'function') {
+            btn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        }
+    }
+    const slide = document.querySelector(`#infoEstudianteSlides .info-estudiante-slide[data-slide-key="${slideKey}"]`);
     if (!slide) return;
 
     slide.classList.add('active');
+
+    if (slideKey === 'general') {
+        actualizarFooterInfoEstudiante('', false);
+        return;
+    }
+
+    const idx = Number(slide.dataset.catIndex || -1);
+    if (!Number.isFinite(idx) || idx < 0) {
+        actualizarFooterInfoEstudiante('', false);
+        return;
+    }
+
     const selectedBadge = slide.querySelector('.info-periodo-badge.active') || slide.querySelector('.info-periodo-badge');
     if (selectedBadge) {
         const selectedPeriodIndex = Number(selectedBadge.dataset.periodIndex || 0);
@@ -1057,7 +1309,7 @@ function switchInfoPeriodoBadge(catIndex, periodIndex, btn) {
     const pIdx = Number(periodIndex);
     if (!Number.isFinite(cIdx) || cIdx < 0 || !Number.isFinite(pIdx) || pIdx < 0) return;
 
-    const slide = document.querySelector(`#infoEstudianteSlides .info-estudiante-slide[data-slide-index="${cIdx}"]`);
+    const slide = document.querySelector(`#infoEstudianteSlides .info-estudiante-slide[data-slide-key="cat-${cIdx}"]`);
     if (!slide) return;
     slide.querySelectorAll('.info-periodo-badge').forEach(badge => badge.classList.remove('active'));
     if (btn) btn.classList.add('active');
@@ -1079,12 +1331,18 @@ async function renderInfoPeriodoDetalle(catIndex, periodIndex) {
 
     const estadoCert = getEstadoCertificadoPeriodo(periodo);
     const cert = periodo.certificado || null;
-    const codigoCert = String(cert?.codigo || '').trim();
+    const codigoCert = String(periodo?.codigo_generado || cert?.codigo || '').trim();
     const hasRenderedFiles = Boolean(String(cert?.archivo_pdf || '').trim() || String(cert?.archivo_imagen || '').trim());
     const puedeDescargar = Boolean(codigoCert && (periodo?.cert_generado || hasRenderedFiles));
     const puedePrevisualizar = puedeDescargar;
+    const puedeMostrarQr = Boolean(codigoCert && (periodo?.cert_generado || hasRenderedFiles));
+    const qrSrc = puedeMostrarQr
+        ? `../api/certificados/qr.php?codigo=${encodeURIComponent(codigoCert)}&t=${Date.now()}`
+        : '';
     actualizarFooterInfoEstudiante(codigoCert, puedeDescargar);
-    const certFecha = formatearFechaModalGrupo(cert?.fecha || '');
+    const fechaAprobacion = formatearFechaHoraInfo(periodo?.fecha_aprobacion || cert?.fecha_aprobacion || '', true);
+    const aprobadoPor = String(periodo?.aprobado_por_nombre || cert?.aprobado_por_nombre || '').trim();
+    const certFecha = formatearFechaHoraInfo(periodo?.fecha_generacion_primera || cert?.fecha_creacion || cert?.fecha || '', true);
     const previewImgId = `infoPeriodoPreviewImg-${catIndex}-${periodIndex}`;
     const previewLoaderId = `infoPeriodoPreviewLoader-${catIndex}-${periodIndex}`;
     const previewTextId = `infoPeriodoPreviewText-${catIndex}-${periodIndex}`;
@@ -1097,6 +1355,13 @@ async function renderInfoPeriodoDetalle(catIndex, periodIndex) {
                         <span class="info-periodo-name"><i class="far fa-calendar-alt"></i> ${escapeHtml(periodo.nombre || 'Sin período')}</span>
                         ${periodo.es_destacado ? '<span class="info-periodo-star"><i class="fas fa-star"></i> Destacado</span>' : ''}
                     </div>
+                    ${puedeMostrarQr ? `
+                    <div class="info-periodo-qr-wrap">
+                        <div class="info-periodo-qr-box">
+                            <img src="${qrSrc}" alt="QR de verificación">
+                        </div>
+                        <span class="info-periodo-qr-label"><i class="fas fa-qrcode"></i> QR de Verificación</span>
+                    </div>` : ''}
                     <div class="info-periodo-stack">
                         <div class="info-periodo-row">
                             <span class="info-periodo-row-label">Inicio del período</span>
@@ -1115,6 +1380,14 @@ async function renderInfoPeriodoDetalle(catIndex, periodIndex) {
                             <strong class="info-periodo-row-value"><span class="info-cert-status ${estadoCert.css}">${estadoCert.label}</span></strong>
                         </div>
                         <div class="info-periodo-row">
+                            <span class="info-periodo-row-label">Fecha de aprobación</span>
+                            <strong class="info-periodo-row-value">${escapeHtml(fechaAprobacion || '—')}</strong>
+                        </div>
+                        <div class="info-periodo-row">
+                            <span class="info-periodo-row-label">Aprobado por</span>
+                            <strong class="info-periodo-row-value">${escapeHtml(aprobadoPor || '—')}</strong>
+                        </div>
+                        <div class="info-periodo-row">
                             <span class="info-periodo-row-label">Código del certificado</span>
                             <strong class="info-periodo-row-value">${escapeHtml(codigoCert || 'Sin certificado generado')}</strong>
                         </div>
@@ -1131,7 +1404,7 @@ async function renderInfoPeriodoDetalle(catIndex, periodIndex) {
                             <span id="${previewTextId}">${puedePrevisualizar ? 'Cargando previsualización...' : 'La previsualización se habilita cuando el certificado esté Generado.'}</span>
                         </div>
                         <img id="${previewImgId}" alt="Preview de plantilla" style="${puedePrevisualizar ? '' : 'display:none;'}" />
-                        ${puedePrevisualizar ? '' : '<div class="edit-categorias-empty" style="padding: 18px; margin: 0;"><i class="fas fa-eye-slash"></i> Sin previsualización para estado Pendiente/Aprobado.</div>'}
+                        ${puedePrevisualizar ? '' : '<div class="edit-categorias-empty info-preview-empty-state"><i class="fas fa-eye-slash"></i> Certificado no generado - Sin Previsualización</div>'}
                     </div>
                 </div>
             </div>
@@ -1181,6 +1454,8 @@ async function verInfoEstudiante(id) {
 
     modal.dataset.estudianteId = String(estudianteId);
     infoEstudianteCategorias = [];
+    infoEstudianteSeguimiento = [];
+    infoEstudianteDetalle = null;
     actualizarFooterInfoEstudiante('', false);
     tabs.innerHTML = '';
     slides.innerHTML = '<div class="edit-categorias-empty" style="padding: 26px;"><i class="fas fa-spinner fa-spin"></i> Cargando información...</div>';
@@ -1196,6 +1471,7 @@ async function verInfoEstudiante(id) {
         }
 
         const certificados = Array.isArray(data.certificados) ? data.certificados : [];
+        infoEstudianteSeguimiento = Array.isArray(data.certificados_seguimiento) ? data.certificados_seguimiento : [];
         infoEstudianteCertificados = certificados.map(cert => ({
             ...cert,
             estudiante_id: estudianteId,
@@ -1204,8 +1480,8 @@ async function verInfoEstudiante(id) {
         }));
         editCertificadosCache = infoEstudianteCertificados;
 
+        const estDetalle = data?.estudiante || {};
         if (!estudiante) {
-            const estDetalle = data?.estudiante || {};
             estudiante = {
                 id: estudianteId,
                 nombre: estDetalle?.nombre || 'Estudiante',
@@ -1216,11 +1492,24 @@ async function verInfoEstudiante(id) {
             estudiante.categorias = parseCategoriasDesdeEnrollmentDataGrupo(data?.estudiante?.enrollment_data || '');
         }
 
-        infoEstudianteCategorias = agruparCategoriasParaInfoModal(estudiante?.categorias || [], infoEstudianteCertificados);
+        estudiante = {
+            ...estudiante,
+            ...estDetalle,
+            id: estudiante?.id || estDetalle?.id || estudianteId,
+            nombre: estudiante?.nombre || estDetalle?.nombre || 'Estudiante',
+            cedula: estudiante?.cedula || estDetalle?.cedula || '',
+            categorias: Array.isArray(estudiante?.categorias) ? estudiante.categorias : []
+        };
+        infoEstudianteDetalle = estudiante;
+
+        const categoriasAgrupadas = agruparCategoriasParaInfoModal(estudiante?.categorias || [], infoEstudianteCertificados);
+        infoEstudianteCategorias = enriquecerCategoriasInfoConSeguimiento(categoriasAgrupadas, infoEstudianteSeguimiento);
         renderInfoEstudianteModal(estudiante, infoEstudianteCategorias, infoEstudianteCertificados);
     } catch (error) {
         console.error(error);
         infoEstudianteCategorias = [];
+        infoEstudianteSeguimiento = [];
+        infoEstudianteDetalle = null;
         actualizarFooterInfoEstudiante('', false);
         tabs.innerHTML = '';
         slides.innerHTML = `<div class="edit-categorias-empty" style="padding: 26px;"><i class="fas fa-exclamation-triangle"></i> ${escapeHtml(error.message || 'No se pudo cargar la información')}</div>`;
@@ -2788,6 +3077,33 @@ function formatearFechaModalGrupo(fechaRaw) {
     return raw;
 }
 
+function formatearFechaHoraInfo(fechaRaw, incluirHora = true) {
+    const raw = String(fechaRaw || '').trim();
+    if (!raw || raw === '0000-00-00' || raw === '0000-00-00 00:00:00') return '—';
+
+    const normalizado = raw.includes('T') ? raw : raw.replace(' ', 'T');
+    const fecha = new Date(normalizado);
+    if (Number.isNaN(fecha.getTime())) {
+        const soloFecha = raw.length >= 10 ? raw.substring(0, 10) : raw;
+        const partes = soloFecha.split('-');
+        if (partes.length === 3) {
+            const [y, m, d] = partes;
+            if (!incluirHora) return `${d}/${m}/${y}`;
+        }
+        return raw;
+    }
+
+    const dd = String(fecha.getDate()).padStart(2, '0');
+    const mm = String(fecha.getMonth() + 1).padStart(2, '0');
+    const yyyy = fecha.getFullYear();
+
+    if (!incluirHora) return `${dd}/${mm}/${yyyy}`;
+
+    const hh = String(fecha.getHours()).padStart(2, '0');
+    const mi = String(fecha.getMinutes()).padStart(2, '0');
+    return `${dd}/${mm}/${yyyy} ${hh}:${mi}`;
+}
+
 function renderIconoCategoriaModal(iconoRaw) {
     const icono = String(iconoRaw || '').trim();
     if (!icono) return '📁';
@@ -3046,6 +3362,92 @@ async function cargarResumenCertificadosModalGrupo(estudianteId, est = {}) {
     }
 }
 
+function actualizarBotonAgregarReferenciaEdicion() {
+    const lista = document.getElementById('referencias_editar_list');
+    const btnAdd = document.getElementById('btnAddReferenciaEditar');
+    if (!lista || !btnAdd) return;
+
+    const total = lista.querySelectorAll('.referencia-item').length;
+    btnAdd.style.display = total >= 3 ? 'none' : '';
+}
+
+function agregarReferenciaEdicionGrupo(data = null) {
+    const lista = document.getElementById('referencias_editar_list');
+    if (!lista) return;
+
+    const existentes = lista.querySelectorAll('.referencia-item').length;
+    if (existentes >= 3) {
+        mostrarNotificacion('Máximo 3 referencias permitidas', 'warning');
+        return;
+    }
+
+    const nombreVal = String(data?.nombre || '').trim();
+    let telefonoVal = String(data?.telefono || '').trim();
+    telefonoVal = telefonoVal.replace(/\D/g, '');
+    if (telefonoVal.startsWith('593') && telefonoVal.length > 9) {
+        telefonoVal = telefonoVal.slice(-9);
+    }
+    const relacionVal = String(data?.relacion || '').trim();
+
+    const item = document.createElement('div');
+    item.className = 'referencia-item';
+    item.innerHTML = `
+        <input type="text" class="form-control" data-ref="nombre" placeholder="Nombre completo" value="${escapeHtml(nombreVal)}" required>
+        <div class="celular-input-wrapper ref-celular-wrapper">
+            <span class="celular-prefix">+593</span>
+            <input type="text" data-ref="telefono" placeholder="9XXXXXXXX" maxlength="9" value="${escapeHtml(telefonoVal)}" oninput="validarCelularInput(this)" required>
+        </div>
+        <input type="text" class="form-control" data-ref="relacion" placeholder="Relación" value="${escapeHtml(relacionVal)}" required>
+        <button type="button" class="btn-ref-delete" onclick="eliminarReferenciaEdicionGrupo(this)" title="Eliminar referencia">
+            <i class="fas fa-trash-alt"></i>
+        </button>
+    `;
+    lista.appendChild(item);
+    actualizarBotonAgregarReferenciaEdicion();
+}
+
+function eliminarReferenciaEdicionGrupo(btn) {
+    const item = btn?.closest('.referencia-item');
+    if (!item) return;
+    item.remove();
+    actualizarBotonAgregarReferenciaEdicion();
+}
+
+function obtenerReferenciasEdicionGrupo() {
+    const referencias = [];
+    document.querySelectorAll('#referencias_editar_list .referencia-item').forEach(item => {
+        const nombre = String(item.querySelector('[data-ref="nombre"]')?.value || '').trim();
+        const telefonoRaw = String(item.querySelector('[data-ref="telefono"]')?.value || '').trim();
+        const telefono = telefonoRaw.replace(/\D/g, '').slice(-9);
+        const relacion = String(item.querySelector('[data-ref="relacion"]')?.value || '').trim();
+
+        if (!nombre) return;
+        referencias.push({ nombre, telefono, relacion });
+    });
+    return referencias.slice(0, 3);
+}
+
+async function cargarReferenciasEdicionGrupo(estudianteId) {
+    const lista = document.getElementById('referencias_editar_list');
+    if (!lista) return;
+    lista.innerHTML = '';
+    actualizarBotonAgregarReferenciaEdicion();
+
+    if (!estudianteId) return;
+
+    try {
+        const resp = await fetch(`../api/categorias/estudiantes.php?action=listar_referencias&estudiante_id=${encodeURIComponent(estudianteId)}`);
+        const data = await resp.json();
+        if (resp.ok && data?.success && Array.isArray(data.referencias)) {
+            data.referencias.forEach(ref => agregarReferenciaEdicionGrupo(ref));
+        }
+    } catch (error) {
+        console.error('Error cargando referencias en edición:', error);
+    } finally {
+        actualizarBotonAgregarReferenciaEdicion();
+    }
+}
+
 async function editarEstudiante(id) {
     let est = estudiantesData.find(e => String(e.id) === String(id));
 
@@ -3077,7 +3479,6 @@ async function editarEstudiante(id) {
 
     document.getElementById('edit_email').value = est.email || '';
     document.getElementById('edit_fecha_nacimiento').value = est.fecha_nacimiento || '';
-    document.getElementById('edit_destacado').checked = Number(est.destacado ?? est.es_destacado ?? 0) === 1;
 
     toggleEditRepresentante();
 
@@ -3091,10 +3492,14 @@ async function editarEstudiante(id) {
     document.getElementById('edit_rep_celular').value = repCelular;
 
     document.getElementById('edit_rep_email').value = est.representante_email || '';
+    await cargarReferenciasEdicionGrupo(est.id);
     document.getElementById('editEstudianteModal').classList.add('active');
 }
 
 function cerrarEditModal() {
+    const refList = document.getElementById('referencias_editar_list');
+    if (refList) refList.innerHTML = '';
+    actualizarBotonAgregarReferenciaEdicion();
     document.getElementById('editEstudianteModal').classList.remove('active');
 }
 
@@ -3142,7 +3547,6 @@ async function guardarEdicionEstudiante(e) {
     const jsonData = Object.fromEntries(data.entries());
 
     jsonData.es_menor = toggleEditRepresentante() ? 1 : 0;
-    jsonData.destacado = document.getElementById('edit_destacado').checked ? 1 : 0;
 
     const celularElem = document.getElementById('edit_celular');
     if (celularElem.value.trim()) {
@@ -3159,6 +3563,7 @@ async function guardarEdicionEstudiante(e) {
         return;
     }
 
+    jsonData.referencias = obtenerReferenciasEdicionGrupo();
     jsonData.action = 'update';
 
     try {
@@ -3666,6 +4071,8 @@ function cerrarModal(event = null, modalId = null) {
         if (modalId === 'infoEstudianteModal') {
             infoEstudianteCategorias = [];
             infoEstudianteCertificados = [];
+            infoEstudianteSeguimiento = [];
+            infoEstudianteDetalle = null;
             infoEstudianteDescargaCodigo = '';
             const tabs = document.getElementById('infoEstudianteTabs');
             const slides = document.getElementById('infoEstudianteSlides');
@@ -3685,6 +4092,8 @@ function cerrarModal(event = null, modalId = null) {
     generacionLoteCategoriaContextoId = null;
     infoEstudianteCategorias = [];
     infoEstudianteCertificados = [];
+    infoEstudianteSeguimiento = [];
+    infoEstudianteDetalle = null;
     infoEstudianteDescargaCodigo = '';
     actualizarFooterInfoEstudiante('', false);
 }
