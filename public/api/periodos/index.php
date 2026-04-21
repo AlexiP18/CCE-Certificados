@@ -116,8 +116,36 @@ try {
                 throw new Exception('La fecha fin debe ser posterior a la fecha inicio');
             }
             
-            // Si hay grupo_id, verificar que no exista un periodo con las mismas fechas para ese grupo
+            // Si hay grupo_id, validar solape de fechas dentro de los mismos meses del grupo
             if ($grupo_id) {
+                $stmt = $pdo->prepare("
+                    SELECT p.id, p.nombre, p.fecha_inicio, p.fecha_fin
+                    FROM periodos p
+                    INNER JOIN grupo_periodos gp ON p.id = gp.periodo_id
+                    WHERE gp.grupo_id = ?
+                      AND p.activo = 1
+                      AND gp.activo = 1
+                      AND (? <= p.fecha_fin AND ? >= p.fecha_inicio)
+                      AND (
+                            DATE_FORMAT(?, '%Y-%m') BETWEEN DATE_FORMAT(p.fecha_inicio, '%Y-%m') AND DATE_FORMAT(p.fecha_fin, '%Y-%m')
+                         OR DATE_FORMAT(?, '%Y-%m') BETWEEN DATE_FORMAT(p.fecha_inicio, '%Y-%m') AND DATE_FORMAT(p.fecha_fin, '%Y-%m')
+                      )
+                    LIMIT 1
+                ");
+                $stmt->execute([$grupo_id, $fecha_inicio, $fecha_fin, $fecha_inicio, $fecha_fin]);
+                $periodoSolapado = $stmt->fetch(PDO::FETCH_ASSOC);
+
+                if ($periodoSolapado) {
+                    $inicioConflicto = date('d/m/Y', strtotime($periodoSolapado['fecha_inicio']));
+                    $finConflicto = date('d/m/Y', strtotime($periodoSolapado['fecha_fin']));
+                    throw new Exception(
+                        'No se puede crear el período porque se cruza con "' .
+                        $periodoSolapado['nombre'] .
+                        "\" ($inicioConflicto - $finConflicto) dentro del mismo mes."
+                    );
+                }
+
+                // Si hay grupo_id, verificar que no exista un periodo con las mismas fechas para ese grupo
                 $stmt = $pdo->prepare("
                     SELECT p.id, p.nombre 
                     FROM periodos p

@@ -1,4 +1,22 @@
 /* Fix for Icon Selector Grid */
+body {
+    background-color: #f4f8ff;
+    background-image: url('../../assets/background_gray.svg');
+    background-repeat: no-repeat;
+    background-position: center top;
+    background-size: cover;
+    background-attachment: fixed;
+    margin: 0;
+    padding: 0;
+}
+
+.container {
+    max-width: 1400px;
+    width: 100%;
+    margin: 0 auto;
+    padding: 20px;
+}
+
 .icon-selector {
     display: flex;
     flex-wrap: wrap;
@@ -93,7 +111,7 @@
 .grupo-header {
     /* background: handled inline */
     color: white;
-    padding: 35px 40px;
+    padding: 22px 24px;
     border-radius: 20px;
     margin-bottom: 40px;
     box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
@@ -125,6 +143,40 @@
     justify-content: center;
     backdrop-filter: blur(10px);
     flex-shrink: 0;
+}
+
+.grupo-quick-links {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.grupo-quick-link {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    border: 2px solid rgba(255, 255, 255, 0.35);
+    background: rgba(255, 255, 255, 0.16);
+    color: #ffffff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+    backdrop-filter: blur(8px);
+    transition: transform 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.grupo-quick-link i {
+    font-size: 16px;
+}
+
+.grupo-quick-link:hover {
+    background: rgba(255, 255, 255, 0.28);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
 .grupo-info {

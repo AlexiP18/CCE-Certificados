@@ -72,6 +72,38 @@ function setupHorizontalScroll() {
     }
 }
 
+function manejarCargaIframeCategoria(categoriaId, iframeEl) {
+    const iframe = iframeEl || document.getElementById(`iframe-cat-${categoriaId}`);
+    const loader = document.getElementById(`loader-cat-${categoriaId}`);
+
+    if (!iframe) {
+        if (loader) loader.style.display = 'none';
+        return;
+    }
+
+    try {
+        const frameLocation = iframe.contentWindow?.location;
+        const framePath = String(frameLocation?.pathname || '').toLowerCase();
+
+        // Si la sesión expiró, el iframe carga login.php.
+        // En ese caso redirigimos TODA la app al login y evitamos incrustarlo en el tab.
+        if (framePath.includes('/auth/login.php')) {
+            const loginUrl = String(frameLocation?.href || new URL('../auth/login.php', window.location.href).href);
+            if (window.top && window.top !== window.self) {
+                window.top.location.href = loginUrl;
+            } else {
+                window.location.href = loginUrl;
+            }
+            return;
+        }
+    } catch (e) {
+        // Ignorar errores de acceso del iframe y continuar mostrando contenido.
+    }
+
+    if (loader) loader.style.display = 'none';
+    iframe.style.display = 'block';
+}
+
 function switchGroupTab(tabId, btn = null) {
     document.querySelectorAll('.group-tab-pane').forEach(pane => {
         pane.classList.remove('active');
@@ -2455,8 +2487,11 @@ async function generarPreviewPlantillaUrl(tipo, id, plantillaId = null) {
             body: formData
         });
         const json = await resp.json();
-        if (json?.success && json?.preview_url) {
-            return `${json.preview_url}?v=${Date.now()}`;
+        if (json?.success && (json?.preview_url || json?.preview_data_url)) {
+            if (json?.preview_url) {
+                return `${json.preview_url}?v=${Date.now()}`;
+            }
+            return String(json.preview_data_url);
         }
     } catch (e) {
         console.warn('No se pudo generar preview dinámico:', e);
@@ -3929,10 +3964,13 @@ async function intentarPreviewDesdePlantillaPadre(cert = {}, imageEl, loaderEl =
         });
         const json = await resp.json();
 
-        if (json?.success && json?.preview_url) {
+        if (json?.success && (json?.preview_url || json?.preview_data_url)) {
+            const previewSrc = json?.preview_url
+                ? `${json.preview_url}?v=${Date.now()}`
+                : String(json.preview_data_url || '');
             return await cargarImagenModalCertPadre(
                 imageEl,
-                `${json.preview_url}?v=${Date.now()}`,
+                previewSrc,
                 loaderEl
             );
         }

@@ -3,7 +3,7 @@
  * Script para agregar fuentes preestablecidas usando Google Fonts
  * Estas fuentes están disponibles en línea y no requieren archivos locales
  */
-require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../../config/database.php';
 
 $pdo = getConnection();
 

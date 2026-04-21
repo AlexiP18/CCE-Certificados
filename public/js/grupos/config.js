@@ -1951,9 +1951,10 @@ window.previewCertificate = async function () {
 
         const data = await response.json();
 
-        if (data.success) {
+        if (data.success && (data.preview_url || data.preview_data_url)) {
+            const finalUrl = data.preview_url || data.preview_data_url;
             body.innerHTML = `
-                <img src="${data.preview_url}" alt="Vista previa del certificado" style="max-width: 100%;">
+                <img src="${finalUrl}" alt="Vista previa del certificado" style="max-width: 100%;">
                 <p style="margin-top: 15px; color: #7f8c8d; font-size: 14px;">
                     <i class="fas fa-info-circle"></i> 
                     Esta es una vista previa con datos de ejemplo

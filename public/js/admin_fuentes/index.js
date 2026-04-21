@@ -1,12 +1,32 @@
 // Estado global
 let fonts = [];
 let currentFilter = 'all';
+let currentSearchTerm = '';
+let uploadSource = 'local';
+const defaultGoogleFamilies = [
+    'Roboto', 'Open Sans', 'Lato', 'Montserrat', 'Poppins', 'Nunito', 'Inter',
+    'Playfair Display', 'Merriweather', 'Lora', 'Libre Baskerville', 'PT Serif',
+    'Oswald', 'Bebas Neue', 'Abril Fatface', 'Cinzel', 'Righteous', 'Anton',
+    'Dancing Script', 'Pacifico', 'Great Vibes', 'Sacramento', 'Satisfy', 'Allura',
+    'Caveat', 'Kaushan Script', 'Roboto Mono', 'Source Code Pro', 'Fira Code',
+    'Inconsolata', 'Raleway', 'Work Sans', 'DM Sans', 'Quicksand', 'Manrope',
+    'M PLUS Rounded 1c', 'Archivo', 'Barlow', 'Muli', 'Noto Sans', 'Noto Serif'
+];
+const categoryLabels = {
+    'all': 'Todas las categorías',
+    'sans-serif': 'Sans Serif',
+    'serif': 'Serif',
+    'display': 'Display',
+    'handwriting': 'Manuscritas',
+    'monospace': 'Monoespaciadas'
+};
 
 // Variables globales necesarias (definidas en la vista):
 // const basePath = '...';
 
 // Cargar fuentes al iniciar
 document.addEventListener('DOMContentLoaded', function () {
+    buildGoogleFontAutocomplete();
     loadFonts();
     setupDragDrop();
     setupEventListeners();
@@ -25,6 +45,7 @@ async function loadFonts() {
             console.log('Fuentes cargadas:', fonts.length);
             fonts.forEach(f => console.log(`- ${f.nombre}: ${f.archivo}`));
 
+            buildGoogleFontAutocomplete();
             await loadFontStyles();
             renderFonts();
         } else {
@@ -136,18 +157,25 @@ async function loadFontStyles() {
 // Renderizar cuadrícula de fuentes
 function renderFonts() {
     const container = document.getElementById('fonts-container');
+    const normalizedSearch = currentSearchTerm.trim().toLowerCase();
 
     // Filtrar fuentes
     let filtered = currentFilter === 'all'
         ? fonts
         : fonts.filter(f => f.categoria === currentFilter);
 
+    if (normalizedSearch !== '') {
+        filtered = filtered.filter(f => String(f.nombre || '').toLowerCase().includes(normalizedSearch));
+    }
+
+    updateHeaderStats(filtered.length);
+
     if (filtered.length === 0) {
         container.innerHTML = `
             <div class="empty-state">
                 <i class="fas fa-font"></i>
-                <h5>No hay fuentes ${currentFilter !== 'all' ? 'en esta categoría' : 'disponibles'}</h5>
-                <p>Sube una nueva fuente para comenzar</p>
+                <h5>No se encontraron fuentes</h5>
+                <p>Intenta con otro filtro o cambia el texto de búsqueda.</p>
             </div>
         `;
         return;
@@ -171,16 +199,13 @@ function renderFonts() {
     }
 }
 
+function updateHeaderStats(totalFiltered) {
+    const totalEl = document.getElementById('fontsCountBubble');
+    if (totalEl) totalEl.textContent = String(totalFiltered);
+}
+
 // Renderizar tarjeta de fuente individual
 function renderFontCard(font) {
-    const categoryLabels = {
-        'sans-serif': 'Sans Serif',
-        'serif': 'Serif',
-        'display': 'Display',
-        'handwriting': 'Manuscrita',
-        'monospace': 'Monoespaciada'
-    };
-
     // Detectar si es fuente de Google (ya sea por el archivo original o por el nombre del archivo descargado)
     const isGoogleFont = font.archivo && (font.archivo.startsWith('google:') || font.archivo.startsWith('google_'));
 
@@ -198,38 +223,54 @@ function renderFontCard(font) {
         : '';
 
     // Solo permitir eliminar fuentes personalizadas (no Google ni sistema)
-    const deleteBtn = (font.es_sistema != 1 && !isGoogleFont)
+    const canDelete = (font.es_sistema != 1 && !isGoogleFont);
+    const deleteBtn = canDelete
         ? `<button class="btn btn-delete" onclick="openDeleteModal(${font.id}, '${font.nombre.replace(/'/g, "\\'")}')">
-               <i class="fas fa-trash-alt"></i>
+               <i class="fas fa-trash-alt"></i> Eliminar
            </button>`
-        : '';
+        : `<button class="btn btn-delete btn-disabled" disabled title="Esta fuente no se puede eliminar">
+               <i class="fas fa-lock"></i> No disponible
+           </button>`;
 
     // Tipo de fuente para mostrar
     const tipoDisplay = isGoogleFont ? 'Web Font' : font.tipo.toUpperCase();
 
     return `
-        <div class="font-card ${font.activo != 1 ? 'opacity-50' : ''}" data-category="${font.categoria}" data-font-id="${font.id}">
-            <div class="font-preview">
-                <span class="font-preview-text preview-font-${font.id}">
-                    Aa Bb Cc 123
-                </span>
-            </div>
-            <div class="font-info">
-                <div class="font-name">
-                    ${escapeHtml(font.nombre)} ${badge} ${inactiveBadge}
+        <article class="font-card ${font.activo != 1 ? 'font-card-inactive' : ''}" data-category="${font.categoria}" data-font-id="${font.id}">
+            <header class="font-card-header">
+                <div class="font-preview">
+                    <span class="font-preview-text preview-font-${font.id}">
+                        Aa Bb Cc 123
+                    </span>
+                </div>
+            </header>
+            <div class="font-card-body">
+                <div class="font-name-row">
+                    <h4 class="font-name-title">${escapeHtml(font.nombre)}</h4>
+                    <div class="font-badges">
+                        ${badge}
+                        ${inactiveBadge}
+                    </div>
                 </div>
                 <div class="font-meta">
                     <span><i class="fas fa-tag"></i> ${categoryLabels[font.categoria] || font.categoria}</span>
                     <span><i class="fas fa-${isGoogleFont ? 'cloud' : 'file'}"></i> ${tipoDisplay}</span>
                 </div>
+                <div class="font-tags">
+                    <span class="font-tag"><i class="fas fa-a"></i> Familia tipográfica</span>
+                    <span class="font-tag"><i class="fas fa-palette"></i> ${categoryLabels[font.categoria] || font.categoria}</span>
+                    <span class="font-tag"><i class="fas fa-check-circle"></i> ${font.activo == 1 ? 'Activa' : 'Inactiva'}</span>
+                </div>
+            </div>
+            <footer class="font-card-footer">
                 <div class="font-actions">
                     <button class="btn btn-edit" onclick="openEditModal(${font.id})">
                         <i class="fas fa-edit"></i> Editar
                     </button>
                     ${deleteBtn}
                 </div>
-            </div>
-        </div>
+            </footer>
+        </article>
     `;
 }
 
@@ -285,6 +326,91 @@ function setupDragDrop() {
     }
 }
 
+function extractGoogleFamilyFromRecord(font) {
+    if (!font) return '';
+    if (font.archivo && font.archivo.startsWith('google:')) {
+        return font.archivo.replace('google:', '').replace(/\+/g, ' ').trim();
+    }
+    if (font.nombre && String(font.nombre).trim() !== '') {
+        return String(font.nombre).trim();
+    }
+    return '';
+}
+
+function buildGoogleFontAutocomplete() {
+    const datalist = document.getElementById('googleFontFamilySuggestions');
+    if (!datalist) return;
+
+    const fromRecords = fonts
+        .filter((font) => font.archivo && (font.archivo.startsWith('google:') || font.archivo.startsWith('google_')))
+        .map((font) => extractGoogleFamilyFromRecord(font))
+        .filter(Boolean);
+
+    const merged = [...defaultGoogleFamilies, ...fromRecords];
+    const normalizedSet = new Map();
+
+    merged.forEach((name) => {
+        const clean = String(name).replace(/\s+/g, ' ').trim();
+        if (!clean) return;
+        normalizedSet.set(clean.toLowerCase(), clean);
+    });
+
+    datalist.innerHTML = Array.from(normalizedSet.values())
+        .sort((a, b) => a.localeCompare(b, 'es'))
+        .map((family) => `<option value="${escapeHtml(family)}"></option>`)
+        .join('');
+}
+
+function normalizeGoogleFamily(rawValue) {
+    const raw = String(rawValue || '').trim();
+    if (!raw) return '';
+
+    let candidate = raw;
+
+    if (raw.includes('fonts.google.com') && raw.includes('/specimen/')) {
+        const specimenPart = raw.split('/specimen/')[1] || '';
+        candidate = specimenPart.split(/[?#]/)[0] || '';
+    } else if (raw.includes('family=')) {
+        const familyPart = raw.split('family=')[1] || '';
+        candidate = familyPart.split('&')[0] || '';
+        candidate = candidate.split(':')[0] || candidate;
+    }
+
+    try {
+        candidate = decodeURIComponent(candidate);
+    } catch (error) {
+        // Mantener valor original si no viene correctamente encoded
+    }
+    candidate = candidate.replace(/\+/g, ' ');
+    candidate = candidate.replace(/\s+/g, ' ').trim();
+    return candidate;
+}
+
+function setUploadSource(source) {
+    uploadSource = source === 'google' ? 'google' : 'local';
+
+    const localFields = document.getElementById('localUploadFields');
+    const googleFields = document.getElementById('googleUploadFields');
+    const uploadBtn = document.getElementById('btnUpload');
+    const fileInput = document.getElementById('fileInput');
+    const dropZoneText = document.getElementById('dropZoneText');
+
+    if (localFields) localFields.classList.toggle('upload-source-fields-hidden', uploadSource !== 'local');
+    if (googleFields) googleFields.classList.toggle('upload-source-fields-hidden', uploadSource !== 'google');
+
+    if (uploadSource === 'google') {
+        if (fileInput) fileInput.value = '';
+        if (dropZoneText) {
+            dropZoneText.textContent = 'Arrastra un archivo aquí o haz clic para seleccionar';
+        }
+        if (uploadBtn) {
+            uploadBtn.innerHTML = '<i class="fab fa-google"></i> Agregar Fuente Google';
+        }
+    } else if (uploadBtn) {
+        uploadBtn.innerHTML = '<i class="fas fa-upload"></i> Subir Fuente';
+    }
+}
+
 // Configurar event listeners
 function setupEventListeners() {
     // Filtros de categoría
@@ -296,6 +422,42 @@ function setupEventListeners() {
             renderFonts();
         });
     });
+
+    const searchInput = document.getElementById('fontSearchInput');
+    if (searchInput) {
+        searchInput.addEventListener('input', (event) => {
+            currentSearchTerm = event.target.value || '';
+            renderFonts();
+        });
+    }
+
+    document.querySelectorAll('input[name="uploadSource"]').forEach((radio) => {
+        radio.addEventListener('change', (event) => {
+            setUploadSource(event.target.value);
+        });
+    });
+
+    const googleFamilyInput = document.getElementById('googleFontFamily');
+    const fontNameInput = document.getElementById('fontName');
+    if (googleFamilyInput && fontNameInput) {
+        googleFamilyInput.addEventListener('change', () => {
+            const normalizedFamily = normalizeGoogleFamily(googleFamilyInput.value);
+            if (normalizedFamily) {
+                googleFamilyInput.value = normalizedFamily;
+                if (!fontNameInput.value.trim()) {
+                    fontNameInput.value = normalizedFamily;
+                }
+            }
+        });
+
+        googleFamilyInput.addEventListener('blur', () => {
+            const normalizedFamily = normalizeGoogleFamily(googleFamilyInput.value);
+            googleFamilyInput.value = normalizedFamily;
+            if (normalizedFamily && !fontNameInput.value.trim()) {
+                fontNameInput.value = normalizedFamily;
+            }
+        });
+    }
 
     // Cerrar modales al hacer clic fuera
     document.querySelectorAll('.modal-overlay').forEach(modal => {
@@ -311,6 +473,9 @@ function setupEventListeners() {
 function openUploadModal() {
     document.getElementById('uploadForm').reset();
     document.getElementById('dropZoneText').textContent = 'Arrastra un archivo aquí o haz clic para seleccionar';
+    const sourceLocal = document.querySelector('input[name="uploadSource"][value="local"]');
+    if (sourceLocal) sourceLocal.checked = true;
+    setUploadSource('local');
     document.getElementById('uploadModal').classList.add('active');
 }
 
@@ -339,26 +504,57 @@ function closeModal(modalId) {
 
 // Subir fuente
 async function uploadFont() {
-    const form = document.getElementById('uploadForm');
-    const formData = new FormData(form);
-    formData.append('action', 'upload');
-
+    const formData = new FormData();
+    const source = uploadSource;
+    const category = document.getElementById('fontCategory').value;
+    const googleFamilyInput = document.getElementById('googleFontFamily');
     const fileInput = document.getElementById('fileInput');
-    if (!fileInput.files.length) {
-        showNotification('Por favor selecciona un archivo de fuente', 'error');
-        return;
-    }
+    const fontNameInput = document.getElementById('fontName');
+    const baseFontName = fontNameInput.value.trim();
 
-    const fontName = document.getElementById('fontName').value.trim();
-    if (!fontName) {
-        showNotification('Por favor ingresa un nombre para la fuente', 'error');
-        return;
+    if (source === 'local') {
+        if (!fileInput.files.length) {
+            showNotification('Por favor selecciona un archivo de fuente', 'error');
+            return;
+        }
+        if (!baseFontName) {
+            showNotification('Por favor ingresa un nombre para la fuente', 'error');
+            return;
+        }
+
+        formData.append('action', 'upload');
+        formData.append('archivo', fileInput.files[0]);
+        formData.append('nombre', baseFontName);
+        formData.append('categoria', category);
+    } else {
+        const googleFamily = normalizeGoogleFamily(googleFamilyInput ? googleFamilyInput.value : '');
+        if (!googleFamily) {
+            showNotification('Ingresa una familia válida de Google Fonts', 'error');
+            return;
+        }
+
+        if (googleFamilyInput) googleFamilyInput.value = googleFamily;
+
+        const finalFontName = baseFontName || googleFamily;
+        if (!finalFontName) {
+            showNotification('Por favor ingresa un nombre para la fuente', 'error');
+            return;
+        }
+
+        if (!baseFontName) fontNameInput.value = finalFontName;
+
+        formData.append('action', 'add_google');
+        formData.append('nombre', finalFontName);
+        formData.append('google_family', googleFamily);
+        formData.append('categoria', category);
     }
 
     const btn = document.getElementById('btnUpload');
     const originalText = btn.innerHTML;
     btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Subiendo...';
+    btn.innerHTML = source === 'google'
+        ? '<i class="fas fa-spinner fa-spin"></i> Agregando...'
+        : '<i class="fas fa-spinner fa-spin"></i> Subiendo...';
 
     try {
         const response = await fetch('../api/fuentes/index.php', {
@@ -373,7 +569,7 @@ async function uploadFont() {
             closeModal('uploadModal');
             loadFonts();
         } else {
-            showNotification(data.message || 'Error al subir la fuente', 'error');
+            showNotification(data.message || 'Error al registrar la fuente', 'error');
         }
     } catch (error) {
         console.error('Error:', error);

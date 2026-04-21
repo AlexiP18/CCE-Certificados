@@ -21,12 +21,36 @@ class Certificate {
     
     public function __construct($pdo) {
         $this->pdo = $pdo;
-        $this->uploadPath = dirname(__DIR__) . '/uploads/';
+        $this->uploadPath = $this->resolveWritableUploadPath();
         
         // Crear instancia de ImageManager con driver GD
         $this->imageManager = new ImageManager(['driver' => 'gd']);
         
         $this->loadConfig();
+    }
+
+    /**
+     * Selecciona una ruta de salida escribible para imágenes/PDF de certificados.
+     * Prioriza rutas del proyecto y usa /tmp como fallback en entornos sin permisos.
+     */
+    private function resolveWritableUploadPath(): string {
+        $projectRoot = dirname(__DIR__);
+        $candidates = [
+            $projectRoot . '/uploads',
+            $projectRoot . '/public/uploads',
+            rtrim(sys_get_temp_dir(), '/') . '/cce_certificados/uploads'
+        ];
+
+        foreach ($candidates as $dir) {
+            if (!is_dir($dir)) {
+                @mkdir($dir, 0775, true);
+            }
+            if (is_dir($dir) && is_writable($dir)) {
+                return rtrim($dir, '/') . '/';
+            }
+        }
+
+        throw new \RuntimeException('No hay un directorio escribible para generar certificados (uploads/public/uploads/tmp).');
     }
 
     /**
@@ -43,6 +67,7 @@ class Certificate {
         $path = str_replace('\\', '/', $path);
         $projectRoot = dirname(__DIR__);
         $publicRoot = $projectRoot . '/public';
+        $tempUploadsRoot = rtrim(sys_get_temp_dir(), '/') . '/cce_certificados/uploads';
 
         $candidates = [];
 
@@ -59,9 +84,11 @@ class Certificate {
             $sub = substr($relative, strlen('uploads/'));
             $candidates[] = $projectRoot . '/uploads/' . $sub;
             $candidates[] = $publicRoot . '/uploads/' . $sub;
+            $candidates[] = $tempUploadsRoot . '/' . $sub;
         } else {
             $candidates[] = $projectRoot . '/uploads/' . $relative;
             $candidates[] = $publicRoot . '/uploads/' . $relative;
+            $candidates[] = $tempUploadsRoot . '/' . $relative;
         }
 
         foreach (array_unique($candidates) as $candidate) {
@@ -862,7 +889,22 @@ class Certificate {
             $templatePath = dirname(__DIR__) . '/assets/templates/' . $this->config['archivo_plantilla'];
         }
         
-        // Verificar que existe la plantilla
+        // Verificar que existe la plantilla.
+        // Si no existe (ej. plantilla activa con archivo vacío), usar plantilla por defecto.
+        if (!$templatePath || !file_exists($templatePath)) {
+            $defaultCandidates = [
+                dirname(__DIR__) . '/assets/templates/default_template.png',
+                dirname(__DIR__) . '/public/assets/templates/default_template.png'
+            ];
+            foreach ($defaultCandidates as $candidate) {
+                if (is_file($candidate)) {
+                    $templatePath = $candidate;
+                    error_log("Plantilla no encontrada en configuración, usando fallback por defecto: $templatePath");
+                    break;
+                }
+            }
+        }
+
         if (!$templatePath || !file_exists($templatePath)) {
             throw new \Exception("Plantilla no encontrada: " . $this->config['archivo_plantilla']);
         }

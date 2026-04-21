@@ -1,0 +1,86 @@
+:root {
+    --site-primary: #e71e8a !important;
+    --site-secondary: #1d5695 !important;
+    --site-tertiary: #0084ff !important;
+}
+
+body {
+    background-color: #f4f8ff !important;
+    background-image: url('../assets/background_gray.svg') !important;
+    background-position: center top !important;
+    background-repeat: no-repeat !important;
+    background-size: cover !important;
+    background-attachment: fixed;
+}
+
+.container > header,
+.hero-section,
+.page-header {
+    background: #ffffff !important;
+    color: #1d5695 !important;
+    border: 2px solid rgba(29, 86, 149, 0.2) !important;
+    box-shadow: 0 10px 24px rgba(29, 86, 149, 0.14) !important;
+}
+
+.hero-section h1,
+.page-header h1,
+.page-title,
+.container > header h1 {
+    color: #1d5695 !important;
+}
+
+.hero-section h1 i,
+.page-header h1 i,
+.page-title i,
+.section-header h2 i,
+.filters-title i,
+.section-title i,
+.container > header h1 i {
+    color: #e71e8a !important;
+    background: none !important;
+    -webkit-text-fill-color: currentColor !important;
+}
+
+.hero-section p,
+.page-header p,
+.container > header .subtitle {
+    color: #0084ff !important;
+    opacity: 1 !important;
+}
+
+.btn-primary,
+.btn-primary-gradient,
+.btn-admin,
+.search-form button,
+.category-btn.active,
+.tabs .tab-btn.active {
+    background: #e71e8a !important;
+    color: #ffffff !important;
+    border-color: #e71e8a !important;
+}
+
+.btn-primary:hover,
+.btn-primary-gradient:hover,
+.btn-admin:hover,
+.search-form button:hover,
+.category-btn.active:hover,
+.tabs .tab-btn.active:hover {
+    background: #1d5695 !important;
+    border-color: #1d5695 !important;
+    box-shadow: 0 6px 16px rgba(29, 86, 149, 0.28) !important;
+}
+
+.profile-avatar {
+    background: #1d5695 !important;
+}
+
+.section-title {
+    color: #1d5695 !important;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+    border-color: #0084ff !important;
+    box-shadow: 0 0 0 3px rgba(0, 132, 255, 0.12) !important;
+}

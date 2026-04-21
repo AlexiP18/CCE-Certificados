@@ -1,0 +1,94 @@
+:root {
+    --header-primary: #e71e8a;
+    --header-secondary: #1d5695;
+    --header-third: #0084ff;
+    --header-text: #223045;
+}
+
+.top-nav {
+    background: #fff;
+    border-bottom: 3px solid var(--header-secondary);
+}
+
+.top-nav .nav-logo {
+    color: var(--header-text);
+}
+
+.top-nav .nav-logo span {
+    color: var(--header-secondary);
+}
+
+.top-nav .nav-logo i {
+    color: var(--header-primary) !important;
+    background: none !important;
+    -webkit-text-fill-color: currentColor !important;
+}
+
+.top-nav .nav-link {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 18px;
+    border-radius: 10px;
+    text-decoration: none;
+    color: #5a6c7d;
+    font-weight: 500;
+    font-size: 14px;
+    white-space: nowrap;
+    line-height: 1;
+    border: 1px solid transparent;
+}
+
+.top-nav .nav-link:hover {
+    color: var(--header-third) !important;
+    background: rgba(0, 132, 255, 0.12) !important;
+    border-color: rgba(29, 86, 149, 0.18);
+}
+
+.top-nav .nav-link.active {
+    color: #fff !important;
+    background: var(--header-primary) !important;
+    border-color: var(--header-primary);
+    box-shadow: 0 8px 18px rgba(231, 30, 138, 0.25);
+}
+
+.top-nav .nav-user {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: 20px;
+    padding-left: 20px;
+    list-style: none;
+    border-left-color: rgba(29, 86, 149, 0.18);
+    border-left-style: solid;
+    border-left-width: 1px;
+}
+
+.top-nav .user-badge {
+    background: rgba(29, 86, 149, 0.1);
+    border: 1px solid rgba(29, 86, 149, 0.18);
+    color: var(--header-secondary);
+}
+
+.top-nav .user-badge i {
+    color: var(--header-primary);
+}
+
+.top-nav .logout-link {
+    padding: 8px 12px !important;
+    color: var(--header-primary) !important;
+}
+
+.top-nav .logout-link:hover {
+    background: rgba(231, 30, 138, 0.12) !important;
+}
+
+.top-nav .nav-logo-image {
+    width: 34px;
+    height: 34px;
+    object-fit: contain;
+    border-radius: 8px;
+    background: #fff;
+    padding: 2px;
+    box-shadow: 0 2px 8px rgba(29, 86, 149, 0.15);
+}

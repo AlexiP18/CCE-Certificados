@@ -10,71 +10,14 @@
     <link href="https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="<?= $cssPath ?>/estudiantes/index.css">
-    <style>
-        :root {
-            --site-primary: <?= htmlspecialchars($siteConfig['primary_color']) ?>;
-            --site-secondary: <?= htmlspecialchars($siteConfig['secondary_color']) ?>;
-        }
-
-        .nav-logo-image {
-            width: 34px;
-            height: 34px;
-            object-fit: contain;
-            border-radius: 8px;
-            background: #fff;
-            padding: 2px;
-        }
-    </style>
+    <link rel="stylesheet" href="<?= $basePath ?>/css/header_theme.css">
+    <link rel="stylesheet" href="<?= $basePath ?>/css/institutional_theme.css">
 </head>
 <body>
-
-    <!-- MENÚ DE NAVEGACIÓN FIJO -->
-    <nav class="top-nav">
-        <div class="nav-logo">
-            <?php if (!empty($siteConfig['logo_nav_url'])): ?>
-            <img src="<?= htmlspecialchars($siteConfig['logo_nav_url']) ?>" alt="Logo" class="nav-logo-image" onerror="this.style.display='none'">
-            <?php endif; ?>
-            <i class="fas fa-graduation-cap"></i>
-            <span><?= htmlspecialchars($siteConfig['site_name']) ?></span>
-        </div>
-        
-        <ul class="nav-menu">
-            <li>
-                <a href="<?= $basePath ?>/dashboard/index.php" class="nav-link">
-                    <i class="fas fa-home"></i> Inicio
-                </a>
-            </li>
-            <li>
-                <a href="<?= $basePath ?>/estudiantes/index.php" class="nav-link active">
-                    <i class="fas fa-user-graduate"></i> Estudiantes
-                </a>
-            </li>
-            <?php if (esAdmin() || ($usuario['rol_nombre'] ?? '') === 'Administrador'): ?>
-            <li>
-                <a href="<?= $basePath ?>/grupos/config.php" class="nav-link">
-                    <i class="fas fa-cog"></i> Configuración
-                </a>
-            </li>
-            <li>
-                <a href="<?= $basePath ?>/configuracion/index.php" class="nav-link">
-                    <i class="fas fa-sliders-h"></i> Sitio
-                </a>
-            </li>
-            <?php endif; ?>
-        </ul>
-        
-        <div class="nav-user">
-            <div class="user-badge">
-                <i class="fas fa-user-circle"></i>
-                <span><?= htmlspecialchars($usuario['nombre'] ?? 'Usuario') ?></span>
-                <span style="opacity: 0.7;">|</span>
-                <span><?= htmlspecialchars($usuario['rol_nombre'] ?? ($usuario['rol'] ?? 'Rol')) ?></span>
-            </div>
-            <a href="<?= $basePath ?>/auth/logout.php" class="nav-link logout-link" title="Cerrar Sessión">
-                <i class="fas fa-sign-out-alt"></i>
-            </a>
-        </div>
-    </nav>
+    <?php
+    $activeNav = 'estudiantes';
+    require __DIR__ . '/../components/top_nav.php';
+    ?>
 
     <div class="container">
         
@@ -486,18 +429,22 @@
                     </div>
                 </div>
 
-                <div id="idxInfoGrupoFilters" class="idx-info-group-filters">
-                    <!-- Dynamic -->
-                </div>
+                <div class="idx-info-main-layout">
+                    <div id="idxInfoGrupoFilters" class="idx-info-group-filters">
+                        <!-- Dynamic -->
+                    </div>
 
-                <div id="idxInfoTabs" class="idx-info-tabs">
-                    <!-- Dynamic -->
-                </div>
+                    <div class="idx-info-main-content">
+                        <div id="idxInfoTabs" class="idx-info-tabs">
+                            <!-- Dynamic -->
+                        </div>
 
-                <div id="idxInfoSlides" class="idx-info-slides">
-                    <div class="empty-state" style="padding: 24px 10px;">
-                        <i class="fas fa-spinner fa-spin"></i>
-                        <p>Cargando información...</p>
+                        <div id="idxInfoSlides" class="idx-info-slides">
+                            <div class="empty-state" style="padding: 24px 10px;">
+                                <i class="fas fa-spinner fa-spin"></i>
+                                <p>Cargando información...</p>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

@@ -8,60 +8,16 @@
     <link rel="icon" type="image/x-icon" href="<?= htmlspecialchars($siteConfig['favicon_url']) ?>">
     <?php endif; ?>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
-    <link rel="stylesheet" href="<?= BASE_URL ?>/css/style.css">
-    <link rel="stylesheet" href="<?= BASE_URL ?>/css/mi_perfil/index.css">
-    <style>
-        :root {
-            --site-primary: <?= htmlspecialchars($siteConfig['primary_color']) ?>;
-            --site-secondary: <?= htmlspecialchars($siteConfig['secondary_color']) ?>;
-        }
-
-        .top-nav .nav-link.active,
-        .hero-section {
-            background: linear-gradient(135deg, var(--site-primary), var(--site-secondary)) !important;
-        }
-
-        .nav-logo-image {
-            width: 34px;
-            height: 34px;
-            object-fit: contain;
-            border-radius: 8px;
-            background: #fff;
-            padding: 2px;
-        }
-    </style>
+    <link rel="stylesheet" href="<?= $basePath ?>/css/style.css">
+    <link rel="stylesheet" href="<?= $basePath ?>/css/mi_perfil/index.css">
+    <link rel="stylesheet" href="<?= $basePath ?>/css/header_theme.css">
+    <link rel="stylesheet" href="<?= $basePath ?>/css/institutional_theme.css">
 </head>
 <body>
-    <!-- Header Estándar -->
-    <nav class="top-nav">
-        <div class="nav-logo">
-            <?php if (!empty($siteConfig['logo_nav_url'])): ?>
-            <img src="<?= htmlspecialchars($siteConfig['logo_nav_url']) ?>" alt="Logo" class="nav-logo-image" onerror="this.style.display='none'">
-            <?php endif; ?>
-            <i class="fas fa-graduation-cap"></i>
-            <span><?= htmlspecialchars($siteConfig['site_name']) ?></span>
-        </div>
-        <ul class="nav-menu">
-            <li><a href="<?= BASE_URL ?>/dashboard/index.php" class="nav-link"><i class="fas fa-home"></i> Inicio</a></li>
-            <?php if (puede('estudiantes', 'ver')): ?>
-            <li><a href="<?= BASE_URL ?>/estudiantes/index.php" class="nav-link"><i class="fas fa-users"></i> Estudiantes</a></li>
-            <?php endif; ?>
-            <?php if (puede('plantillas', 'ver') || esAdmin()): ?>
-            <li><a href="<?= BASE_URL ?>/admin/fuentes.php" class="nav-link"><i class="fas fa-font"></i> Fuentes</a></li>
-            <?php endif; ?>
-            <li><a href="<?= BASE_URL ?>/auth/verify.php" class="nav-link"><i class="fas fa-search"></i> Verificar</a></li>
-            <?php if (puede('usuarios', 'ver')): ?>
-            <li><a href="<?= BASE_URL ?>/usuarios/index.php" class="nav-link"><i class="fas fa-user-cog"></i> Usuarios</a></li>
-            <?php endif; ?>
-            <?php if (esAdmin()): ?>
-            <li><a href="<?= BASE_URL ?>/configuracion/index.php" class="nav-link"><i class="fas fa-sliders-h"></i> Configuracion</a></li>
-            <?php endif; ?>
-            <li class="nav-user">
-                <a href="<?= BASE_URL ?>/perfil/dashboard/index.php" class="nav-link active" title="Mi Perfil"><i class="fas fa-user-circle"></i> <?= htmlspecialchars($usuario['nombre_completo']) ?></a>
-                <a href="<?= BASE_URL ?>/auth/logout.php" class="nav-link logout-link" title="Cerrar Sesión"><i class="fas fa-sign-out-alt"></i></a>
-            </li>
-        </ul>
-    </nav>
+    <?php
+    $activeNav = 'perfil';
+    require __DIR__ . '/../components/top_nav.php';
+    ?>
 
     <div class="container">
         <div class="hero-section">
@@ -271,6 +227,6 @@
             email: '<?= addslashes($usuarioCompleto['email']) ?>'
         };
     </script>
-    <script src="<?= BASE_URL ?>/js/mi_perfil/index.js"></script>
+    <script src="<?= $basePath ?>/js/mi_perfil/index.js"></script>
 </body>
 </html>

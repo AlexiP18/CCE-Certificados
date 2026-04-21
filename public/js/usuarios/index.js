@@ -35,6 +35,18 @@ let roles = [];
 let usuarios = [];
 let usuariosFiltrados = [];
 let modoEdicion = false;
+let autoGenerarUsername = false;
+let usernameRandomSuffix = '';
+let lastGeneratedUsername = '';
+let usernameDuplicadoDetectado = false;
+let cedulaDuplicadaDetectada = false;
+let cedulaValidationTimer = null;
+let cedulaValidationSeq = 0;
+let emailDuplicadoDetectado = false;
+let emailValidationTimer = null;
+let emailValidationSeq = 0;
+let fotoPerfilBaseUrl = '';
+let fotoPerfilObjectUrl = null;
 
 // Paginación
 let currentPage = 1;
@@ -54,9 +66,11 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const LIMITES_CAMPOS = {
     username: 50,
     nombre_completo: 255,
+    fecha_nacimiento: 10,
     email: 255,
     cedula: 10,
     telefono: 10,
+    oficinista_cargo: 255,
     direccion: 500,
     instructor_codigo_postal: 6,
     instructor_maps: 255,
@@ -74,7 +88,12 @@ document.addEventListener('DOMContentLoaded', () => {
     cargarUsuarios();
     configurarCampoCelular();
     configurarCampoCedula();
+    configurarCampoEmail();
+    configurarCampoPassword();
+    configurarCampoFechaNacimiento();
     configurarCampoCodigoPostal();
+    configurarAutoUsername();
+    configurarPreviewFotoPerfil();
 
     // Event listeners para filtros
     document.getElementById('searchInput').addEventListener('input', filtrarUsuarios);
@@ -86,6 +105,159 @@ document.addEventListener('DOMContentLoaded', () => {
         renderizarUsuarios();
     });
 });
+
+function normalizarParaUsername(texto) {
+    return (texto || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-zA-Z0-9]/g, '')
+        .toLowerCase();
+}
+
+function generar4DigitosAleatorios() {
+    return String(Math.floor(1000 + Math.random() * 9000));
+}
+
+function setAdvertenciaUsername(mensaje = '') {
+    const warningEl = document.getElementById('username-warning');
+    if (!warningEl) return;
+
+    const text = (mensaje || '').trim();
+    if (!text) {
+        warningEl.textContent = '';
+        warningEl.style.display = 'none';
+        return;
+    }
+
+    warningEl.textContent = text;
+    warningEl.style.display = 'block';
+}
+
+function usernameYaExisteEnListado(username, excludeUserId = 0) {
+    const user = (username || '').trim().toLowerCase();
+    if (!user) return false;
+    const exclude = Number(excludeUserId || 0);
+
+    return (usuarios || []).some(u => {
+        const sameUser = String((u.username || '')).trim().toLowerCase() === user;
+        if (!sameUser) return false;
+        if (!exclude) return true;
+        return Number(u.id || 0) !== exclude;
+    });
+}
+
+function construirUsernameAutomatico(nombreCompleto, suffix = '') {
+    const partes = (nombreCompleto || '')
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean);
+
+    if (!partes.length) return '';
+
+    const nombreBase = normalizarParaUsername(partes[0]).slice(0, 28);
+    if (!nombreBase) return '';
+
+    let inicialesApellidos = '';
+    if (partes.length >= 3) {
+        const penultimo = normalizarParaUsername(partes[partes.length - 2]);
+        const ultimo = normalizarParaUsername(partes[partes.length - 1]);
+        inicialesApellidos = `${penultimo.charAt(0)}${ultimo.charAt(0)}`;
+    } else if (partes.length === 2) {
+        inicialesApellidos = normalizarParaUsername(partes[1]).slice(0, 2);
+    } else {
+        inicialesApellidos = nombreBase.slice(0, 2);
+    }
+
+    let effectiveSuffix = suffix || usernameRandomSuffix;
+    if (!effectiveSuffix) {
+        effectiveSuffix = generar4DigitosAleatorios();
+    }
+
+    const username = `${nombreBase}${inicialesApellidos}${effectiveSuffix}`;
+    return username.slice(0, LIMITES_CAMPOS.username);
+}
+
+function construirUsernameAutomaticoDisponible(nombreCompleto, excludeUserId = 0) {
+    if (!(nombreCompleto || '').trim()) return '';
+
+    // Intento 1: conservar sufijo actual para no "parpadear" el valor al tipear.
+    const intentoInicial = construirUsernameAutomatico(nombreCompleto, usernameRandomSuffix || '');
+    if (intentoInicial && !usernameYaExisteEnListado(intentoInicial, excludeUserId)) {
+        return intentoInicial;
+    }
+
+    // Reintentos con nuevos sufijos aleatorios.
+    for (let i = 0; i < 120; i++) {
+        const nuevoSuffix = generar4DigitosAleatorios();
+        const candidato = construirUsernameAutomatico(nombreCompleto, nuevoSuffix);
+        if (!candidato) continue;
+        if (!usernameYaExisteEnListado(candidato, excludeUserId)) {
+            usernameRandomSuffix = nuevoSuffix;
+            return candidato;
+        }
+    }
+
+    return '';
+}
+
+function actualizarUsernameAutomatico() {
+    if (modoEdicion || !autoGenerarUsername) return;
+
+    const nombreInput = document.getElementById('nombre_completo');
+    const usuarioIdInput = document.getElementById('usuario-id');
+    const usernameInput = document.getElementById('username');
+    if (!nombreInput || !usernameInput) return;
+
+    const nombreLimpio = (nombreInput.value || '').trim();
+    if (!nombreLimpio) {
+        usernameInput.value = '';
+        lastGeneratedUsername = '';
+        usernameDuplicadoDetectado = false;
+        setAdvertenciaUsername('');
+        return;
+    }
+
+    const excludeUserId = Number(usuarioIdInput?.value || 0);
+    const sugerido = construirUsernameAutomaticoDisponible(nombreLimpio, excludeUserId);
+    if (!sugerido) {
+        usernameInput.value = '';
+        lastGeneratedUsername = '';
+        usernameDuplicadoDetectado = true;
+        setAdvertenciaUsername('');
+        return;
+    }
+
+    usernameInput.value = sugerido;
+    lastGeneratedUsername = sugerido;
+    usernameDuplicadoDetectado = false;
+    setAdvertenciaUsername('');
+}
+
+function reiniciarAutoUsername() {
+    autoGenerarUsername = true;
+    usernameRandomSuffix = generar4DigitosAleatorios();
+    lastGeneratedUsername = '';
+    usernameDuplicadoDetectado = false;
+    setAdvertenciaUsername('');
+}
+
+function configurarAutoUsername() {
+    const nombreInput = document.getElementById('nombre_completo');
+    const usernameInput = document.getElementById('username');
+    if (!nombreInput || !usernameInput) return;
+
+    nombreInput.addEventListener('input', () => {
+        actualizarUsernameAutomatico();
+    });
+
+    usernameInput.addEventListener('input', () => {
+        if (modoEdicion || !autoGenerarUsername) return;
+        const actual = usernameInput.value.trim();
+        if (actual && actual !== lastGeneratedUsername) {
+            autoGenerarUsername = false;
+        }
+    });
+}
 
 function configurarCampoCelular() {
     const telefonoInput = document.getElementById('telefono');
@@ -104,7 +276,354 @@ function configurarCampoCedula() {
     cedulaInput.addEventListener('input', () => {
         const digits = (cedulaInput.value || '').replace(/\D/g, '').slice(0, 10);
         cedulaInput.value = digits;
+        validarCedulaEnSegundoPlano(digits);
     });
+}
+
+function setAdvertenciaEmail(mensaje = '') {
+    const warningEl = document.getElementById('email-warning');
+    if (!warningEl) return;
+
+    const text = (mensaje || '').trim();
+    if (!text) {
+        warningEl.textContent = '';
+        warningEl.style.display = 'none';
+        return;
+    }
+
+    warningEl.textContent = text;
+    warningEl.style.display = 'block';
+}
+
+function setAdvertenciaPassword(mensaje = '') {
+    const warningEl = document.getElementById('password-warning');
+    if (!warningEl) return;
+
+    const text = (mensaje || '').trim();
+    if (!text) {
+        warningEl.textContent = '';
+        warningEl.style.display = 'none';
+        return;
+    }
+
+    warningEl.textContent = text;
+    warningEl.style.display = 'block';
+}
+
+function setEstadoConfirmacionPassword(mensaje = '', tipo = '') {
+    const statusEl = document.getElementById('password-confirm-status');
+    if (!statusEl) return;
+
+    const text = (mensaje || '').trim();
+    statusEl.classList.remove('help-text-warning', 'help-text-success');
+    if (!text) {
+        statusEl.textContent = '';
+        statusEl.style.display = 'none';
+        return;
+    }
+
+    if (tipo === 'warning') {
+        statusEl.classList.add('help-text-warning');
+    } else if (tipo === 'success') {
+        statusEl.classList.add('help-text-success');
+    }
+
+    statusEl.textContent = text;
+    statusEl.style.display = 'block';
+}
+
+function validarPasswordEnSegundoPlano() {
+    const passwordInput = document.getElementById('password');
+    if (!passwordInput) return;
+
+    const password = String(passwordInput.value || '');
+    if (!password) {
+        if (modoEdicion) {
+            setAdvertenciaPassword('');
+        } else {
+            setAdvertenciaPassword('La contraseña es obligatoria.');
+        }
+        return;
+    }
+
+    if (!PASSWORD_REGEX.test(password)) {
+        setAdvertenciaPassword('La contraseña debe tener mínimo 8 caracteres, incluir mayúscula, minúscula, número y símbolo.');
+        return;
+    }
+
+    setAdvertenciaPassword('');
+}
+
+function validarConfirmacionPasswordEnSegundoPlano() {
+    const passwordInput = document.getElementById('password');
+    const confirmInput = document.getElementById('password_confirm');
+    if (!passwordInput || !confirmInput) return;
+
+    const password = String(passwordInput.value || '');
+    const confirm = String(confirmInput.value || '');
+
+    if (!confirm) {
+        setEstadoConfirmacionPassword('');
+        return;
+    }
+
+    if (!password) {
+        setEstadoConfirmacionPassword('Primero ingresa la contraseña.', 'warning');
+        return;
+    }
+
+    if (password === confirm) {
+        setEstadoConfirmacionPassword('Las contraseñas coinciden.', 'success');
+        return;
+    }
+
+    setEstadoConfirmacionPassword('Las contraseñas no coinciden.', 'warning');
+}
+
+function configurarCampoPassword() {
+    const passwordInput = document.getElementById('password');
+    if (!passwordInput) return;
+
+    passwordInput.addEventListener('input', () => {
+        validarPasswordEnSegundoPlano();
+        validarConfirmacionPasswordEnSegundoPlano();
+    });
+
+    const confirmInput = document.getElementById('password_confirm');
+    if (confirmInput) {
+        confirmInput.addEventListener('input', () => {
+            validarConfirmacionPasswordEnSegundoPlano();
+        });
+    }
+}
+
+async function verificarEmailRegistrado(email) {
+    const idActual = Number(document.getElementById('usuario-id')?.value || 0);
+    const params = new URLSearchParams({
+        action: 'verificar_email_registro',
+        email
+    });
+    if (idActual > 0) {
+        params.set('exclude_user_id', String(idActual));
+    }
+
+    const response = await fetch(`../api/usuarios/index.php?${params.toString()}`);
+    const raw = await response.text();
+    let data = null;
+
+    try {
+        data = raw ? JSON.parse(raw) : null;
+    } catch (_) {
+        data = null;
+    }
+
+    if (!response.ok) {
+        const msg = data?.message || `Error HTTP ${response.status} al validar email`;
+        throw new Error(msg);
+    }
+
+    if (!data) {
+        throw new Error('La API de validación de email devolvió una respuesta vacía');
+    }
+
+    return data;
+}
+
+function validarEmailEnSegundoPlano(email) {
+    if (emailValidationTimer) {
+        clearTimeout(emailValidationTimer);
+    }
+
+    const value = (email || '').trim();
+    if (!value) {
+        emailDuplicadoDetectado = false;
+        setAdvertenciaEmail('');
+        return;
+    }
+
+    if (!EMAIL_REGEX.test(value)) {
+        emailDuplicadoDetectado = false;
+        setAdvertenciaEmail('');
+        return;
+    }
+
+    const currentSeq = ++emailValidationSeq;
+    emailValidationTimer = setTimeout(async () => {
+        try {
+            const data = await verificarEmailRegistrado(value);
+            if (currentSeq !== emailValidationSeq) return;
+
+            if (data?.success && data.disponible === false) {
+                emailDuplicadoDetectado = true;
+                setAdvertenciaEmail(data.message || 'El email ya está registrado.');
+            } else {
+                emailDuplicadoDetectado = false;
+                setAdvertenciaEmail('');
+            }
+        } catch (error) {
+            if (currentSeq !== emailValidationSeq) return;
+            emailDuplicadoDetectado = false;
+            setAdvertenciaEmail('');
+        }
+    }, 250);
+}
+
+function configurarCampoEmail() {
+    const emailInput = document.getElementById('email');
+    if (!emailInput) return;
+
+    emailInput.addEventListener('input', () => {
+        validarEmailEnSegundoPlano((emailInput.value || '').trim());
+    });
+}
+
+function setAdvertenciaFechaNacimiento(mensaje = '') {
+    const warningEl = document.getElementById('fecha-nacimiento-warning');
+    if (!warningEl) return;
+
+    const text = (mensaje || '').trim();
+    if (!text) {
+        warningEl.textContent = '';
+        warningEl.style.display = 'none';
+        return;
+    }
+
+    warningEl.textContent = text;
+    warningEl.style.display = 'block';
+}
+
+function obtenerMaxFechaMayorEdad(edadMinima = 18) {
+    const today = new Date();
+    const year = today.getFullYear() - edadMinima;
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+function calcularEdad(fechaIso) {
+    if (!fechaIso || !/^\d{4}-\d{2}-\d{2}$/.test(fechaIso)) return -1;
+    const [year, month, day] = fechaIso.split('-').map(Number);
+    const nacimiento = new Date(year, month - 1, day);
+    if (Number.isNaN(nacimiento.getTime())) return -1;
+
+    const hoy = new Date();
+    let edad = hoy.getFullYear() - nacimiento.getFullYear();
+    const mes = hoy.getMonth() - nacimiento.getMonth();
+    if (mes < 0 || (mes === 0 && hoy.getDate() < nacimiento.getDate())) {
+        edad--;
+    }
+    return edad;
+}
+
+function esFechaNacimientoValidaMayorEdad(fechaIso, edadMinima = 18) {
+    if (!fechaIso || !/^\d{4}-\d{2}-\d{2}$/.test(fechaIso)) return false;
+    const edad = calcularEdad(fechaIso);
+    return edad >= edadMinima;
+}
+
+function configurarCampoFechaNacimiento() {
+    const fechaInput = document.getElementById('fecha_nacimiento');
+    if (!fechaInput) return;
+
+    fechaInput.max = obtenerMaxFechaMayorEdad(18);
+    fechaInput.addEventListener('change', () => {
+        const value = (fechaInput.value || '').trim();
+        if (!value) {
+            setAdvertenciaFechaNacimiento('');
+            return;
+        }
+
+        if (!esFechaNacimientoValidaMayorEdad(value, 18)) {
+            setAdvertenciaFechaNacimiento('Solo se permiten fechas de personas mayores de 18 años.');
+            return;
+        }
+        setAdvertenciaFechaNacimiento('');
+    });
+}
+
+function setAdvertenciaCedula(mensaje = '') {
+    const warningEl = document.getElementById('cedula-warning');
+    if (!warningEl) return;
+
+    const text = (mensaje || '').trim();
+    if (!text) {
+        warningEl.textContent = '';
+        warningEl.style.display = 'none';
+        return;
+    }
+
+    warningEl.textContent = text;
+    warningEl.style.display = 'block';
+}
+
+async function verificarCedulaRegistrada(cedula) {
+    const idActual = Number(document.getElementById('usuario-id')?.value || 0);
+    const params = new URLSearchParams({
+        action: 'verificar_cedula_registro',
+        cedula
+    });
+    if (idActual > 0) {
+        params.set('exclude_user_id', String(idActual));
+    }
+
+    const response = await fetch(`../api/usuarios/index.php?${params.toString()}`);
+    const raw = await response.text();
+    let data = null;
+
+    try {
+        data = raw ? JSON.parse(raw) : null;
+    } catch (_) {
+        data = null;
+    }
+
+    if (!response.ok) {
+        const msg = data?.message || `Error HTTP ${response.status} al validar cédula`;
+        throw new Error(msg);
+    }
+
+    if (!data) {
+        throw new Error('La API de validación de cédula devolvió una respuesta vacía');
+    }
+
+    return data;
+}
+
+function validarCedulaEnSegundoPlano(cedula) {
+    if (cedulaValidationTimer) {
+        clearTimeout(cedulaValidationTimer);
+    }
+
+    if (!cedula) {
+        cedulaDuplicadaDetectada = false;
+        setAdvertenciaCedula('');
+        return;
+    }
+
+    if (cedula.length < 10) {
+        cedulaDuplicadaDetectada = false;
+        setAdvertenciaCedula('');
+        return;
+    }
+
+    const currentSeq = ++cedulaValidationSeq;
+    cedulaValidationTimer = setTimeout(async () => {
+        try {
+            const data = await verificarCedulaRegistrada(cedula);
+            if (currentSeq !== cedulaValidationSeq) return;
+
+            if (data?.success && data.disponible === false) {
+                cedulaDuplicadaDetectada = true;
+                setAdvertenciaCedula(data.message || 'La cédula ya está registrada.');
+            } else {
+                cedulaDuplicadaDetectada = false;
+                setAdvertenciaCedula('');
+            }
+        } catch (error) {
+            if (currentSeq !== cedulaValidationSeq) return;
+            cedulaDuplicadaDetectada = false;
+            setAdvertenciaCedula('');
+        }
+    }, 250);
 }
 
 function configurarCampoCodigoPostal() {
@@ -115,6 +634,78 @@ function configurarCampoCodigoPostal() {
         const digits = (codigoPostalInput.value || '').replace(/\D/g, '').slice(0, 6);
         codigoPostalInput.value = digits;
     });
+}
+
+function liberarObjectUrlFotoPerfil() {
+    if (fotoPerfilObjectUrl) {
+        URL.revokeObjectURL(fotoPerfilObjectUrl);
+        fotoPerfilObjectUrl = null;
+    }
+}
+
+function renderPreviewFotoPerfil(imageUrl, displayName = '') {
+    const previewImg = document.getElementById('foto-preview-img');
+    const previewPlaceholder = document.getElementById('foto-preview-placeholder');
+    const previewName = document.getElementById('foto-preview-name');
+    const clearBtn = document.getElementById('foto-file-clear');
+    const fotoInput = document.getElementById('foto_file');
+
+    if (!previewImg || !previewPlaceholder || !previewName) return;
+
+    const hasImage = Boolean(imageUrl);
+    previewImg.style.display = hasImage ? 'block' : 'none';
+    previewPlaceholder.style.display = hasImage ? 'none' : 'flex';
+
+    if (hasImage) {
+        previewImg.src = imageUrl;
+    } else {
+        previewImg.removeAttribute('src');
+    }
+
+    previewName.textContent = displayName || (hasImage ? 'Imagen seleccionada' : 'Ningún archivo seleccionado');
+
+    if (clearBtn) {
+        const hasSelectedFile = Boolean(fotoInput && fotoInput.files && fotoInput.files.length > 0);
+        clearBtn.style.display = hasSelectedFile ? 'inline-flex' : 'none';
+    }
+}
+
+function limpiarFotoPerfilSeleccionada() {
+    const fotoInput = document.getElementById('foto_file');
+    if (fotoInput) {
+        fotoInput.value = '';
+    }
+    liberarObjectUrlFotoPerfil();
+    renderPreviewFotoPerfil(fotoPerfilBaseUrl, fotoPerfilBaseUrl ? 'Foto actual del usuario' : 'Ningún archivo seleccionado');
+}
+
+function actualizarPreviewFotoDesdeArchivo() {
+    const fotoInput = document.getElementById('foto_file');
+    if (!fotoInput) return;
+
+    const file = fotoInput.files && fotoInput.files[0] ? fotoInput.files[0] : null;
+    if (!file) {
+        limpiarFotoPerfilSeleccionada();
+        return;
+    }
+
+    if (!(file.type || '').startsWith('image/')) {
+        mostrarNotificacion('El archivo seleccionado no es una imagen válida', 'warning');
+        limpiarFotoPerfilSeleccionada();
+        return;
+    }
+
+    liberarObjectUrlFotoPerfil();
+    fotoPerfilObjectUrl = URL.createObjectURL(file);
+    renderPreviewFotoPerfil(fotoPerfilObjectUrl, file.name);
+}
+
+function configurarPreviewFotoPerfil() {
+    const fotoInput = document.getElementById('foto_file');
+    if (!fotoInput) return;
+
+    fotoInput.addEventListener('change', actualizarPreviewFotoDesdeArchivo);
+    renderPreviewFotoPerfil('', 'Ningún archivo seleccionado');
 }
 
 function esCedulaEcuatorianaValida(cedula) {
@@ -509,9 +1100,30 @@ function toggleInstructorFields(rolNombre) {
     block.style.display = rolNombre === 'instructor' ? 'block' : 'none';
 }
 
+function toggleOficinistaFields(rolNombre) {
+    const block = document.getElementById('oficinista-fields');
+    const cargoInput = document.getElementById('oficinista_cargo');
+    if (!block || !cargoInput) return;
+
+    const esOficinista = rolNombre === 'oficinista';
+    block.style.display = esOficinista ? 'block' : 'none';
+    cargoInput.required = esOficinista;
+
+    if (!esOficinista) {
+        cargoInput.value = '';
+    }
+}
+
 // Abrir modal nuevo usuario
 function abrirModalNuevo() {
     modoEdicion = false;
+    reiniciarAutoUsername();
+    cedulaDuplicadaDetectada = false;
+    setAdvertenciaCedula('');
+    emailDuplicadoDetectado = false;
+    setAdvertenciaEmail('');
+    setAdvertenciaPassword('');
+    setEstadoConfirmacionPassword('');
     document.getElementById('modal-titulo-text').textContent = 'Nuevo Usuario';
     document.querySelector('.modal-title i').className = 'fas fa-user-plus';
     document.getElementById('usuario-id').value = '';
@@ -526,8 +1138,14 @@ function abrirModalNuevo() {
     document.getElementById('help-password-confirm').textContent = 'Debe coincidir con la contraseña';
     document.getElementById('superadmin-group').style.display = 'none';
     document.getElementById('admin-limit-warning').style.display = 'none';
+    document.getElementById('fecha_nacimiento').max = obtenerMaxFechaMayorEdad(18);
+    setAdvertenciaFechaNacimiento('');
     toggleInstructorFields('');
+    toggleOficinistaFields('');
     limpiarCamposInstructor();
+    fotoPerfilBaseUrl = '';
+    limpiarFotoPerfilSeleccionada();
+    actualizarUsernameAutomatico();
 
     // Refrescar opciones de rol
     cargarRoles();
@@ -556,6 +1174,7 @@ function onRolChange() {
     }
 
     toggleInstructorFields(rolNombre);
+    toggleOficinistaFields(rolNombre);
 }
 
 // Editar usuario
@@ -566,25 +1185,39 @@ async function editarUsuario(id) {
 
         if (data.success) {
             modoEdicion = true;
+            autoGenerarUsername = false;
             const u = data.usuario;
 
             document.getElementById('modal-titulo-text').textContent = 'Editar Usuario';
             document.querySelector('.modal-title i').className = 'fas fa-user-edit';
             document.getElementById('usuario-id').value = u.id;
             document.getElementById('username').value = u.username;
+            usernameDuplicadoDetectado = false;
+            setAdvertenciaUsername('');
             document.getElementById('nombre_completo').value = u.nombre_completo;
+            document.getElementById('fecha_nacimiento').value = u.fecha_nacimiento || '';
+            document.getElementById('fecha_nacimiento').max = obtenerMaxFechaMayorEdad(18);
+            setAdvertenciaFechaNacimiento('');
             document.getElementById('email').value = u.email;
+            emailDuplicadoDetectado = false;
+            setAdvertenciaEmail('');
+            validarEmailEnSegundoPlano((u.email || '').trim());
             document.getElementById('rol_id').value = u.rol_id;
             document.getElementById('activo').checked = u.activo == 1;
             const metaDireccion = parseDireccionInstructor(u.direccion || '');
             document.getElementById('cedula').value = u.cedula || '';
+            cedulaDuplicadaDetectada = false;
+            setAdvertenciaCedula('');
+            validarCedulaEnSegundoPlano((u.cedula || '').trim());
             document.getElementById('telefono').value = u.telefono || '';
             document.getElementById('direccion').value = metaDireccion.direccionBase || '';
             document.getElementById('es_superadmin').checked = u.es_superadmin == 1;
             document.getElementById('password').value = '';
             document.getElementById('password').required = false;
+            setAdvertenciaPassword('');
             document.getElementById('password_confirm').value = '';
             document.getElementById('password_confirm').required = false;
+            setEstadoConfirmacionPassword('');
             document.getElementById('label-password').innerHTML = '<i class="fas fa-lock"></i> Nueva Contraseña (opcional)';
             document.getElementById('help-password').textContent = 'Si cambias la contraseña, usa mínimo 8 caracteres con mayúscula, minúscula, número y símbolo';
             document.getElementById('label-password-confirm').innerHTML = '<i class="fas fa-lock"></i> Confirmar Nueva Contraseña';
@@ -592,8 +1225,12 @@ async function editarUsuario(id) {
 
             document.getElementById('instructor_codigo_postal').value = metaDireccion.codigoPostal || '';
             document.getElementById('instructor_maps').value = metaDireccion.mapsUrl || '';
+            fotoPerfilBaseUrl = construirFotoUsuarioUrl(u.foto || '');
+            limpiarFotoPerfilSeleccionada();
 
             toggleInstructorFields(u.rol_nombre || '');
+            toggleOficinistaFields(u.rol_nombre || '');
+            document.getElementById('oficinista_cargo').value = u.cargo || '';
 
             if (u.rol_nombre === 'instructor') {
                 const p = u.perfil_instructor || {};
@@ -641,6 +1278,7 @@ async function guardarUsuario(event) {
     event.preventDefault();
 
     const id = document.getElementById('usuario-id').value;
+    const idNumerico = Number(id || 0);
     const rolNombre = obtenerRolNombreSeleccionado();
     const password = document.getElementById('password').value;
     const passwordConfirm = document.getElementById('password_confirm').value;
@@ -649,9 +1287,12 @@ async function guardarUsuario(event) {
     const telefono = document.getElementById('telefono').value.trim();
     const mapsUrl = document.getElementById('instructor_maps').value.trim();
 
-    const username = document.getElementById('username').value.trim();
+    const usernameInput = document.getElementById('username');
+    let username = usernameInput.value.trim();
     const nombreCompleto = document.getElementById('nombre_completo').value.trim();
+    const fechaNacimiento = document.getElementById('fecha_nacimiento').value.trim();
     const direccion = document.getElementById('direccion').value.trim();
+    let cargoOficinista = document.getElementById('oficinista_cargo').value.trim();
     const codigoPostal = document.getElementById('instructor_codigo_postal').value.trim();
     const especialidad = document.getElementById('instructor_especialidad').value.trim();
     const titulo = document.getElementById('instructor_titulo').value.trim();
@@ -659,33 +1300,136 @@ async function guardarUsuario(event) {
     const certificaciones = document.getElementById('instructor_certificaciones').value.trim();
     const biografia = document.getElementById('instructor_biografia').value.trim();
 
+    if (!nombreCompleto) {
+        mostrarNotificacion('El nombre completo es obligatorio', 'error');
+        return;
+    }
+
+    if (!cedula) {
+        mostrarNotificacion('La cédula/DNI es obligatoria', 'error');
+        return;
+    }
+
+    if (!email) {
+        mostrarNotificacion('El email es obligatorio', 'error');
+        return;
+    }
+
+    if (!telefono) {
+        mostrarNotificacion('El celular es obligatorio', 'error');
+        return;
+    }
+
+    if (!fechaNacimiento) {
+        setAdvertenciaFechaNacimiento('La fecha de nacimiento es obligatoria.');
+        mostrarNotificacion('La fecha de nacimiento es obligatoria', 'error');
+        return;
+    }
+
+    if (!esFechaNacimientoValidaMayorEdad(fechaNacimiento, 18)) {
+        setAdvertenciaFechaNacimiento('Solo se permiten fechas de personas mayores de 18 años.');
+        mostrarNotificacion('La fecha de nacimiento debe corresponder a una persona mayor de 18 años', 'error');
+        return;
+    }
+    setAdvertenciaFechaNacimiento('');
+
+    if (rolNombre === 'oficinista' && !cargoOficinista) {
+        mostrarNotificacion('El cargo es obligatorio para usuarios con rol Oficinista', 'error');
+        return;
+    }
+
+    if (rolNombre !== 'oficinista') {
+        cargoOficinista = '';
+    }
+
+    if (!username || usernameDuplicadoDetectado || usernameYaExisteEnListado(username, idNumerico)) {
+        const regenerado = construirUsernameAutomaticoDisponible(nombreCompleto, idNumerico);
+        if (regenerado) {
+            username = regenerado;
+            usernameInput.value = regenerado;
+            lastGeneratedUsername = regenerado;
+            usernameDuplicadoDetectado = false;
+            setAdvertenciaUsername('');
+        } else {
+            usernameDuplicadoDetectado = true;
+            mostrarNotificacion('No se pudo generar un nombre de usuario único. Cambia el nombre completo e intenta nuevamente.', 'error');
+            return;
+        }
+    }
+    setAdvertenciaUsername('');
+
     if (!id && !password) {
+        setAdvertenciaPassword('La contraseña es obligatoria.');
         mostrarNotificacion('La contraseña es obligatoria para crear un usuario', 'error');
         return;
     }
 
     if (!EMAIL_REGEX.test(email)) {
+        emailDuplicadoDetectado = false;
+        setAdvertenciaEmail('');
         mostrarNotificacion('El email ingresado no es válido', 'error');
         return;
     }
 
-    if (cedula && !esCedulaEcuatorianaValida(cedula)) {
+    try {
+        const validacionEmail = await verificarEmailRegistrado(email);
+        if (validacionEmail?.success && validacionEmail.disponible === false) {
+            emailDuplicadoDetectado = true;
+            setAdvertenciaEmail(validacionEmail.message || 'El email ya está registrado.');
+        } else {
+            emailDuplicadoDetectado = false;
+            setAdvertenciaEmail('');
+        }
+    } catch (error) {
+        mostrarNotificacion('No se pudo validar el email. Intenta nuevamente.', 'error');
+        return;
+    }
+
+    if (emailDuplicadoDetectado) {
+        mostrarNotificacion('El email ingresado ya está registrado en el sistema', 'error');
+        return;
+    }
+
+    if (!esCedulaEcuatorianaValida(cedula)) {
         mostrarNotificacion('La cédula debe tener 10 dígitos y ser una cédula ecuatoriana válida', 'error');
+        return;
+    }
+
+    try {
+        const validacionCedula = await verificarCedulaRegistrada(cedula);
+        if (validacionCedula?.success && validacionCedula.disponible === false) {
+            cedulaDuplicadaDetectada = true;
+            setAdvertenciaCedula(validacionCedula.message || 'La cédula ya está registrada.');
+        } else {
+            cedulaDuplicadaDetectada = false;
+            setAdvertenciaCedula('');
+        }
+    } catch (error) {
+        mostrarNotificacion('No se pudo validar la cédula. Intenta nuevamente.', 'error');
+        return;
+    }
+
+    if (cedulaDuplicadaDetectada) {
+        mostrarNotificacion('La cédula ingresada ya está registrada en el sistema', 'error');
         return;
     }
 
     if (password || passwordConfirm) {
         if (!PASSWORD_REGEX.test(password)) {
+            setAdvertenciaPassword('La contraseña debe tener mínimo 8 caracteres, incluir mayúscula, minúscula, número y símbolo.');
             mostrarNotificacion('La contraseña debe tener mínimo 8 caracteres, incluir mayúscula, minúscula, número y símbolo', 'error');
             return;
         }
+        setAdvertenciaPassword('');
         if (password !== passwordConfirm) {
+            setEstadoConfirmacionPassword('Las contraseñas no coinciden.', 'warning');
             mostrarNotificacion('La confirmación de contraseña no coincide', 'error');
             return;
         }
+        setEstadoConfirmacionPassword('Las contraseñas coinciden.', 'success');
     }
 
-    if (telefono && !/^09\d{8}$/.test(telefono)) {
+    if (!/^09\d{8}$/.test(telefono)) {
         mostrarNotificacion('El celular debe tener formato ecuatoriano: 10 dígitos y comenzar con 09', 'error');
         return;
     }
@@ -702,9 +1446,11 @@ async function guardarUsuario(event) {
 
     if (excedeLongitud(username, LIMITES_CAMPOS.username) ||
         excedeLongitud(nombreCompleto, LIMITES_CAMPOS.nombre_completo) ||
+        excedeLongitud(fechaNacimiento, LIMITES_CAMPOS.fecha_nacimiento) ||
         excedeLongitud(email, LIMITES_CAMPOS.email) ||
         excedeLongitud(cedula, LIMITES_CAMPOS.cedula) ||
         excedeLongitud(telefono, LIMITES_CAMPOS.telefono) ||
+        excedeLongitud(cargoOficinista, LIMITES_CAMPOS.oficinista_cargo) ||
         excedeLongitud(direccion, LIMITES_CAMPOS.direccion) ||
         excedeLongitud(codigoPostal, LIMITES_CAMPOS.instructor_codigo_postal) ||
         excedeLongitud(mapsUrl, LIMITES_CAMPOS.instructor_maps) ||
@@ -730,12 +1476,14 @@ async function guardarUsuario(event) {
     if (id) formData.append('id', id);
     formData.append('username', username);
     formData.append('nombre_completo', nombreCompleto);
+    formData.append('fecha_nacimiento', fechaNacimiento);
     formData.append('email', email);
     formData.append('rol_id', document.getElementById('rol_id').value);
     formData.append('activo', document.getElementById('activo').checked ? '1' : '0');
     formData.append('password', password);
     formData.append('cedula', cedula);
     formData.append('telefono', telefono);
+    formData.append('cargo', cargoOficinista);
     formData.append('direccion', direccionConMeta);
     formData.append('es_superadmin', document.getElementById('es_superadmin').checked ? '1' : '0');
 
@@ -835,6 +1583,7 @@ async function eliminarUsuario(id, username) {
 // Cerrar modal
 function cerrarModal() {
     document.getElementById('modal-usuario').classList.remove('active');
+    liberarObjectUrlFotoPerfil();
 }
 
 // Toggle password visibility

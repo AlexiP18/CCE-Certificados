@@ -1473,34 +1473,64 @@ try {
         }
     }
     
-    // Guardar vista previa temporal
+    // Guardar vista previa temporal (si hay permisos) o devolver data URL como fallback.
     $previewFilename = 'preview_' . $tipo . '_' . $id . '_' . time() . '.png';
-    // Usar ruta (ROOT/uploads)
-    $uploadsDir = dirname(dirname(dirname(__DIR__))) . '/uploads/';
-    if (!is_dir($uploadsDir)) {
-        mkdir($uploadsDir, 0755, true);
-    }
-    $previewPath = $uploadsDir . $previewFilename;
-    $img->save($previewPath, 90);
-    
-    // Limpiar vistas previas antiguas
-    foreach (glob($uploadsDir . 'preview_*.png') as $file) {
-        if (filemtime($file) < time() - 600) {
-            @unlink($file);
+    $projectFolder = basename($projectRoot);
+    $previewUrl = null;
+    $previewDataUrl = null;
+
+    $uploadCandidates = [
+        rtrim($projectRoot, '/') . '/uploads',
+        rtrim($publicRoot, '/') . '/uploads'
+    ];
+
+    foreach ($uploadCandidates as $candidateDir) {
+        if (!is_dir($candidateDir)) {
+            @mkdir($candidateDir, 0775, true);
+        }
+        if (!is_dir($candidateDir) || !is_writable($candidateDir)) {
+            continue;
+        }
+
+        $previewPath = rtrim($candidateDir, '/') . '/' . $previewFilename;
+        try {
+            $img->save($previewPath, 90);
+            if (strpos($candidateDir, rtrim($projectRoot, '/') . '/uploads') === 0) {
+                $previewUrl = '/' . $projectFolder . '/uploads/' . $previewFilename;
+            } else {
+                $previewUrl = '/' . $projectFolder . '/public/uploads/' . $previewFilename;
+            }
+            break;
+        } catch (Exception $e) {
+            error_log('API Preview - No se pudo guardar preview en ' . $candidateDir . ': ' . $e->getMessage());
         }
     }
-    
+
+    if (!$previewUrl) {
+        // Fallback robusto para entornos sin permisos de escritura en uploads.
+        $previewDataUrl = 'data:image/png;base64,' . base64_encode((string)$img->encode('png', 90));
+    } else {
+        // Limpiar vistas previas antiguas en los directorios candidatos.
+        foreach ($uploadCandidates as $candidateDir) {
+            foreach (glob(rtrim($candidateDir, '/') . '/preview_*.png') as $file) {
+                if (filemtime($file) < time() - 600) {
+                    @unlink($file);
+                }
+            }
+        }
+    }
 
     $response = [
         'success' => true,
-        'preview_url' => '/CCE-Certificados/uploads/' . $previewFilename,
+        'preview_url' => $previewUrl,
+        'preview_data_url' => $previewDataUrl,
         'config' => $certConfig
     ];
     
     header('Content-Type: application/json');
     echo json_encode($response);
     
-} catch (Exception $e) {
+} catch (\Throwable $e) {
     http_response_code(400);
     echo json_encode([
         'success' => false,

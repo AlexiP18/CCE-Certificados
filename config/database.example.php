@@ -8,8 +8,8 @@
 $config = [
     'host' => 'localhost',
     'database' => 'cce_certificados',
-    'username' => 'root',
-    'password' => '',
+    'username' => 'usuario_dev',
+    'password' => 'Admin_Dev_1807',
     'charset' => 'utf8mb4'
 ];
 
@@ -36,7 +36,7 @@ try {
 }
 
 // URL base de la aplicación
-define('BASE_URL', 'http://localhost/cce-certificados/public');
+define('BASE_URL', 'http://localhost/CCE-Certificados/public');
 // Para producción: define('BASE_URL', 'https://tudominio.com');
 
 return $pdo;

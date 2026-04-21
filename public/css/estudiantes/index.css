@@ -2335,15 +2335,32 @@ body {
     color: #166534;
 }
 
+.idx-info-main-layout {
+    display: grid;
+    grid-template-columns: minmax(210px, 260px) minmax(0, 1fr);
+    align-items: stretch;
+    flex: 1;
+    min-height: 0;
+    background: #fff;
+}
+
+.idx-info-main-content {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
 .idx-info-group-filters {
     display: flex;
-    align-items: center;
+    flex-direction: column;
+    align-items: stretch;
     gap: 8px;
-    padding: 8px 16px;
-    border-bottom: 1px solid #dbe3ec;
+    padding: 10px;
+    border-right: 1px solid #dbe3ec;
+    border-bottom: none;
     background: #f1f5f9;
-    overflow-x: auto;
-    overflow-y: hidden;
+    overflow-y: auto;
+    overflow-x: hidden;
 }
 
 .idx-info-group-chip {
@@ -2351,15 +2368,30 @@ body {
     background: #fff;
     color: #475569;
     border-radius: 999px;
-    padding: 7px 12px;
-    font-size: 12px;
+    padding: 10px 14px;
+    font-size: 14px;
     font-weight: 700;
     white-space: nowrap;
     cursor: pointer;
     display: inline-flex;
     align-items: center;
+    justify-content: flex-start;
     gap: 7px;
     transition: all .16s ease;
+    width: 100%;
+}
+
+.idx-info-group-chip > span:first-child {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    font-size: 17px;
+    line-height: 1;
+}
+
+.idx-info-group-chip > span:first-child i {
+    font-size: 15px;
 }
 
 .idx-info-group-chip:hover {
@@ -2376,15 +2408,15 @@ body {
 
 .idx-info-tabs {
     display: flex;
-    align-items: center;
-    gap: 8px;
+    align-items: flex-end;
+    gap: 6px;
     padding: 0 16px;
-    border-bottom: 1px solid #d1d5db;
-    background: #eceff3;
+    border-bottom: none;
+    background: transparent;
     overflow-x: auto;
     overflow-y: hidden;
-    min-height: 56px;
-    max-height: 56px;
+    min-height: 50px;
+    max-height: 50px;
 }
 
 .idx-info-tab {
@@ -2392,14 +2424,14 @@ body {
     border-bottom: none;
     background: #f3f4f6;
     color: #4b5563;
-    border-radius: 10px 10px 0 0;
-    padding: 11px 16px;
-    font-size: 14px;
+    border-radius: 9px 9px 0 0;
+    padding: 8px 12px;
+    font-size: 13px;
     font-weight: 700;
     cursor: pointer;
     display: inline-flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     white-space: nowrap;
     flex: 0 0 auto;
     position: relative;
@@ -2417,17 +2449,17 @@ body {
 }
 
 .idx-info-tab-count {
-    min-width: 18px;
-    height: 18px;
+    min-width: 16px;
+    height: 16px;
     border-radius: 999px;
     background: rgba(100, 116, 139, 0.18);
     color: #475569;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    font-size: 10px;
+    font-size: 9px;
     font-weight: 700;
-    padding: 0 6px;
+    padding: 0 5px;
 }
 
 .idx-info-tab.active .idx-info-tab-count {
@@ -2851,14 +2883,36 @@ body {
         align-items: flex-start;
     }
 
+    .idx-info-main-layout {
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+    }
+
+    .idx-info-main-content {
+        min-height: 0;
+    }
+
     .idx-info-group-filters {
+        flex-direction: row;
+        align-items: center;
+        padding: 8px 12px;
+        border-right: none;
+        border-bottom: 1px solid #dbe3ec;
+        overflow-x: auto;
+        overflow-y: hidden;
+    }
+
+    .idx-info-group-chip {
+        width: auto;
+        font-size: 13px;
         padding: 8px 12px;
     }
 
     .idx-info-tabs {
         padding: 0 12px;
-        min-height: 52px;
-        max-height: 52px;
+        min-height: 46px;
+        max-height: 46px;
     }
 
     .idx-info-slides {

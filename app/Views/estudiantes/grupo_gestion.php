@@ -241,7 +241,7 @@
                 <iframe data-src="<?= $basePath ?>/categorias/gestion.php?categoria_id=<?= $cat['id'] ?>&periodo_id=<?= $defaultPeriodo ?>&embedded=true&solo_aprobados=1" 
                         id="iframe-cat-<?= $cat['id'] ?>" 
                         style="width: 100%; height: calc(100vh - 150px); border: none; display: none; background: transparent; overflow-y: scroll;" 
-                        onload="document.getElementById('loader-cat-<?= $cat['id'] ?>').style.display='none'; this.style.display='block';">
+                        onload="manejarCargaIframeCategoria(<?= $cat['id'] ?>, this)">
                 </iframe>
             </div>
             <?php endforeach; ?>

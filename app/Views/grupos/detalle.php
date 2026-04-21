@@ -49,30 +49,18 @@ if (!function_exists('generarNombrePeriodo')) {
 </head>
 <body>
     <div class="container">
-        <!-- Breadcrumb -->
-        <div class="breadcrumb-nav" style="display: flex; justify-content: space-between; align-items: center; padding: 5px 0;">
-            <a href="<?= BASE_URL ?>/dashboard/index.php" class="breadcrumb-link">
-                <i class="fas fa-arrow-left"></i> Volver al inicio
-            </a>
-            
-            <!-- User Profile Badge -->
-            <div class="user-profile-badge">
-                <div class="user-avatar">
-                    <?= strtoupper(substr($usuario['nombre_completo'], 0, 1)) ?>
-                </div>
-                <div class="user-info">
-                    <span class="user-name"><?= htmlspecialchars($usuario['nombre_completo']) ?></span>
-                </div>
-                <a href="auth/logout.php" class="btn-logout" title="Cerrar Sesión">
-                    <i class="fas fa-sign-out-alt"></i>
-                </a>
-            </div>
-        </div>
-        
         <!-- Header del Grupo -->
         <div class="grupo-header" style="background: <?= $grupo['color'] ?>;">
             <div class="grupo-header-content">
                 <div class="grupo-header-left">
+                    <div class="grupo-quick-links" aria-label="Accesos rápidos del grupo">
+                        <a href="<?= BASE_URL ?>/dashboard/index.php" class="grupo-quick-link" title="Volver al inicio">
+                            <i class="fas fa-home"></i>
+                        </a>
+                        <a href="<?= BASE_URL ?>/perfil/index.php" class="grupo-quick-link" title="<?= htmlspecialchars($usuario['nombre_completo']) ?>">
+                            <i class="fas fa-user"></i>
+                        </a>
+                    </div>
                     <div class="grupo-icon-large"><?= htmlspecialchars($grupo['icono']) ?></div>
                     <div class="grupo-info">
                         <h1><?= htmlspecialchars($grupo['nombre']) ?></h1>
@@ -427,10 +415,13 @@ if (!function_exists('generarNombrePeriodo')) {
             </div>
             
             <div style="padding: 30px; text-align: center; background: white;">
-                <div style="background: #fff5f5; border-left: 4px solid #e74c3c; padding: 15px; text-align: left; border-radius: 4px; margin-bottom: 20px;">
-                    <p style="color: #c0392b; font-size: 14px; margin: 0; line-height: 1.5;">
-                        <strong style="display: block; margin-bottom: 5px;"><i class="fas fa-info-circle"></i> Atención:</strong>
-                        Se eliminarán todos los <strong>períodos</strong>, <strong>categorías</strong> y <strong>certificados</strong> asociados a este grupo.
+                <div style="background: #fff9e9; border: 1px solid #f5d998; padding: 14px 16px; text-align: left; border-radius: 10px; margin-bottom: 20px; display: flex; align-items: flex-start; gap: 10px;">
+                    <div style="width: 28px; height: 28px; border-radius: 50%; background: #fff3cc; color: #b88300; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px;">
+                        <i class="fas fa-shield-alt"></i>
+                    </div>
+                    <p style="color: #7a5a00; font-size: 13px; margin: 0; line-height: 1.55;">
+                        <strong style="display: block; margin-bottom: 4px;">Atención:</strong>
+                        Se eliminarán los <strong>períodos</strong> y <strong>categorías</strong> del grupo. Si existen estudiantes en categorías o certificados ya generados, el sistema <strong>no permitirá</strong> eliminarlo.
                     </p>
                 </div>
                 
@@ -779,6 +770,10 @@ if (!function_exists('generarNombrePeriodo')) {
         const ANIO_ACTUAL = <?= $anio_seleccionado ?>;
         const CURRENT_DATE = '<?= date('Y-m-d') ?>';
     </script>
-    <script src="<?= BASE_URL ?>/js/grupos/detalle.js"></script>
+    <?php
+        $detalleJsPath = __DIR__ . '/../../../public/js/grupos/detalle.js';
+        $detalleJsVersion = file_exists($detalleJsPath) ? filemtime($detalleJsPath) : time();
+    ?>
+    <script src="<?= BASE_URL ?>/js/grupos/detalle.js?v=<?= $detalleJsVersion ?>"></script>
 </body>
 </html>

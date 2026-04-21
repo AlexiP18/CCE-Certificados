@@ -11,6 +11,7 @@ document.querySelectorAll('.icon-option-grupo').forEach(option => {
         const customBtn = document.querySelector('.icon-option-custom-grupo');
         if (!customBtn.contains(this)) {
             customBtn.classList.remove('selected');
+            customBtn.innerHTML = '<i class="fas fa-search"></i><span>Buscar...</span>';
         }
     });
 });
@@ -93,7 +94,7 @@ document.addEventListener('DOMContentLoaded', function () {
             document.getElementById('emojiPickerContainer').style.display = 'none';
             // Mostrar feedback visual permanente
             const customBtn = document.querySelector('.icon-option-custom-grupo');
-            customBtn.innerHTML = `<span style="font-size: 24px;">${emoji}</span><span>Cambiar...</span>`;
+            customBtn.innerHTML = `<span class="custom-icon">${emoji}</span><span class="custom-label">Cambiar</span>`;
             customBtn.classList.add('selected');
         });
     }

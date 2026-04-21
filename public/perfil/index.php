@@ -21,7 +21,10 @@ $usuarioCompleto = $stmt->fetch(PDO::FETCH_ASSOC);
 // Verificar si es superadmin
 $esSuperAdmin = isset($usuarioCompleto['es_superadmin']) && $usuarioCompleto['es_superadmin'] == 1;
 
-$siteConfig = SiteSettings::toViewModel(SiteSettings::get($pdo), BASE_URL);
+$basePath = '..';
+$cssPath = '../css';
+$jsPath = '../js';
+$siteConfig = SiteSettings::toViewModel(SiteSettings::get($pdo), $basePath);
 
 // Cargar la vista
 require_once '../../app/Views/mi_perfil/index.php';

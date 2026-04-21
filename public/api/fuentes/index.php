@@ -148,6 +148,100 @@ try {
                 ]
             ]);
             break;
+
+        case 'add_google':
+            // Registrar fuente desde Google Fonts
+            $nombre = trim($_POST['nombre'] ?? '');
+            $categoria = $_POST['categoria'] ?? 'sans-serif';
+            $googleFamilyRaw = trim($_POST['google_family'] ?? '');
+
+            if (empty($googleFamilyRaw)) {
+                throw new Exception('La familia de Google Fonts es requerida');
+            }
+
+            if (strpos($googleFamilyRaw, 'family=') !== false) {
+                $partes = explode('family=', $googleFamilyRaw, 2);
+                $googleFamilyRaw = $partes[1] ?? $googleFamilyRaw;
+                $googleFamilyRaw = explode('&', $googleFamilyRaw, 2)[0];
+                $googleFamilyRaw = explode(':', $googleFamilyRaw, 2)[0];
+            } elseif (strpos($googleFamilyRaw, '/specimen/') !== false) {
+                $partes = explode('/specimen/', $googleFamilyRaw, 2);
+                $googleFamilyRaw = $partes[1] ?? $googleFamilyRaw;
+                $googleFamilyRaw = preg_split('/[\?#]/', $googleFamilyRaw)[0];
+            }
+
+            $googleFamily = urldecode($googleFamilyRaw);
+            $googleFamily = str_replace('+', ' ', $googleFamily);
+            $googleFamily = preg_replace('/\s+/', ' ', $googleFamily);
+            $googleFamily = trim($googleFamily);
+
+            if (empty($googleFamily)) {
+                throw new Exception('No se pudo reconocer la familia de Google Fonts');
+            }
+
+            if (empty($nombre)) {
+                $nombre = $googleFamily;
+            }
+
+            $categoriasPermitidas = ['sans-serif', 'serif', 'display', 'handwriting', 'monospace'];
+            if (!in_array($categoria, $categoriasPermitidas, true)) {
+                $categoria = 'sans-serif';
+            }
+
+            $googleKey = 'google:' . str_replace(' ', '+', $googleFamily);
+
+            // Si ya existe, reactivar si está inactiva
+            $stmt = $pdo->prepare("SELECT id, activo FROM fuentes_personalizadas WHERE archivo = ? LIMIT 1");
+            $stmt->execute([$googleKey]);
+            $fuenteExistente = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if ($fuenteExistente) {
+                if ((int)$fuenteExistente['activo'] !== 1) {
+                    $stmt = $pdo->prepare("
+                        UPDATE fuentes_personalizadas
+                        SET nombre = ?, categoria = ?, activo = 1
+                        WHERE id = ?
+                    ");
+                    $stmt->execute([$nombre, $categoria, $fuenteExistente['id']]);
+
+                    echo json_encode([
+                        'success' => true,
+                        'message' => 'La fuente de Google ya existía y fue reactivada',
+                        'fuente' => [
+                            'id' => (int)$fuenteExistente['id'],
+                            'nombre' => $nombre,
+                            'nombre_archivo' => $googleKey,
+                            'archivo' => $googleKey,
+                            'tipo' => 'ttf',
+                            'categoria' => $categoria
+                        ]
+                    ]);
+                    break;
+                }
+
+                throw new Exception('Esa fuente de Google ya está registrada');
+            }
+
+            $stmt = $pdo->prepare("
+                INSERT INTO fuentes_personalizadas (nombre, nombre_archivo, archivo, tipo, categoria, es_sistema, activo)
+                VALUES (?, ?, ?, 'ttf', ?, 1, 1)
+            ");
+            $stmt->execute([$nombre, $googleKey, $googleKey, $categoria]);
+            $fuenteId = (int)$pdo->lastInsertId();
+
+            echo json_encode([
+                'success' => true,
+                'message' => 'Fuente de Google agregada correctamente',
+                'fuente' => [
+                    'id' => $fuenteId,
+                    'nombre' => $nombre,
+                    'nombre_archivo' => $googleKey,
+                    'archivo' => $googleKey,
+                    'tipo' => 'ttf',
+                    'categoria' => $categoria
+                ]
+            ]);
+            break;
             
         case 'update':
             // Actualizar información de una fuente

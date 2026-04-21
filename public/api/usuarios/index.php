@@ -28,6 +28,10 @@ if (strpos($contentType, 'application/json') !== false) {
 }
 
 $action = $input['action'] ?? $_GET['action'] ?? '';
+$columnasExtraUsuarios = [
+    'fecha_nacimiento' => false,
+    'cargo' => false,
+];
 
 function guardarArchivoUsuario(array $file, array $extPermitidas, string $prefijo): string {
     if (($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
@@ -114,15 +118,335 @@ function extraerTagDireccion(string $direccion, string $tag): string {
     return '';
 }
 
+function existeColumnaTabla(PDO $pdo, string $tabla, string $columna): bool {
+    if (!preg_match('/^[a-zA-Z0-9_]+$/', $tabla)) {
+        return false;
+    }
+
+    try {
+        $sql = "SHOW COLUMNS FROM `{$tabla}` LIKE " . $pdo->quote($columna);
+        $stmt = $pdo->query($sql);
+        if (!$stmt) {
+            return false;
+        }
+        return (bool)$stmt->fetch(PDO::FETCH_ASSOC);
+    } catch (Throwable $e) {
+        return false;
+    }
+}
+
+function asegurarColumnasExtraUsuarios(PDO $pdo): array {
+    $sqls = [
+        'fecha_nacimiento' => "ALTER TABLE usuarios ADD COLUMN fecha_nacimiento DATE DEFAULT NULL AFTER nombre_completo",
+        'cargo' => "ALTER TABLE usuarios ADD COLUMN cargo VARCHAR(255) DEFAULT NULL AFTER telefono",
+    ];
+
+    foreach ($sqls as $columna => $sql) {
+        try {
+            if (!existeColumnaTabla($pdo, 'usuarios', $columna)) {
+                $pdo->exec($sql);
+            }
+        } catch (Throwable $e) {
+            // Compatibilidad: si no se pudo migrar automáticamente, se manejará luego.
+        }
+    }
+
+    return [
+        'fecha_nacimiento' => existeColumnaTabla($pdo, 'usuarios', 'fecha_nacimiento'),
+        'cargo' => existeColumnaTabla($pdo, 'usuarios', 'cargo'),
+    ];
+}
+
+function esFechaNacimientoMayorEdad(string $fechaNacimiento, int $edadMinima = 18): bool {
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $fechaNacimiento)) {
+        return false;
+    }
+
+    $fecha = DateTime::createFromFormat('Y-m-d', $fechaNacimiento);
+    if (!$fecha || $fecha->format('Y-m-d') !== $fechaNacimiento) {
+        return false;
+    }
+
+    $hoy = new DateTime('today');
+    if ($fecha > $hoy) {
+        return false;
+    }
+
+    $edad = $fecha->diff($hoy)->y;
+    return $edad >= $edadMinima;
+}
+
+function subStrSafe(string $value, int $start, int $length): string {
+    if (function_exists('mb_substr')) {
+        return mb_substr($value, $start, $length, 'UTF-8');
+    }
+    return substr($value, $start, $length);
+}
+
+function normalizarParaUsernameServidor(string $texto): string {
+    $texto = trim($texto);
+    if ($texto === '') {
+        return '';
+    }
+
+    if (function_exists('iconv')) {
+        $convertido = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $texto);
+        if ($convertido !== false) {
+            $texto = $convertido;
+        }
+    }
+
+    $texto = strtolower($texto);
+    $texto = preg_replace('/[^a-z0-9]+/', '', $texto) ?? '';
+    return trim($texto);
+}
+
+function construirBaseUsernameDesdeNombre(string $nombreCompleto): string {
+    $partes = preg_split('/\s+/u', trim($nombreCompleto), -1, PREG_SPLIT_NO_EMPTY);
+    if (!$partes) {
+        return '';
+    }
+
+    $primeraParte = normalizarParaUsernameServidor($partes[0] ?? '');
+    $nombreBase = subStrSafe($primeraParte, 0, 28);
+    if ($nombreBase === '') {
+        return '';
+    }
+
+    $totalPartes = count($partes);
+    $iniciales = '';
+
+    if ($totalPartes >= 3) {
+        $penultimo = normalizarParaUsernameServidor($partes[$totalPartes - 2] ?? '');
+        $ultimo = normalizarParaUsernameServidor($partes[$totalPartes - 1] ?? '');
+        $iniciales = subStrSafe($penultimo, 0, 1) . subStrSafe($ultimo, 0, 1);
+    } elseif ($totalPartes === 2) {
+        $segundo = normalizarParaUsernameServidor($partes[1] ?? '');
+        $iniciales = subStrSafe($segundo, 0, 2);
+    } else {
+        $iniciales = subStrSafe($nombreBase, 0, 2);
+    }
+
+    return subStrSafe($nombreBase . $iniciales, 0, 46);
+}
+
+function usernameExiste(PDO $pdo, string $username, int $excludeUserId = 0): bool {
+    if ($excludeUserId > 0) {
+        $stmt = $pdo->prepare("SELECT id FROM usuarios WHERE username = ? AND id != ? LIMIT 1");
+        $stmt->execute([$username, $excludeUserId]);
+    } else {
+        $stmt = $pdo->prepare("SELECT id FROM usuarios WHERE username = ? LIMIT 1");
+        $stmt->execute([$username]);
+    }
+    return (bool)$stmt->fetch(PDO::FETCH_ASSOC);
+}
+
+function resolverUsernameDisponible(PDO $pdo, string $username, string $nombreCompleto, int $excludeUserId = 0): string {
+    $propuesto = trim($username);
+    if ($propuesto !== '' && !usernameExiste($pdo, $propuesto, $excludeUserId)) {
+        return $propuesto;
+    }
+
+    $base = construirBaseUsernameDesdeNombre($nombreCompleto);
+    if ($base === '') {
+        $base = 'usuario';
+    }
+
+    $inicio = random_int(1000, 9999);
+    for ($offset = 0; $offset < 9000; $offset++) {
+        $numero = 1000 + (($inicio - 1000 + $offset) % 9000);
+        $sufijo = (string)$numero;
+        $candidato = subStrSafe($base . $sufijo, 0, 50);
+        if (!usernameExiste($pdo, $candidato, $excludeUserId)) {
+            return $candidato;
+        }
+    }
+
+    throw new Exception('No se pudo generar un nombre de usuario disponible');
+}
+
+function buscarConflictoCedula(PDO $pdo, string $cedula, int $excludeUserId = 0): ?array {
+    if ($cedula === '') {
+        return null;
+    }
+
+    // 1) Validar contra usuarios del sistema
+    if ($excludeUserId > 0) {
+        $stmt = $pdo->prepare("
+            SELECT id, nombre_completo
+            FROM usuarios
+            WHERE cedula = ? AND id != ?
+            LIMIT 1
+        ");
+        $stmt->execute([$cedula, $excludeUserId]);
+    } else {
+        $stmt = $pdo->prepare("
+            SELECT id, nombre_completo
+            FROM usuarios
+            WHERE cedula = ?
+            LIMIT 1
+        ");
+        $stmt->execute([$cedula]);
+    }
+    $usuario = $stmt->fetch(PDO::FETCH_ASSOC);
+    if ($usuario) {
+        return [
+            'origen' => 'usuarios',
+            'mensaje' => 'La cédula ya está registrada en usuarios.'
+        ];
+    }
+
+    // 2) Validar contra cédula principal de estudiantes (compatibilidad con diferentes esquemas)
+    $estudiantesTieneCedula = existeColumnaTabla($pdo, 'estudiantes', 'cedula');
+    $estudiantesTieneActivo = existeColumnaTabla($pdo, 'estudiantes', 'activo');
+    $estudiantesTieneSoloRepresentante = existeColumnaTabla($pdo, 'estudiantes', 'es_solo_representante');
+    if ($estudiantesTieneCedula) {
+        $selectSoloRep = $estudiantesTieneSoloRepresentante
+            ? 'es_solo_representante'
+            : '0 AS es_solo_representante';
+        $whereActivo = $estudiantesTieneActivo ? 'AND activo = 1' : '';
+        $sql = "
+            SELECT id, nombre, {$selectSoloRep}
+            FROM estudiantes
+            WHERE cedula = ? {$whereActivo}
+            LIMIT 1
+        ";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$cedula]);
+        $estudiante = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($estudiante) {
+            $esSoloRepresentante = intval($estudiante['es_solo_representante'] ?? 0) === 1;
+            return [
+                'origen' => $esSoloRepresentante ? 'representantes' : 'estudiantes',
+                'mensaje' => $esSoloRepresentante
+                    ? 'La cédula ya está registrada como representante.'
+                    : 'La cédula ya está registrada en estudiantes.'
+            ];
+        }
+    }
+
+    // 3) Compatibilidad con esquema legado: representante_cedula guardada en la fila del menor
+    $estudiantesTieneRepCedula = existeColumnaTabla($pdo, 'estudiantes', 'representante_cedula');
+    if ($estudiantesTieneRepCedula) {
+        $whereActivo = $estudiantesTieneActivo ? 'AND activo = 1' : '';
+        $stmt = $pdo->prepare("
+            SELECT id
+            FROM estudiantes
+            WHERE representante_cedula = ? {$whereActivo}
+            LIMIT 1
+        ");
+        $stmt->execute([$cedula]);
+        if ($stmt->fetch(PDO::FETCH_ASSOC)) {
+            return [
+                'origen' => 'representantes',
+                'mensaje' => 'La cédula ya está registrada como representante.'
+            ];
+        }
+    }
+
+    return null;
+}
+
+function buscarConflictoEmail(PDO $pdo, string $email, int $excludeUserId = 0): ?array {
+    $email = trim($email);
+    if ($email === '') {
+        return null;
+    }
+
+    // 1) Validar contra usuarios del sistema
+    if ($excludeUserId > 0) {
+        $stmt = $pdo->prepare("
+            SELECT id
+            FROM usuarios
+            WHERE LOWER(email) = LOWER(?) AND id != ?
+            LIMIT 1
+        ");
+        $stmt->execute([$email, $excludeUserId]);
+    } else {
+        $stmt = $pdo->prepare("
+            SELECT id
+            FROM usuarios
+            WHERE LOWER(email) = LOWER(?)
+            LIMIT 1
+        ");
+        $stmt->execute([$email]);
+    }
+    if ($stmt->fetch(PDO::FETCH_ASSOC)) {
+        return [
+            'origen' => 'usuarios',
+            'mensaje' => 'El email ya está registrado en usuarios.'
+        ];
+    }
+
+    // 2) Validar contra email principal de estudiantes (compatibilidad con diferentes esquemas)
+    $estudiantesTieneEmail = existeColumnaTabla($pdo, 'estudiantes', 'email');
+    $estudiantesTieneActivo = existeColumnaTabla($pdo, 'estudiantes', 'activo');
+    $estudiantesTieneSoloRepresentante = existeColumnaTabla($pdo, 'estudiantes', 'es_solo_representante');
+    if ($estudiantesTieneEmail) {
+        $selectSoloRep = $estudiantesTieneSoloRepresentante
+            ? 'es_solo_representante'
+            : '0 AS es_solo_representante';
+        $whereActivo = $estudiantesTieneActivo ? 'AND activo = 1' : '';
+        $sql = "
+            SELECT id, {$selectSoloRep}
+            FROM estudiantes
+            WHERE LOWER(email) = LOWER(?) {$whereActivo}
+            LIMIT 1
+        ";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$email]);
+        $estudiante = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($estudiante) {
+            $esSoloRepresentante = intval($estudiante['es_solo_representante'] ?? 0) === 1;
+            return [
+                'origen' => $esSoloRepresentante ? 'representantes' : 'estudiantes',
+                'mensaje' => $esSoloRepresentante
+                    ? 'El email ya está registrado como representante.'
+                    : 'El email ya está registrado en estudiantes.'
+            ];
+        }
+    }
+
+    // 3) Compatibilidad con esquema legado: representante_email guardado en fila del menor
+    $estudiantesTieneRepEmail = existeColumnaTabla($pdo, 'estudiantes', 'representante_email');
+    if ($estudiantesTieneRepEmail) {
+        $whereActivo = $estudiantesTieneActivo ? 'AND activo = 1' : '';
+        $stmt = $pdo->prepare("
+            SELECT id
+            FROM estudiantes
+            WHERE LOWER(representante_email) = LOWER(?) {$whereActivo}
+            LIMIT 1
+        ");
+        $stmt->execute([$email]);
+        if ($stmt->fetch(PDO::FETCH_ASSOC)) {
+            return [
+                'origen' => 'representantes',
+                'mensaje' => 'El email ya está registrado como representante.'
+            ];
+        }
+    }
+
+    return null;
+}
+
 try {
+    $columnasExtraUsuarios = asegurarColumnasExtraUsuarios($pdo);
+
     switch ($action) {
         // ==================== LISTAR USUARIOS ====================
         case 'list':
         case 'listar':
             Auth::requirePermission('usuarios', 'ver');
+            $selectFechaNacimiento = $columnasExtraUsuarios['fecha_nacimiento']
+                ? 'u.fecha_nacimiento'
+                : 'NULL AS fecha_nacimiento';
+            $selectCargo = $columnasExtraUsuarios['cargo']
+                ? 'u.cargo'
+                : 'NULL AS cargo';
             
             $stmt = $pdo->query("
-                SELECT u.id, u.username, u.email, u.nombre_completo, u.cedula, u.telefono, 
+                SELECT u.id, u.username, u.email, u.nombre_completo, {$selectFechaNacimiento}, u.cedula, u.telefono,
+                       {$selectCargo},
                        u.direccion, u.foto, u.activo, u.es_superadmin,
                        u.ultimo_acceso, u.fecha_creacion,
                        r.id as rol_id, r.nombre as rol_nombre
@@ -147,6 +471,12 @@ try {
         case 'get':
         case 'obtener':
             Auth::requirePermission('usuarios', 'ver');
+            $selectFechaNacimiento = $columnasExtraUsuarios['fecha_nacimiento']
+                ? 'u.fecha_nacimiento'
+                : 'NULL AS fecha_nacimiento';
+            $selectCargo = $columnasExtraUsuarios['cargo']
+                ? 'u.cargo'
+                : 'NULL AS cargo';
             
             $id = $input['id'] ?? 0;
             if (!$id) {
@@ -154,7 +484,8 @@ try {
             }
             
             $stmt = $pdo->prepare("
-                SELECT u.id, u.username, u.email, u.nombre_completo, u.cedula, u.telefono,
+                SELECT u.id, u.username, u.email, u.nombre_completo, {$selectFechaNacimiento}, u.cedula, u.telefono,
+                       {$selectCargo},
                        u.direccion, u.foto, u.activo, u.es_superadmin,
                        u.ultimo_acceso, u.fecha_creacion,
                        r.id as rol_id, r.nombre as rol_nombre,
@@ -203,6 +534,74 @@ try {
                 'usuario' => $usuario
             ]);
             break;
+
+        // ==================== VERIFICAR CÉDULA EN REGISTROS ====================
+        case 'verificar_cedula_registro':
+            Auth::requirePermission('usuarios', 'ver');
+
+            $cedula = trim($input['cedula'] ?? '');
+            $excludeUserId = intval($input['exclude_user_id'] ?? 0);
+
+            if ($cedula === '') {
+                echo json_encode([
+                    'success' => true,
+                    'disponible' => true,
+                    'message' => ''
+                ]);
+                break;
+            }
+
+            if (!preg_match('/^\d{10}$/', $cedula)) {
+                echo json_encode([
+                    'success' => true,
+                    'disponible' => false,
+                    'message' => 'La cédula debe tener 10 dígitos.'
+                ]);
+                break;
+            }
+
+            $conflicto = buscarConflictoCedula($pdo, $cedula, $excludeUserId);
+            echo json_encode([
+                'success' => true,
+                'disponible' => $conflicto === null,
+                'message' => $conflicto['mensaje'] ?? '',
+                'origen' => $conflicto['origen'] ?? null
+            ]);
+            break;
+
+        // ==================== VERIFICAR EMAIL EN REGISTROS ====================
+        case 'verificar_email_registro':
+            Auth::requirePermission('usuarios', 'ver');
+
+            $email = trim($input['email'] ?? '');
+            $excludeUserId = intval($input['exclude_user_id'] ?? 0);
+
+            if ($email === '') {
+                echo json_encode([
+                    'success' => true,
+                    'disponible' => true,
+                    'message' => ''
+                ]);
+                break;
+            }
+
+            if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                echo json_encode([
+                    'success' => true,
+                    'disponible' => false,
+                    'message' => 'El email ingresado no es válido.'
+                ]);
+                break;
+            }
+
+            $conflicto = buscarConflictoEmail($pdo, $email, $excludeUserId);
+            echo json_encode([
+                'success' => true,
+                'disponible' => $conflicto === null,
+                'message' => $conflicto['mensaje'] ?? '',
+                'origen' => $conflicto['origen'] ?? null
+            ]);
+            break;
         
         // ==================== CREAR USUARIO ====================
         case 'create':
@@ -212,29 +611,31 @@ try {
             $username = trim($input['username'] ?? '');
             $email = trim($input['email'] ?? '');
             $nombre_completo = trim($input['nombre_completo'] ?? '');
+            $fecha_nacimiento = trim($input['fecha_nacimiento'] ?? '');
             $password = $input['password'] ?? '';
             $rol_id = intval($input['rol_id'] ?? 0);
             $activo = isset($input['activo']) ? intval($input['activo']) : 1;
             $cedula = trim($input['cedula'] ?? '');
             $telefono = trim($input['telefono'] ?? '');
+            $cargo = trim($input['cargo'] ?? '');
             $direccion = trim($input['direccion'] ?? '');
             $foto = trim($input['foto'] ?? '');
             $es_superadmin = isset($input['es_superadmin']) ? intval($input['es_superadmin']) : 0;
             
             // Validaciones
-            if (empty($username) || empty($email) || empty($nombre_completo) || empty($password) || !$rol_id) {
+            if (empty($email) || empty($nombre_completo) || empty($fecha_nacimiento) || empty($password) || empty($cedula) || empty($telefono) || !$rol_id) {
                 throw new Exception('Todos los campos son requeridos');
             }
-            
-            if (strlen($username) < 3) {
-                throw new Exception('El nombre de usuario debe tener al menos 3 caracteres');
-            }
-
-            validarLongitudCampo($username, 50, 'usuario');
             validarLongitudCampo($email, 255, 'email');
             validarLongitudCampo($nombre_completo, 255, 'nombre completo');
+            validarLongitudCampo($fecha_nacimiento, 10, 'fecha de nacimiento');
             validarLongitudCampo($direccion, 900, 'dirección');
             validarLongitudCampo($telefono, 10, 'celular');
+            validarLongitudCampo($cargo, 255, 'cargo');
+
+            if (!$columnasExtraUsuarios['fecha_nacimiento'] || !$columnasExtraUsuarios['cargo']) {
+                throw new Exception('Falta actualizar la tabla de usuarios (fecha_nacimiento/cargo). Refresca la página o ejecuta la migración.');
+            }
 
             $codigoPostal = extraerTagDireccion($direccion, 'CP');
             $mapsUrl = extraerTagDireccion($direccion, 'MAPS');
@@ -248,6 +649,14 @@ try {
             
             if (!$rol) {
                 throw new Exception('Rol inválido');
+            }
+
+            if ($rol['nombre'] === 'oficinista') {
+                if ($cargo === '') {
+                    throw new Exception('El cargo es obligatorio para el rol Oficinista');
+                }
+            } else {
+                $cargo = '';
             }
             
             // Verificar límite de 3 administradores
@@ -264,11 +673,25 @@ try {
                 throw new Exception('Email inválido');
             }
 
-            if (!empty($cedula) && !esCedulaEcuatorianaValida($cedula)) {
+            $conflictoEmail = buscarConflictoEmail($pdo, $email);
+            if ($conflictoEmail !== null) {
+                throw new Exception($conflictoEmail['mensaje']);
+            }
+
+            if (!esFechaNacimientoMayorEdad($fecha_nacimiento, 18)) {
+                throw new Exception('La fecha de nacimiento debe corresponder a una persona mayor de 18 años');
+            }
+
+            if (!esCedulaEcuatorianaValida($cedula)) {
                 throw new Exception('La cédula debe tener 10 dígitos y ser ecuatoriana válida');
             }
 
-            if (!empty($telefono) && !preg_match('/^09\d{8}$/', $telefono)) {
+            $conflictoCedula = buscarConflictoCedula($pdo, $cedula);
+            if ($conflictoCedula !== null) {
+                throw new Exception($conflictoCedula['mensaje']);
+            }
+
+            if (!preg_match('/^09\d{8}$/', $telefono)) {
                 throw new Exception('El celular debe tener 10 dígitos y comenzar con 09');
             }
 
@@ -283,20 +706,12 @@ try {
             if (!esPasswordSegura($password)) {
                 throw new Exception('La contraseña debe tener mínimo 8 caracteres, incluir mayúscula, minúscula, número y símbolo');
             }
-            
-            // Verificar que el username no exista
-            $stmt = $pdo->prepare("SELECT id FROM usuarios WHERE username = ?");
-            $stmt->execute([$username]);
-            if ($stmt->fetch()) {
-                throw new Exception('El nombre de usuario ya existe');
+
+            $username = resolverUsernameDisponible($pdo, $username, $nombre_completo);
+            if (strlen($username) < 3) {
+                throw new Exception('No se pudo generar un nombre de usuario válido');
             }
-            
-            // Verificar que el email no exista
-            $stmt = $pdo->prepare("SELECT id FROM usuarios WHERE email = ?");
-            $stmt->execute([$email]);
-            if ($stmt->fetch()) {
-                throw new Exception('El email ya está registrado');
-            }
+            validarLongitudCampo($username, 50, 'usuario');
 
             if (isset($_FILES['foto_file']) && ($_FILES['foto_file']['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_OK) {
                 $foto = guardarArchivoUsuario($_FILES['foto_file'], ['jpg', 'jpeg', 'png', 'webp'], 'foto_usuario');
@@ -305,10 +720,10 @@ try {
             // Crear usuario
             $password_hash = password_hash($password, PASSWORD_DEFAULT);
             $stmt = $pdo->prepare("
-                INSERT INTO usuarios (username, email, nombre_completo, password_hash, rol_id, activo, cedula, telefono, direccion, foto, es_superadmin)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO usuarios (username, email, nombre_completo, fecha_nacimiento, password_hash, rol_id, activo, cedula, telefono, cargo, direccion, foto, es_superadmin)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ");
-            $stmt->execute([$username, $email, $nombre_completo, $password_hash, $rol_id, $activo, $cedula ?: null, $telefono ?: null, $direccion ?: null, $foto ?: null, $es_superadmin]);
+            $stmt->execute([$username, $email, $nombre_completo, $fecha_nacimiento, $password_hash, $rol_id, $activo, $cedula, $telefono, $cargo ?: null, $direccion ?: null, $foto ?: null, $es_superadmin]);
             $nuevo_id = $pdo->lastInsertId();
             
             // Si es instructor, crear perfil extendido
@@ -335,11 +750,13 @@ try {
             $username = trim($input['username'] ?? '');
             $email = trim($input['email'] ?? '');
             $nombre_completo = trim($input['nombre_completo'] ?? '');
+            $fecha_nacimiento = trim($input['fecha_nacimiento'] ?? '');
             $rol_id = intval($input['rol_id'] ?? 0);
             $activo = isset($input['activo']) ? intval($input['activo']) : 1;
             $password = $input['password'] ?? ''; // Opcional
             $cedula = trim($input['cedula'] ?? '');
             $telefono = trim($input['telefono'] ?? '');
+            $cargo = trim($input['cargo'] ?? '');
             $direccion = trim($input['direccion'] ?? '');
             $foto = trim($input['foto'] ?? '');
             $es_superadmin = isset($input['es_superadmin']) ? intval($input['es_superadmin']) : 0;
@@ -353,7 +770,7 @@ try {
             }
             
             // Validaciones
-            if (empty($username) || empty($email) || empty($nombre_completo) || !$rol_id) {
+            if (empty($username) || empty($email) || empty($nombre_completo) || empty($fecha_nacimiento) || empty($cedula) || empty($telefono) || !$rol_id) {
                 throw new Exception('Todos los campos son requeridos');
             }
 
@@ -364,8 +781,14 @@ try {
             validarLongitudCampo($username, 50, 'usuario');
             validarLongitudCampo($email, 255, 'email');
             validarLongitudCampo($nombre_completo, 255, 'nombre completo');
+            validarLongitudCampo($fecha_nacimiento, 10, 'fecha de nacimiento');
             validarLongitudCampo($direccion, 900, 'dirección');
             validarLongitudCampo($telefono, 10, 'celular');
+            validarLongitudCampo($cargo, 255, 'cargo');
+
+            if (!$columnasExtraUsuarios['fecha_nacimiento'] || !$columnasExtraUsuarios['cargo']) {
+                throw new Exception('Falta actualizar la tabla de usuarios (fecha_nacimiento/cargo). Refresca la página o ejecuta la migración.');
+            }
 
             $codigoPostal = extraerTagDireccion($direccion, 'CP');
             $mapsUrl = extraerTagDireccion($direccion, 'MAPS');
@@ -376,11 +799,25 @@ try {
                 throw new Exception('Email inválido');
             }
 
-            if (!empty($cedula) && !esCedulaEcuatorianaValida($cedula)) {
+            $conflictoEmail = buscarConflictoEmail($pdo, $email, $id);
+            if ($conflictoEmail !== null) {
+                throw new Exception($conflictoEmail['mensaje']);
+            }
+
+            if (!esFechaNacimientoMayorEdad($fecha_nacimiento, 18)) {
+                throw new Exception('La fecha de nacimiento debe corresponder a una persona mayor de 18 años');
+            }
+
+            if (!esCedulaEcuatorianaValida($cedula)) {
                 throw new Exception('La cédula debe tener 10 dígitos y ser ecuatoriana válida');
             }
 
-            if (!empty($telefono) && !preg_match('/^09\d{8}$/', $telefono)) {
+            $conflictoCedula = buscarConflictoCedula($pdo, $cedula, $id);
+            if ($conflictoCedula !== null) {
+                throw new Exception($conflictoCedula['mensaje']);
+            }
+
+            if (!preg_match('/^09\d{8}$/', $telefono)) {
                 throw new Exception('El celular debe tener 10 dígitos y comenzar con 09');
             }
 
@@ -419,6 +856,14 @@ try {
             if (!$nuevoRol) {
                 throw new Exception('Rol inválido');
             }
+
+            if ($nuevoRol['nombre'] === 'oficinista') {
+                if ($cargo === '') {
+                    throw new Exception('El cargo es obligatorio para el rol Oficinista');
+                }
+            } else {
+                $cargo = '';
+            }
             
             // Verificar límite de admins si cambia a administrador
             if ($nuevoRol['nombre'] === 'administrador' && $usuarioActual['rol_nombre'] !== 'administrador') {
@@ -448,13 +893,6 @@ try {
                 throw new Exception('El nombre de usuario ya existe');
             }
             
-            // Verificar que el email no exista en otro usuario
-            $stmt = $pdo->prepare("SELECT id FROM usuarios WHERE email = ? AND id != ?");
-            $stmt->execute([$email, $id]);
-            if ($stmt->fetch()) {
-                throw new Exception('El email ya está registrado');
-            }
-            
             // Actualizar usuario
             if (!empty($password)) {
                 if (!esPasswordSegura($password)) {
@@ -463,21 +901,21 @@ try {
                 $password_hash = password_hash($password, PASSWORD_DEFAULT);
                 $stmt = $pdo->prepare("
                     UPDATE usuarios 
-                    SET username = ?, email = ?, nombre_completo = ?, password_hash = ?, rol_id = ?, activo = ?,
-                        cedula = ?, telefono = ?, direccion = ?, foto = ?, es_superadmin = ?
+                    SET username = ?, email = ?, nombre_completo = ?, fecha_nacimiento = ?, password_hash = ?, rol_id = ?, activo = ?,
+                        cedula = ?, telefono = ?, cargo = ?, direccion = ?, foto = ?, es_superadmin = ?
                     WHERE id = ?
                 ");
-                $stmt->execute([$username, $email, $nombre_completo, $password_hash, $rol_id, $activo, 
-                               $cedula ?: null, $telefono ?: null, $direccion ?: null, $foto ?: null, $es_superadmin, $id]);
+                $stmt->execute([$username, $email, $nombre_completo, $fecha_nacimiento, $password_hash, $rol_id, $activo, 
+                               $cedula, $telefono, $cargo ?: null, $direccion ?: null, $foto ?: null, $es_superadmin, $id]);
             } else {
                 $stmt = $pdo->prepare("
                     UPDATE usuarios 
-                    SET username = ?, email = ?, nombre_completo = ?, rol_id = ?, activo = ?,
-                        cedula = ?, telefono = ?, direccion = ?, foto = ?, es_superadmin = ?
+                    SET username = ?, email = ?, nombre_completo = ?, fecha_nacimiento = ?, rol_id = ?, activo = ?,
+                        cedula = ?, telefono = ?, cargo = ?, direccion = ?, foto = ?, es_superadmin = ?
                     WHERE id = ?
                 ");
-                $stmt->execute([$username, $email, $nombre_completo, $rol_id, $activo,
-                               $cedula ?: null, $telefono ?: null, $direccion ?: null, $foto ?: null, $es_superadmin, $id]);
+                $stmt->execute([$username, $email, $nombre_completo, $fecha_nacimiento, $rol_id, $activo,
+                               $cedula, $telefono, $cargo ?: null, $direccion ?: null, $foto ?: null, $es_superadmin, $id]);
             }
             
             Auth::logActivity($_SESSION['usuario_id'], 'actualizar_usuario', "Usuario actualizado: $username", ['usuario_id' => $id]);
@@ -908,12 +1346,10 @@ try {
             if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
                 throw new Exception('Email inválido');
             }
-            
-            // Verificar que el email no exista en otro usuario
-            $stmt = $pdo->prepare("SELECT id FROM usuarios WHERE email = ? AND id != ?");
-            $stmt->execute([$email, $_SESSION['usuario_id']]);
-            if ($stmt->fetch()) {
-                throw new Exception('El email ya está registrado por otro usuario');
+
+            $conflictoEmail = buscarConflictoEmail($pdo, $email, intval($_SESSION['usuario_id'] ?? 0));
+            if ($conflictoEmail !== null) {
+                throw new Exception($conflictoEmail['mensaje']);
             }
             
             $stmt = $pdo->prepare("UPDATE usuarios SET nombre_completo = ?, email = ? WHERE id = ?");

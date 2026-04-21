@@ -925,8 +925,11 @@ function previewCertificate() {
     })
     .then(r => r.json())
     .then(data => {
-        if (data.success && data.preview_url) {
-            body.innerHTML = `<img src="${data.preview_url}?v=${Date.now()}" style="width:100%;height:auto;border-radius:4px;box-shadow:0 4px 12px rgba(0,0,0,0.2);">`;
+        if (data.success && (data.preview_url || data.preview_data_url)) {
+            const finalUrl = data.preview_url
+                ? `${data.preview_url}?v=${Date.now()}`
+                : data.preview_data_url;
+            body.innerHTML = `<img src="${finalUrl}" style="width:100%;height:auto;border-radius:4px;box-shadow:0 4px 12px rgba(0,0,0,0.2);">`;
         } else {
             throw new Error(data.message || 'Error en respuesta');
         }

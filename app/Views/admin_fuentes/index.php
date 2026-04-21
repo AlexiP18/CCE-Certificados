@@ -10,63 +10,33 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
     <link rel="stylesheet" href="<?= $basePath ?>/css/style.css">
     <link rel="stylesheet" href="<?= $cssPath ?>/admin_fuentes/index.css">
-    <style>
-        :root {
-            --site-primary: <?= htmlspecialchars($siteConfig['primary_color']) ?>;
-            --site-secondary: <?= htmlspecialchars($siteConfig['secondary_color']) ?>;
-        }
-
-        .top-nav .nav-link.active,
-        .btn-primary-gradient {
-            background: linear-gradient(135deg, var(--site-primary), var(--site-secondary)) !important;
-        }
-
-        .nav-logo-image {
-            width: 34px;
-            height: 34px;
-            object-fit: contain;
-            border-radius: 8px;
-            background: #fff;
-            padding: 2px;
-        }
-    </style>
+    <link rel="stylesheet" href="<?= $basePath ?>/css/header_theme.css">
+    <link rel="stylesheet" href="<?= $basePath ?>/css/institutional_theme.css">
 </head>
 <body>
-    <!-- Navegación Superior -->
-    <nav class="top-nav">
-        <div class="nav-logo">
-            <?php if (!empty($siteConfig['logo_nav_url'])): ?>
-            <img src="<?= htmlspecialchars($siteConfig['logo_nav_url']) ?>" alt="Logo" class="nav-logo-image" onerror="this.style.display='none'">
-            <?php endif; ?>
-            <i class="fas fa-graduation-cap"></i>
-            <span><?= htmlspecialchars($siteConfig['site_name']) ?></span>
-        </div>
-        <ul class="nav-menu">
-            <li><a href="<?= $basePath ?>/dashboard/index.php" class="nav-link"><i class="fas fa-home"></i> Inicio</a></li>
-            <li><a href="<?= $basePath ?>/estudiantes/index.php" class="nav-link"><i class="fas fa-users"></i> Estudiantes</a></li>
-            <li><a href="<?= $basePath ?>/admin/fuentes.php" class="nav-link active"><i class="fas fa-font"></i> Fuentes</a></li>
-            <li><a href="<?= $basePath ?>/auth/verify.php" class="nav-link"><i class="fas fa-search"></i> Verificar</a></li>
-            <?php if (puede('usuarios', 'ver')): ?>
-            <li><a href="<?= $basePath ?>/usuarios/index.php" class="nav-link"><i class="fas fa-user-cog"></i> Usuarios</a></li>
-            <?php endif; ?>
-            <?php if (esAdmin()): ?>
-            <li><a href="<?= $basePath ?>/configuracion/index.php" class="nav-link"><i class="fas fa-sliders-h"></i> Configuracion</a></li>
-            <?php endif; ?>
-            <li class="nav-user">
-                <a href="<?= $basePath ?>/perfil/dashboard/index.php" class="nav-link" title="Mi Perfil"><i class="fas fa-user-circle"></i> <?= htmlspecialchars($usuario['nombre_completo']) ?></a>
-                <a href="<?= $basePath ?>/auth/logout.php" class="nav-link logout-link" title="Cerrar Sesión"><i class="fas fa-sign-out-alt"></i></a>
-            </li>
-        </ul>
-    </nav>
+    <?php
+    $activeNav = 'fuentes';
+    require __DIR__ . '/../components/top_nav.php';
+    ?>
     
     <div class="container">
         <!-- Page Header -->
         <div class="page-header">
-            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px;">
-                <h1 class="page-title">
-                    <i class="fas fa-font"></i> <?= $pageTitle ?>
-                </h1>
-                <button class="btn-primary-gradient" onclick="openUploadModal()">
+            <div class="page-header-inner">
+                <div class="page-header-main">
+                    <div class="page-heading-group">
+                        <div class="page-heading-text">
+                            <h1 class="page-title">
+                                <i class="fas fa-font"></i> <?= $pageTitle ?>
+                            </h1>
+                            <p class="page-subtitle">Gestiona la biblioteca tipográfica del sistema y mantén estilos consistentes en certificados.</p>
+                        </div>
+                        <div class="fonts-count-bubble" title="Cantidad de fuentes visibles" aria-label="Cantidad de fuentes visibles">
+                            <span id="fontsCountBubble">0</span>
+                        </div>
+                    </div>
+                </div>
+                <button class="btn-primary-gradient btn-upload-font" onclick="openUploadModal()">
                     <i class="fas fa-cloud-upload-alt"></i> Subir Nueva Fuente
                 </button>
             </div>
@@ -92,6 +62,10 @@
             <button class="category-btn" data-category="monospace">
                 Monoespaciadas
             </button>
+            <label class="font-search-wrap" for="fontSearchInput">
+                <i class="fas fa-search"></i>
+                <input type="text" id="fontSearchInput" placeholder="Buscar fuente por nombre...">
+            </label>
         </div>
         
         <!-- Contenedor de fuentes -->
@@ -112,12 +86,34 @@
             </div>
             <div class="modal-body">
                 <form id="uploadForm" enctype="multipart/form-data">
-                    <label class="upload-zone" id="dropZone">
-                        <input type="file" name="archivo" id="fileInput" accept=".ttf,.otf,.woff,.woff2" hidden>
-                        <i class="fas fa-cloud-upload-alt"></i>
-                        <h5 id="dropZoneText">Arrastra un archivo aquí o haz clic para seleccionar</h5>
-                        <p>Formatos: TTF, OTF, WOFF, WOFF2</p>
-                    </label>
+                    <div class="upload-source-switch" role="radiogroup" aria-label="Origen de la fuente">
+                        <label class="upload-source-option">
+                            <input type="radio" name="uploadSource" value="local" checked>
+                            <span><i class="fas fa-file-upload"></i> Archivo local</span>
+                        </label>
+                        <label class="upload-source-option">
+                            <input type="radio" name="uploadSource" value="google">
+                            <span><i class="fab fa-google"></i> Google Fonts</span>
+                        </label>
+                    </div>
+
+                    <div id="localUploadFields">
+                        <label class="upload-zone" id="dropZone">
+                            <input type="file" name="archivo" id="fileInput" accept=".ttf,.otf,.woff,.woff2" hidden>
+                            <i class="fas fa-cloud-upload-alt"></i>
+                            <h5 id="dropZoneText">Arrastra un archivo aquí o haz clic para seleccionar</h5>
+                            <p>Formatos: TTF, OTF, WOFF, WOFF2</p>
+                        </label>
+                    </div>
+
+                    <div id="googleUploadFields" class="upload-source-fields-hidden">
+                        <div class="form-group">
+                            <label for="googleFontFamily">Familia de Google Fonts *</label>
+                            <input type="text" id="googleFontFamily" name="google_family" list="googleFontFamilySuggestions" placeholder="Ej: Open Sans, Open+Sans o URL de Google Fonts">
+                            <datalist id="googleFontFamilySuggestions"></datalist>
+                            <small>Puedes pegar el nombre de la familia o una URL de Google Fonts.</small>
+                        </div>
+                    </div>
                     
                     <div class="form-group">
                         <label for="fontName">Nombre de la fuente *</label>

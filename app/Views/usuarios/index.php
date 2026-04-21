@@ -10,52 +10,14 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
     <link rel="stylesheet" href="<?= $basePath ?>/css/style.css">
     <link rel="stylesheet" href="<?= $cssPath ?>/usuarios/index.css">
-    <style>
-        :root {
-            --site-primary: <?= htmlspecialchars($siteConfig['primary_color']) ?>;
-            --site-secondary: <?= htmlspecialchars($siteConfig['secondary_color']) ?>;
-        }
-
-        .top-nav .nav-link.active,
-        .btn-admin,
-        .hero-section {
-            background: linear-gradient(135deg, var(--site-primary), var(--site-secondary)) !important;
-        }
-
-        .nav-logo-image {
-            width: 34px;
-            height: 34px;
-            object-fit: contain;
-            border-radius: 8px;
-            background: #fff;
-            padding: 2px;
-        }
-    </style>
+    <link rel="stylesheet" href="<?= $basePath ?>/css/header_theme.css">
+    <link rel="stylesheet" href="<?= $basePath ?>/css/institutional_theme.css">
 </head>
 <body>
-    <!-- Menú de Navegación -->
-    <nav class="top-nav">
-        <div class="nav-logo">
-            <?php if (!empty($siteConfig['logo_nav_url'])): ?>
-            <img src="<?= htmlspecialchars($siteConfig['logo_nav_url']) ?>" alt="Logo" class="nav-logo-image" onerror="this.style.display='none'">
-            <?php endif; ?>
-            <i class="fas fa-graduation-cap"></i>
-            <span><?= htmlspecialchars($siteConfig['site_name']) ?></span>
-        </div>
-        <ul class="nav-menu">
-            <li><a href="<?= $basePath ?>/dashboard/index.php" class="nav-link"><i class="fas fa-home"></i> Inicio</a></li>
-            <li><a href="<?= $basePath ?>/estudiantes/index.php" class="nav-link"><i class="fas fa-users"></i> Estudiantes</a></li>
-            <li><a href="<?= $basePath ?>/auth/verify.php" class="nav-link"><i class="fas fa-search"></i> Verificar</a></li>
-            <li><a href="<?= $basePath ?>/usuarios/index.php" class="nav-link active"><i class="fas fa-user-cog"></i> Usuarios</a></li>
-            <?php if (esAdmin()): ?>
-            <li><a href="<?= $basePath ?>/configuracion/index.php" class="nav-link"><i class="fas fa-sliders-h"></i> Configuracion</a></li>
-            <?php endif; ?>
-            <li class="nav-user">
-                <a href="<?= $basePath ?>/perfil/dashboard/index.php" class="nav-link" title="Mi Perfil"><i class="fas fa-user-circle"></i> <?= htmlspecialchars($usuario['nombre_completo']) ?></a>
-                <a href="<?= $basePath ?>/auth/logout.php" class="nav-link logout-link" title="Cerrar Sesión"><i class="fas fa-sign-out-alt"></i></a>
-            </li>
-        </ul>
-    </nav>
+    <?php
+    $activeNav = 'usuarios';
+    require __DIR__ . '/../components/top_nav.php';
+    ?>
 
     <div class="container">
         <!-- Hero Section -->
@@ -156,26 +118,63 @@
 
                 <div class="modal-form-body">
                     <div class="form-grid-2">
-                        <div class="form-group">
-                            <label for="username"><i class="fas fa-at"></i> Nombre de Usuario *</label>
-                            <input type="text" id="username" required minlength="3" autocomplete="off" placeholder="usuario123">
+                        <div class="form-column-stack">
+                            <div class="form-group">
+                                <label for="username"><i class="fas fa-at"></i> Nombre de Usuario *</label>
+                                <input type="text" id="username" class="input-lock-no-click" required minlength="3" autocomplete="off" placeholder="usuario123" readonly tabindex="-1">
+                                <p class="help-text">Se autogenera automáticamente (nombre + iniciales de apellidos + 4 dígitos) y no es editable.</p>
+                                <p id="username-warning" class="help-text help-text-warning" style="display: none;"></p>
+                            </div>
+
+                            <div class="username-extra-stack">
+                                <div class="form-group">
+                                    <label for="nombre_completo"><i class="fas fa-user"></i> Nombre Completo *</label>
+                                    <input type="text" id="nombre_completo" required maxlength="255" placeholder="Juan Pérez">
+                                </div>
+
+                                <div class="form-grid-2">
+                                    <div class="form-group">
+                                        <label for="cedula"><i class="fas fa-id-card"></i> Cédula/DNI *</label>
+                                        <input type="text" id="cedula" required maxlength="10" inputmode="numeric" pattern="^\d{10}$" placeholder="Número de identificación">
+                                        <p id="cedula-warning" class="help-text help-text-warning" style="display: none;"></p>
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label for="fecha_nacimiento"><i class="fas fa-calendar-day"></i> Fecha de Nacimiento *</label>
+                                        <input type="date" id="fecha_nacimiento" required max="<?= date('Y-m-d', strtotime('-18 years')) ?>">
+                                        <p class="help-text">Solo se admiten usuarios mayores de 18 años.</p>
+                                        <p id="fecha-nacimiento-warning" class="help-text help-text-warning" style="display: none;"></p>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                         <div class="form-group">
                             <label for="foto_file"><i class="fas fa-image"></i> Foto de Perfil (Archivo)</label>
-                            <input type="file" id="foto_file" accept="image/*">
-                            <p class="help-text">Disponible para cualquier usuario. Formatos: JPG, PNG, WEBP. Máx 5MB.</p>
-                        </div>
-                    </div>
-
-                    <div class="form-grid-2">
-                        <div class="form-group">
-                            <label for="nombre_completo"><i class="fas fa-user"></i> Nombre Completo *</label>
-                            <input type="text" id="nombre_completo" required maxlength="255" placeholder="Juan Pérez">
-                        </div>
-
-                        <div class="form-group">
-                            <label for="cedula"><i class="fas fa-id-card"></i> Cédula/DNI</label>
-                            <input type="text" id="cedula" maxlength="10" inputmode="numeric" pattern="^\d{10}$" placeholder="Número de identificación">
+                            <div class="foto-upload-wrap">
+                                <input type="file" id="foto_file" accept="image/*" class="foto-file-native">
+                                <div class="foto-upload-layout">
+                                    <div id="foto-preview-box" class="foto-preview-box">
+                                        <img id="foto-preview-img" class="foto-preview-img" alt="Previsualización de foto de perfil" style="display: none;">
+                                        <div id="foto-preview-placeholder" class="foto-preview-placeholder">
+                                            <i class="fas fa-user-circle"></i>
+                                            <span>Sin imagen seleccionada</span>
+                                        </div>
+                                    </div>
+                                    <div class="foto-upload-side">
+                                        <div class="foto-upload-actions">
+                                            <label for="foto_file" class="foto-upload-trigger">
+                                                <i class="fas fa-cloud-upload-alt"></i> Seleccionar imagen
+                                            </label>
+                                            <button type="button" id="foto-file-clear" class="foto-upload-clear" onclick="limpiarFotoPerfilSeleccionada()" style="display: none;">
+                                                <i class="fas fa-eraser"></i> Quitar
+                                            </button>
+                                        </div>
+                                        <p id="foto-preview-name" class="help-text foto-preview-name">Ningún archivo seleccionado</p>
+                                        <p class="help-text foto-spec-text">Proporción ideal: <strong>1:1</strong> (ejemplo: 600x600 px o 800x800 px).</p>
+                                        <p class="help-text foto-spec-text">Formatos: JPG, PNG, WEBP. Máx 5MB. La imagen se ajusta automáticamente al marco de previsualización.</p>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -183,11 +182,12 @@
                         <div class="form-group">
                             <label for="email"><i class="fas fa-envelope"></i> Email *</label>
                             <input type="email" id="email" required maxlength="255" placeholder="correo@ejemplo.com">
+                            <p id="email-warning" class="help-text help-text-warning" style="display: none;"></p>
                         </div>
 
                         <div class="form-group">
-                            <label for="telefono"><i class="fas fa-mobile-alt"></i> Celular</label>
-                            <input type="tel" id="telefono" maxlength="10" inputmode="numeric" pattern="^09\d{8}$" placeholder="0991234567">
+                            <label for="telefono"><i class="fas fa-mobile-alt"></i> Celular *</label>
+                            <input type="tel" id="telefono" required maxlength="10" inputmode="numeric" pattern="^09\d{8}$" placeholder="0991234567">
                         </div>
                     </div>
 
@@ -222,6 +222,12 @@
                             <label for="es_superadmin"><i class="fas fa-crown"></i> Superadministrador</label>
                         </div>
                         <p class="help-text">El superadministrador puede gestionar a otros administradores</p>
+                    </div>
+
+                    <div class="form-group oficinista-fields" id="oficinista-fields" style="display: none;">
+                        <label for="oficinista_cargo"><i class="fas fa-briefcase"></i> Cargo (Oficinista) *</label>
+                        <input type="text" id="oficinista_cargo" maxlength="255" placeholder="Ej: Asistente Administrativo">
+                        <p class="help-text">Este campo es obligatorio cuando el rol seleccionado es Oficinista.</p>
                     </div>
 
                     <div id="instructor-fields" class="instructor-fields" style="display: none;">
@@ -282,6 +288,7 @@
                                 <button type="button" onclick="togglePassword('password')"><i class="fas fa-eye"></i></button>
                             </div>
                             <p class="help-text" id="help-password">Mínimo 8 caracteres, con mayúscula, minúscula, número y símbolo</p>
+                            <p id="password-warning" class="help-text help-text-warning" style="display: none;"></p>
                         </div>
 
                         <div class="form-group">
@@ -291,6 +298,7 @@
                                 <button type="button" onclick="togglePassword('password_confirm')"><i class="fas fa-eye"></i></button>
                             </div>
                             <p class="help-text" id="help-password-confirm">Debe coincidir con la contraseña</p>
+                            <p id="password-confirm-status" class="help-text" style="display: none;"></p>
                         </div>
                     </div>
 

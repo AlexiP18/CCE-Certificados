@@ -10,34 +10,14 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
     <link rel="stylesheet" href="<?= $basePath ?>/css/style.css">
     <link rel="stylesheet" href="<?= $cssPath ?>/configuracion/index.css">
-    <style>
-        :root {
-            --site-primary: <?= htmlspecialchars($siteConfig['primary_color']) ?>;
-            --site-secondary: <?= htmlspecialchars($siteConfig['secondary_color']) ?>;
-        }
-    </style>
+    <link rel="stylesheet" href="<?= $basePath ?>/css/header_theme.css">
+    <link rel="stylesheet" href="<?= $basePath ?>/css/institutional_theme.css">
 </head>
 <body>
-    <nav class="top-nav">
-        <div class="nav-logo">
-            <?php if (!empty($siteConfig['logo_nav_url'])): ?>
-                <img src="<?= htmlspecialchars($siteConfig['logo_nav_url']) ?>" alt="Logo" class="nav-logo-image" onerror="this.style.display='none'">
-            <?php endif; ?>
-            <i class="fas fa-graduation-cap"></i>
-            <span><?= htmlspecialchars($siteConfig['site_name']) ?></span>
-        </div>
-        <ul class="nav-menu">
-            <li><a href="<?= $basePath ?>/dashboard/index.php" class="nav-link"><i class="fas fa-home"></i> Inicio</a></li>
-            <li><a href="<?= $basePath ?>/estudiantes/index.php" class="nav-link"><i class="fas fa-users"></i> Estudiantes</a></li>
-            <li><a href="<?= $basePath ?>/auth/verify.php" class="nav-link"><i class="fas fa-search"></i> Verificar</a></li>
-            <li><a href="<?= $basePath ?>/usuarios/index.php" class="nav-link"><i class="fas fa-user-cog"></i> Usuarios</a></li>
-            <li><a href="<?= $basePath ?>/configuracion/index.php" class="nav-link active"><i class="fas fa-sliders-h"></i> Configuracion</a></li>
-            <li class="nav-user">
-                <a href="<?= $basePath ?>/perfil/dashboard/index.php" class="nav-link" title="Mi Perfil"><i class="fas fa-user-circle"></i> <?= htmlspecialchars($usuario['nombre_completo']) ?></a>
-                <a href="<?= $basePath ?>/auth/logout.php" class="nav-link logout-link" title="Cerrar Sesion"><i class="fas fa-sign-out-alt"></i></a>
-            </li>
-        </ul>
-    </nav>
+    <?php
+    $activeNav = 'configuracion';
+    require __DIR__ . '/../components/top_nav.php';
+    ?>
 
     <div class="container">
         <div class="hero-section">

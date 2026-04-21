@@ -201,14 +201,130 @@ try {
             if (empty($id)) {
                 throw new Exception('ID es requerido');
             }
-            
-            // Soft delete
-            $stmt = $pdo->prepare("UPDATE grupos SET activo = 0 WHERE id = ?");
+
+            // Verificar que el grupo exista y esté activo
+            $stmt = $pdo->prepare("SELECT id, nombre FROM grupos WHERE id = ? AND activo = 1 LIMIT 1");
             $stmt->execute([$id]);
+            $grupo = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$grupo) {
+                throw new Exception('El grupo no existe o ya fue eliminado');
+            }
+
+            // Regla 1: No permitir eliminar si hay estudiantes ACTIVOS en categorías del grupo
+            $stmt = $pdo->prepare("
+                SELECT COUNT(DISTINCT ce.estudiante_id) AS total_estudiantes_activos
+                FROM categoria_estudiantes ce
+                INNER JOIN categorias c ON c.id = ce.categoria_id
+                WHERE c.grupo_id = ?
+                  AND ce.estado = 'activo'
+            ");
+            $stmt->execute([$id]);
+            $totalEstudiantesActivos = (int)$stmt->fetchColumn();
+
+            if ($totalEstudiantesActivos > 0) {
+                throw new Exception(
+                    'No se puede eliminar este grupo porque sus categorías aún tienen estudiantes activos (' .
+                    $totalEstudiantesActivos .
+                    '). Primero elimina o desasigna esos estudiantes de las categorías.'
+                );
+            }
+
+            // Conteo histórico (cualquier estado): define si procede eliminación física o lógica.
+            $stmt = $pdo->prepare("
+                SELECT COUNT(*) AS total_registros_historicos
+                FROM categoria_estudiantes ce
+                INNER JOIN categorias c ON c.id = ce.categoria_id
+                WHERE c.grupo_id = ?
+            ");
+            $stmt->execute([$id]);
+            $totalRegistrosHistoricos = (int)$stmt->fetchColumn();
+
+            // Regla 2: No permitir eliminar si ya existen certificados generados para el grupo/categorías
+            $stmt = $pdo->prepare("
+                SELECT COUNT(*) AS total_generados
+                FROM certificados cert
+                LEFT JOIN categorias c ON c.id = cert.categoria_id
+                WHERE (cert.grupo_id = ? OR c.grupo_id = ?)
+                  AND (
+                        NULLIF(TRIM(COALESCE(cert.archivo_pdf, '')), '') IS NOT NULL
+                     OR NULLIF(TRIM(COALESCE(cert.archivo_imagen, '')), '') IS NOT NULL
+                  )
+            ");
+            $stmt->execute([$id, $id]);
+            $totalCertificadosGenerados = (int)$stmt->fetchColumn();
+
+            if ($totalCertificadosGenerados > 0) {
+                throw new Exception(
+                    'No se puede eliminar este grupo de forma definitiva porque ya tiene ' .
+                    $totalCertificadosGenerados .
+                    ' certificado(s) generado(s) en sus categorías.'
+                );
+            }
+            
+            // Regla 3:
+            // - Si NUNCA tuvo estudiantes registrados: eliminación física.
+            // - Si sí tuvo historial (aunque no activos): eliminación lógica para conservar trazabilidad.
+            $pdo->beginTransaction();
+            try {
+                $modoEliminacion = 'logica';
+                $categoriasAfectadas = 0;
+
+                if ($totalRegistrosHistoricos === 0) {
+                    // Limpieza defensiva de matrículas (en algunos entornos no hay FK hacia categorias).
+                    $stmt = $pdo->prepare("
+                        DELETE ce
+                        FROM categoria_estudiantes ce
+                        INNER JOIN categorias c ON c.id = ce.categoria_id
+                        WHERE c.grupo_id = ?
+                    ");
+                    $stmt->execute([$id]);
+
+                    $stmt = $pdo->prepare("
+                        DELETE FROM categorias
+                        WHERE grupo_id = ?
+                    ");
+                    $stmt->execute([$id]);
+                    $categoriasAfectadas = (int)$stmt->rowCount();
+
+                    $stmt = $pdo->prepare("DELETE FROM grupos WHERE id = ?");
+                    $stmt->execute([$id]);
+                    $modoEliminacion = 'fisica';
+                } else {
+                    $stmt = $pdo->prepare("
+                        UPDATE categorias
+                        SET activo = 0
+                        WHERE grupo_id = ?
+                          AND activo = 1
+                    ");
+                    $stmt->execute([$id]);
+                    $categoriasAfectadas = (int)$stmt->rowCount();
+
+                    $stmt = $pdo->prepare("
+                        UPDATE grupos
+                        SET activo = 0
+                        WHERE id = ?
+                          AND activo = 1
+                    ");
+                    $stmt->execute([$id]);
+                }
+
+                if ((int)$stmt->rowCount() === 0) {
+                    throw new Exception('No se pudo eliminar el grupo seleccionado');
+                }
+
+                $pdo->commit();
+            } catch (Exception $e) {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+                throw $e;
+            }
             
             echo json_encode([
                 'success' => true,
-                'message' => 'Grupo eliminado correctamente'
+                'message' => 'Grupo eliminado correctamente',
+                'modo_eliminacion' => $modoEliminacion ?? 'logica',
+                'categorias_afectadas' => $categoriasAfectadas ?? 0
             ]);
             break;
             

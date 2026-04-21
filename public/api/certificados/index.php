@@ -28,12 +28,26 @@ $usuario = Auth::user();
 function resolveUploadsAbsolutePath($archivo) {
     $archivo = trim((string)$archivo);
     if ($archivo === '') return '';
+    $projectRoot = dirname(dirname(dirname(__DIR__)));
+    $relative = ltrim($archivo, '/');
+    if (strpos($relative, 'uploads/') === 0) {
+        $relative = substr($relative, strlen('uploads/'));
+    }
+    $relative = ltrim($relative, '/');
 
-    if (strpos($archivo, 'uploads/') === 0) {
-        $archivo = substr($archivo, strlen('uploads/'));
+    $candidates = [
+        $projectRoot . '/uploads/' . $relative,
+        $projectRoot . '/public/uploads/' . $relative,
+        rtrim(sys_get_temp_dir(), '/') . '/cce_certificados/uploads/' . $relative
+    ];
+
+    foreach ($candidates as $candidate) {
+        if (is_file($candidate)) {
+            return $candidate;
+        }
     }
 
-    return dirname(dirname(dirname(__DIR__))) . '/uploads/' . ltrim($archivo, '/');
+    return $candidates[0];
 }
 
 // Obtener acción

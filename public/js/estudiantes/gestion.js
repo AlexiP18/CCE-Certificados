@@ -3022,8 +3022,11 @@ async function intentarPreviewDesdePlantilla(
         });
         const json = await resp.json();
 
-        if (json?.success && json?.preview_url) {
-            return await cargarImagenPreview(imageEl, `${json.preview_url}?v=${Date.now()}`, loaderEl);
+        if (json?.success && (json?.preview_url || json?.preview_data_url)) {
+            const previewSrc = json?.preview_url
+                ? `${json.preview_url}?v=${Date.now()}`
+                : String(json.preview_data_url || '');
+            return await cargarImagenPreview(imageEl, previewSrc, loaderEl);
         }
 
         if (loaderTextEl && json?.message) loaderTextEl.textContent = json.message;

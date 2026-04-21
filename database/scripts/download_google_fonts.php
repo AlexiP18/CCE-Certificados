@@ -3,10 +3,10 @@
  * Script para descargar fuentes TTF de Google Fonts
  * y almacenarlas localmente para uso en certificados
  */
-require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../../config/database.php';
 
 $pdo = getConnection();
-$fontsDir = dirname(__DIR__) . '/assets/fonts/';
+$fontsDir = dirname(dirname(__DIR__)) . '/assets/fonts/';
 
 // Asegurar que el directorio existe
 if (!is_dir($fontsDir)) {

@@ -255,6 +255,62 @@ function actualizarPreviewPeriodo() {
     document.getElementById('periodoPreviewNombre').textContent = nombre;
 }
 
+function parseIsoDate(isoDate) {
+    if (!isoDate) return null;
+    const parsed = new Date(`${isoDate}T00:00:00`);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function monthToNumber(dateObj) {
+    return (dateObj.getFullYear() * 100) + (dateObj.getMonth() + 1);
+}
+
+function formatDateShort(isoDate) {
+    const dateObj = parseIsoDate(isoDate);
+    if (!dateObj) return isoDate || '';
+    const day = String(dateObj.getDate()).padStart(2, '0');
+    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const year = dateObj.getFullYear();
+    return `${day}/${month}/${year}`;
+}
+
+function findConflictingPeriodoInSameMonth(fechaInicio, fechaFin) {
+    const nuevoInicio = parseIsoDate(fechaInicio);
+    const nuevoFin = parseIsoDate(fechaFin);
+
+    if (!nuevoInicio || !nuevoFin) return null;
+
+    const nuevoMesInicio = monthToNumber(nuevoInicio);
+    const nuevoMesFin = monthToNumber(nuevoFin);
+
+    const periodos = Array.isArray(GRUPO_PERIODOS) ? GRUPO_PERIODOS : [];
+    for (const periodo of periodos) {
+        const existenteInicio = parseIsoDate(periodo.fecha_inicio);
+        const existenteFin = parseIsoDate(periodo.fecha_fin);
+        if (!existenteInicio || !existenteFin) continue;
+
+        const seCruzaEnFechas = (nuevoInicio <= existenteFin) && (nuevoFin >= existenteInicio);
+        if (!seCruzaEnFechas) continue;
+
+        const existenteMesInicio = monthToNumber(existenteInicio);
+        const existenteMesFin = monthToNumber(existenteFin);
+
+        const seCruzaEnMes =
+            (nuevoMesInicio <= existenteMesFin && nuevoMesFin >= existenteMesInicio);
+
+        if (seCruzaEnMes) {
+            return {
+                id: periodo.id,
+                nombre: periodo.nombre || `Período ${periodo.id}`,
+                fecha_inicio: periodo.fecha_inicio,
+                fecha_fin: periodo.fecha_fin
+            };
+        }
+    }
+
+    return null;
+}
+
 // Sincronizar fecha fin cuando se cambia fecha inicio
 document.addEventListener('DOMContentLoaded', function () {
     const fechaInicioInput = document.getElementById('periodoFechaInicio');
@@ -595,6 +651,15 @@ async function guardarPeriodo(event) {
         return;
     }
 
+    const conflictoLocal = findConflictingPeriodoInSameMonth(fechaInicio, fechaFin);
+    if (conflictoLocal) {
+        showNotification(
+            `No permitido: este rango se cruza con "${conflictoLocal.nombre}" (${formatDateShort(conflictoLocal.fecha_inicio)} - ${formatDateShort(conflictoLocal.fecha_fin)}) en el mismo mes.`,
+            'warning'
+        );
+        return;
+    }
+
     let nombre = generarNombrePeriodo(fechaInicio, fechaFin);
     const asignaciones = [];
 
@@ -645,13 +710,19 @@ async function guardarPeriodo(event) {
             }
 
             cerrarModalPeriodo();
+            const anioNuevo = new Date(fechaInicio).getFullYear();
+            const params = new URLSearchParams();
+            params.set('id', String(grupoId));
+            params.set('anio', String(anioNuevo));
+            if (data.periodo_id) {
+                params.set('periodo_id', String(data.periodo_id));
+            }
+            // Fuerza navegación completa y evita reutilizar caché de documento.
+            params.set('_r', String(Date.now()));
 
-            setTimeout(() => {
-                const anioNuevo = new Date(fechaInicio).getFullYear();
-                const periodoHash = data.periodo_id ? `#periodo-${data.periodo_id}` : '';
-                const nuevaUrl = `${BASE_URL}/grupos/detalle.php?id=${grupoId}&anio=${anioNuevo}${periodoHash}`;
-                window.location.href = nuevaUrl;
-            }, 500);
+            const nuevaUrl = `${BASE_URL}/grupos/detalle.php?${params.toString()}`;
+            window.location.replace(nuevaUrl);
+            return;
         } else {
             showNotification('Error: ' + data.message, 'error');
         }
@@ -663,7 +734,8 @@ async function guardarPeriodo(event) {
 
 
 function cerrarModalPeriodo() {
-    document.getElementById('periodoModal').classList.remove('active');
+    const periodoModal = document.getElementById('periodoModal');
+    if (periodoModal) periodoModal.classList.remove('active');
 }
 
 
@@ -1601,17 +1673,17 @@ function confirmarEliminarGrupo() {
             if (data.success) {
                 showNotification('Grupo eliminado correctamente', 'success');
                 setTimeout(() => {
-                    window.location.href = 'dashboard/index.php';
+                    window.location.assign(`${BASE_URL}/dashboard/index.php`);
                 }, 1000);
             } else {
-                alert('Error: ' + data.message);
+                showNotification('Error: ' + data.message, 'error');
                 btn.disabled = false;
                 btn.innerHTML = '<i class="fas fa-trash-alt"></i> Sí, Eliminar';
             }
         })
         .catch(error => {
             console.error('Error:', error);
-            alert('Error al procesar la solicitud');
+            showNotification('Error al procesar la solicitud', 'error');
             btn.disabled = false;
             btn.innerHTML = '<i class="fas fa-trash-alt"></i> Sí, Eliminar';
         });

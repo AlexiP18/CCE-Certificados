@@ -16,6 +16,15 @@
     --canvas-wrapper-bg: #e0e6ed;
 }
 
+body {
+    background-color: #f4f8ff;
+    background-image: url('../../assets/background_gray_2.svg');
+    background-repeat: no-repeat;
+    background-position: center top;
+    background-size: cover;
+    background-attachment: fixed;
+}
+
 /* =========================================
    Layout Principal
    ========================================= */

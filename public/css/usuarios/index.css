@@ -692,6 +692,22 @@ body {
     gap: 14px;
 }
 
+.form-column-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.username-extra-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.username-extra-stack .form-group {
+    margin-bottom: 0;
+}
+
 .instructor-fields {
     margin: 8px 0 14px;
     padding: 14px;
@@ -708,6 +724,14 @@ body {
     display: flex;
     align-items: center;
     gap: 8px;
+}
+
+.oficinista-fields {
+    margin: 8px 0 14px;
+    padding: 14px;
+    border: 1px solid #e9ecef;
+    border-radius: 12px;
+    background: #fafbff;
 }
 
 .form-group textarea {
@@ -782,6 +806,151 @@ body {
     box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
 }
 
+.form-group input.input-lock-no-click {
+    pointer-events: none;
+    user-select: none;
+    cursor: default;
+    background: #f9fafb;
+    color: #6b7280;
+}
+
+.foto-upload-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.foto-upload-layout {
+    display: flex;
+    align-items: stretch;
+    gap: 12px;
+}
+
+.foto-upload-side {
+    flex: 1;
+    min-width: 180px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.foto-file-native {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.foto-upload-actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.foto-upload-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 14px;
+    border-radius: 10px;
+    border: 1px solid #1d5695;
+    background: #f3f8ff;
+    color: #1d5695;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-decoration: none;
+}
+
+.foto-upload-trigger:hover {
+    background: #e8f1ff;
+    transform: translateY(-1px);
+}
+
+.foto-upload-clear {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    border-radius: 10px;
+    border: 1px solid #e5a8c8;
+    background: #fff4fa;
+    color: #b01266;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.foto-upload-clear:hover {
+    background: #ffe9f5;
+}
+
+.foto-preview-box {
+    border: 1px dashed #cbd5e1;
+    background: #f8fafc;
+    border-radius: 12px;
+    width: 170px;
+    max-width: 45%;
+    aspect-ratio: 1 / 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+.foto-preview-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center;
+    display: block;
+}
+
+.foto-preview-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    color: #94a3b8;
+    font-size: 13px;
+    padding: 18px;
+    text-align: center;
+}
+
+.foto-preview-placeholder i {
+    font-size: 34px;
+    color: #94a3b8;
+}
+
+.foto-preview-name {
+    margin: 0;
+    color: #64748b;
+    font-size: 12px;
+}
+
+.foto-spec-text {
+    margin: 0;
+}
+
+@media (max-width: 768px) {
+    .foto-upload-layout {
+        flex-direction: column;
+    }
+
+    .foto-upload-side {
+        min-width: 0;
+    }
+
+    .foto-preview-box {
+        width: min(100%, 220px);
+        max-width: 100%;
+    }
+}
+
 .password-toggle {
     position: relative;
 }
@@ -810,6 +979,16 @@ body {
     font-size: 12px;
     color: #95a5a6;
     margin-top: 5px;
+}
+
+.help-text.help-text-warning {
+    color: #dc2626;
+    font-weight: 600;
+}
+
+.help-text.help-text-success {
+    color: #15803d;
+    font-weight: 600;
 }
 
 .checkbox-group {

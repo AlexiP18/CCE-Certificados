@@ -12,95 +12,28 @@
     <link rel="stylesheet" href="<?= $cssPath ?>/style.css">
     <!-- Estilos Específicos Dashboard -->
     <link rel="stylesheet" href="<?= $cssPath ?>/dashboard/index.css">
-    <style>
-        :root {
-            --site-primary: <?= htmlspecialchars($siteConfig['primary_color']) ?>;
-            --site-secondary: <?= htmlspecialchars($siteConfig['secondary_color']) ?>;
-        }
-
-        .top-nav .nav-link.active,
-        .btn-admin,
-        .hero-section {
-            background: linear-gradient(135deg, var(--site-primary), var(--site-secondary)) !important;
-        }
-
-        .nav-logo-image {
-            width: 34px;
-            height: 34px;
-            object-fit: contain;
-            border-radius: 8px;
-            background: #fff;
-            padding: 2px;
-        }
-    </style>
+    <link rel="stylesheet" href="<?= $basePath ?>/css/header_theme.css">
     <script type="module" src="https://cdn.jsdelivr.net/npm/emoji-picker-element@^1/index.js"></script>
 </head>
 <body>
-    <!-- Menú de Navegación -->
-    <nav class="top-nav">
-        <div class="nav-logo">
-            <?php if (!empty($siteConfig['logo_nav_url'])): ?>
-            <img src="<?= htmlspecialchars($siteConfig['logo_nav_url']) ?>" alt="Logo" class="nav-logo-image" onerror="this.style.display='none'">
-            <?php endif; ?>
-            <i class="fas fa-graduation-cap"></i>
-            <span><?= htmlspecialchars($siteConfig['site_name']) ?></span>
-        </div>
-        <ul class="nav-menu">
-            <li><a href="<?= $basePath ?>/dashboard/index.php" class="nav-link active"><i class="fas fa-home"></i> Inicio</a></li>
-            <?php if (puede('estudiantes', 'ver')): ?>
-            <li><a href="<?= $basePath ?>/estudiantes/index.php" class="nav-link"><i class="fas fa-users"></i> Estudiantes</a></li>
-            <?php endif; ?>
-            <?php if (puede('plantillas', 'ver') || esAdmin()): ?>
-            <li><a href="<?= $basePath ?>/admin/fuentes.php" class="nav-link"><i class="fas fa-font"></i> Fuentes</a></li>
-            <?php endif; ?>
-            <li><a href="<?= $basePath ?>/auth/verify.php" class="nav-link"><i class="fas fa-search"></i> Verificar</a></li>
-            <?php if (puede('usuarios', 'ver')): ?>
-            <li><a href="<?= $basePath ?>/usuarios/index.php" class="nav-link"><i class="fas fa-user-cog"></i> Usuarios</a></li>
-            <?php endif; ?>
-            <?php if (esAdmin()): ?>
-            <li><a href="<?= $basePath ?>/configuracion/index.php" class="nav-link"><i class="fas fa-sliders-h"></i> Configuracion</a></li>
-            <?php endif; ?>
-            <li class="nav-user">
-                <a href="<?= $basePath ?>/perfil/index.php" class="nav-link" title="Mi Perfil"><i class="fas fa-user-circle"></i> <?= htmlspecialchars($usuario['nombre_completo']) ?></a>
-                <a href="<?= $basePath ?>/auth/logout.php" class="nav-link logout-link" title="Cerrar Sesión"><i class="fas fa-sign-out-alt"></i></a>
-            </li>
-        </ul>
-    </nav>
+    <?php
+    $activeNav = 'inicio';
+    require __DIR__ . '/../components/top_nav.php';
+    ?>
 
     <div class="container main-content">
         <!-- Hero Section -->
         <div class="hero-section">
-            <h1><i class="fas fa-graduation-cap"></i> <?= htmlspecialchars($siteConfig['site_name']) ?></h1>
+            <h1 class="hero-title">
+                <img src="<?= $basePath ?>/assets/Logo%20CCE%20Rosa.svg" alt="Logo CCE Rosa" class="hero-page-logo" onerror="this.style.display='none'">
+                <?= htmlspecialchars($siteConfig['site_name']) ?>
+            </h1>
             <p><?= htmlspecialchars($siteConfig['institution_name']) ?></p>
         </div>
 
         <!-- Sección de Grupos -->
         <div class="section-header">
             <h2><i class="fas fa-folder"></i> Grupos de Certificados</h2>
-            
-            <div class="periodo-selector" style="margin-left: auto; margin-right: 15px;">
-                <label for="periodoFilter"><i class="fas fa-filter"></i> Filtrar por:</label>
-                <select id="periodoFilter" onchange="filterGroupsByPeriod(this.value)">
-                    <option value="all">Todos los períodos</option>
-                    <?php
-                    // Agrupar visualmente por año
-                    $currentYear = '';
-                    foreach ($periodos as $periodo):
-                        $year = date('Y', strtotime($periodo['fecha_inicio']));
-                        if ($year !== $currentYear):
-                            if ($currentYear !== '') echo '</optgroup>';
-                            echo '<optgroup label="Año ' . $year . '">';
-                            $currentYear = $year;
-                        endif;
-                    ?>
-                        <option value="<?= htmlspecialchars($periodo['nombre']) ?>">
-                            <?= htmlspecialchars($periodo['nombre']) ?>
-                        </option>
-                    <?php endforeach; 
-                    if ($currentYear !== '') echo '</optgroup>';
-                    ?>
-                </select>
-            </div>
 
             <?php if (puede('grupos', 'crear')): ?>
             <button onclick="openCreateGrupoModal()" class="btn-admin">
@@ -111,14 +44,11 @@
 
         <div class="grupos-grid">
             <?php if (count($grupos) > 0): ?>
-                <?php foreach ($grupos as $grupo): 
-                    $periodoNombre = $grupo['periodo_nombre'] ?? '';
-                ?>
+                <?php foreach ($grupos as $grupo): ?>
                     <a href="<?= $basePath ?>/grupos/detalle.php?id=<?= $grupo['id'] ?>" class="grupo-card" 
-                       style="--grupo-color: <?= $grupo['color'] ?>"
-                       data-periodo="<?= htmlspecialchars($periodoNombre) ?>">
+                       style="--grupo-color: <?= $grupo['color'] ?>">
                         <div class="grupo-header">
-                            <div class="grupo-icono" style="background: linear-gradient(135deg, <?= $grupo['color'] ?>, <?= $grupo['color'] ?>dd);"><?= htmlspecialchars($grupo['icono']) ?></div>
+                            <div class="grupo-icono"><?= htmlspecialchars($grupo['icono']) ?></div>
                             <div class="grupo-title">
                                 <h3><?= htmlspecialchars($grupo['nombre']) ?></h3>
                                 <p><?= htmlspecialchars($grupo['descripcion']) ?: 'Sin descripción' ?></p>
@@ -167,10 +97,10 @@
 
     <!-- Modal para crear grupo -->
     <div id="grupoModal" class="modal">
-        <div class="modal-content" style="max-width: 500px; padding: 0; display: flex; flex-direction: column; max-height: 85vh; overflow: hidden; border-radius: 16px;">
-            <div class="modal-header" style="background: linear-gradient(135deg, #3498dbdd 0%, #3498db 100%); padding: 20px 30px; flex-shrink: 0;">
-                <h2 style="color: white !important; text-shadow: 0 1px 2px rgba(0,0,0,0.2); margin: 0;"><i class="fas fa-plus-circle"></i> Nuevo Grupo</h2>
-                <button class="close-modal" onclick="closeCreateGrupoModal()" style="color: white !important; opacity: 0.9; font-size: 32px; text-shadow: 0 1px 2px rgba(0,0,0,0.1);">×</button>
+        <div class="modal-content modal-content-fixed" style="max-width: 500px;">
+            <div class="modal-header modal-header-institutional">
+                <h2><i class="fas fa-plus-circle"></i> Nuevo Grupo</h2>
+                <button class="close-modal" onclick="closeCreateGrupoModal()">×</button>
             </div>
             
             <form id="grupoForm" style="display: flex; flex-direction: column; overflow: hidden; flex: 1;">
@@ -201,7 +131,7 @@
                         <label style="font-weight: 600; color: #2c3e50; font-size: 14px; margin-bottom: 8px; display: block;"><i class="fas fa-icons"></i> Icono *</label>
                         <div style="background: #f8f9fa; padding: 15px; border-radius: 12px; border: 1px solid #e9ecef;">
                             <input type="hidden" id="icono" name="icono" value="📚">
-                            <div class="icon-selector" style="justify-content: center;">
+                            <div class="icon-selector">
                                 <div class="icon-option-grupo" data-icon="🎻">🎻</div>
                                 <div class="icon-option-grupo" data-icon="🎹">🎹</div>
                                 <div class="icon-option-grupo" data-icon="💃">💃</div>
@@ -214,7 +144,7 @@
                                 <div class="icon-option-grupo" data-icon="📚">📚</div>
                                 <div class="icon-option-grupo" data-icon="✍️">✍️</div>
                                 <div class="icon-option-grupo" data-icon="🏆">🏆</div>
-                                <div class="icon-option-custom-grupo" onclick="toggleEmojiPicker()">
+                                <div class="icon-option-custom-grupo" onclick="toggleEmojiPicker()" title="Buscar más íconos">
                                     <i class="fas fa-search"></i>
                                     <span>Buscar...</span>
                                 </div>
@@ -267,43 +197,44 @@
     <?php if ($hayPeriodosReales): ?>
     <!-- Modal de Selección de Períodos -->
     <div id="periodosModal" class="modal">
-        <div class="modal-content" style="max-width: 500px;">
-            <div class="modal-header" style="background: white; color: #2c3e50; border-bottom: 1px solid #e0e0e0;">
-                <h2 style="color: #2c3e50;"><i class="fas fa-calendar-alt" style="color: #9b59b6;"></i> Asignar Períodos</h2>
+        <div class="modal-content modal-content-fixed" style="max-width: 500px;">
+            <div class="modal-header modal-header-institutional">
+                <h2><i class="fas fa-calendar-alt"></i> Asignar Períodos</h2>
+                <button class="close-modal" onclick="closePeriodosModal()">×</button>
             </div>
-            <div class="modal-body" style="padding: 25px;">
-                <p style="color: #7f8c8d; margin-bottom: 15px; font-size: 14px;">
-                    <i class="fas fa-check-circle" style="color: #27ae60;"></i> El grupo <strong id="periodoGrupoNombre"></strong> ha sido creado exitosamente.
+            <div class="modal-body-scroll periodos-modal-body">
+                <p class="periodos-modal-message periodos-modal-message-success">
+                    <i class="fas fa-check-circle"></i> El grupo <strong id="periodoGrupoNombre"></strong> ha sido creado exitosamente.
                 </p>
                 
-                <p style="color: #7f8c8d; margin-bottom: 20px; font-size: 14px;">
-                    <i class="fas fa-info-circle" style="color: #3498db;"></i> Selecciona los períodos que deseas asignar a este grupo:
+                <p class="periodos-modal-message periodos-modal-message-info">
+                    <i class="fas fa-info-circle"></i> Selecciona los períodos que deseas asignar a este grupo:
                 </p>
                 
                 <input type="hidden" id="periodoGrupoId">
                 
-                <div id="periodosListContainer" style="max-height: 300px; overflow-y: auto; border: 1px solid #e0e0e0; border-radius: 10px; padding: 10px;">
+                <div id="periodosListContainer" class="periodos-list-container">
                     <?php foreach ($periodos as $periodo): ?>
-                    <label class="periodo-item" style="display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 8px; cursor: pointer; transition: background 0.2s; margin-bottom: 5px;">
-                        <input type="checkbox" class="periodo-checkbox" value="<?= $periodo['id'] ?>" style="width: 18px; height: 18px;">
+                    <label class="periodo-item periodos-modal-item">
+                        <input type="checkbox" class="periodo-checkbox" value="<?= $periodo['id'] ?>">
                         <div style="flex: 1;">
-                            <div style="font-weight: 600; color: #2c3e50;"><?= htmlspecialchars($periodo['nombre']) ?></div>
-                            <div style="font-size: 12px; color: #7f8c8d;">
+                            <div class="periodos-modal-item-title"><?= htmlspecialchars($periodo['nombre']) ?></div>
+                            <div class="periodos-modal-item-subtitle">
                                 <?= date('d/m/Y', strtotime($periodo['fecha_inicio'])) ?> - <?= date('d/m/Y', strtotime($periodo['fecha_fin'])) ?>
                             </div>
                         </div>
                     </label>
                     <?php endforeach; ?>
                 </div>
-                
-                <div class="modal-actions" style="margin-top: 25px; display: flex; gap: 10px; justify-content: space-between;">
-                    <button type="button" class="btn btn-secondary-modal" onclick="closePeriodosModal()">
-                        Omitir (sin períodos)
-                    </button>
-                    <button type="button" class="btn btn-primary-modal" onclick="savePeriodosSelection()">
-                        <i class="fas fa-check"></i> Asignar Períodos
-                    </button>
-                </div>
+            </div>
+
+            <div class="modal-footer modal-footer-split">
+                <button type="button" class="btn btn-secondary-modal" onclick="closePeriodosModal()">
+                    Omitir (sin períodos)
+                </button>
+                <button type="button" class="btn btn-primary-modal" onclick="savePeriodosSelection()">
+                    <i class="fas fa-check"></i> Asignar Períodos
+                </button>
             </div>
         </div>
     </div>
@@ -313,25 +244,6 @@
     <script>
         window.basePath = "<?= $basePath ?>";
         window.hayPeriodosReales = <?= $hayPeriodosReales ? 'true' : 'false' ?>;
-        
-        // Función simple para filtrar
-        function filterGroupsByPeriod(periodoName) {
-            const cards = document.querySelectorAll('.grupo-card[data-periodo]');
-            
-            cards.forEach(card => {
-                if (periodoName === 'all') {
-                    card.style.display = 'flex';
-                } else {
-                    const cardPeriod = card.getAttribute('data-periodo');
-                    // Usar includes para manejar múltiples periodos
-                    if (cardPeriod && cardPeriod.includes(periodoName)) {
-                        card.style.display = 'flex';
-                    } else {
-                        card.style.display = 'none';
-                    }
-                }
-            });
-        }
     </script>
     <script src="<?= $jsPath ?>/dashboard/index.js"></script>
 </body>

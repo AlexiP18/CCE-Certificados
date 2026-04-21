@@ -33,12 +33,23 @@ function buildUploadsPublicUrl($archivoImagen) {
     if (empty($archivoImagen)) return null;
     $archivoImagen = trim((string)$archivoImagen);
     if ($archivoImagen === '') return null;
+    $projectRoot = dirname(dirname(dirname(__DIR__)));
+    $projectFolder = basename($projectRoot);
+    $absolutePath = resolveUploadsAbsolutePath($archivoImagen);
+    if (!$absolutePath || !is_file($absolutePath)) return null;
 
-    if (strpos($archivoImagen, 'uploads/') === 0) {
-        $archivoImagen = substr($archivoImagen, strlen('uploads/'));
+    $projectUploads = $projectRoot . '/uploads/';
+    $publicUploads = $projectRoot . '/public/uploads/';
+
+    if (strpos($absolutePath, $projectUploads) === 0) {
+        $relative = substr($absolutePath, strlen($projectUploads));
+        return '/' . $projectFolder . '/uploads/' . ltrim(str_replace('\\', '/', $relative), '/');
     }
-
-    return '/CCE-Certificados/uploads/' . ltrim($archivoImagen, '/');
+    if (strpos($absolutePath, $publicUploads) === 0) {
+        $relative = substr($absolutePath, strlen($publicUploads));
+        return '/' . $projectFolder . '/public/uploads/' . ltrim(str_replace('\\', '/', $relative), '/');
+    }
+    return null;
 }
 
 /**
@@ -50,12 +61,26 @@ function buildUploadsPublicUrl($archivoImagen) {
 function resolveUploadsAbsolutePath($archivo) {
     $archivo = trim((string)$archivo);
     if ($archivo === '') return '';
+    $projectRoot = dirname(dirname(dirname(__DIR__)));
+    $relative = ltrim($archivo, '/');
+    if (strpos($relative, 'uploads/') === 0) {
+        $relative = substr($relative, strlen('uploads/'));
+    }
+    $relative = ltrim($relative, '/');
 
-    if (strpos($archivo, 'uploads/') === 0) {
-        $archivo = substr($archivo, strlen('uploads/'));
+    $candidates = [
+        $projectRoot . '/uploads/' . $relative,
+        $projectRoot . '/public/uploads/' . $relative,
+        rtrim(sys_get_temp_dir(), '/') . '/cce_certificados/uploads/' . $relative
+    ];
+
+    foreach ($candidates as $candidate) {
+        if (is_file($candidate)) {
+            return $candidate;
+        }
     }
 
-    return dirname(dirname(dirname(__DIR__))) . '/uploads/' . ltrim($archivo, '/');
+    return $candidates[0];
 }
 
 /**
